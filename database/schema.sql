@@ -1,6 +1,6 @@
 -- Legal Case Management System - Database Schema
-CREATE DATABASE IF NOT EXISTS `legal-system` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE `legal-system`;
+CREATE DATABASE IF NOT EXISTS `legal_system` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE `legal_system`;
 
 SET FOREIGN_KEY_CHECKS = 0;
 

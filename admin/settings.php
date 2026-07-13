@@ -321,7 +321,7 @@ require __DIR__ . '/../includes/header.php';
                         <p>Protect firm data by exporting the MySQL database regularly.</p>
                     </div>
                     <div class="list-stack">
-                        <div class="list-item"><strong>Database</strong><span class="muted">Export <code>legal-system</code> from phpMyAdmin or mysqldump.</span></div>
+                        <div class="list-item"><strong>Database</strong><span class="muted">Export <code>legal_system</code> from phpMyAdmin or mysqldump.</span></div>
                         <div class="list-item"><strong>Schema &amp; seed</strong><span class="muted">Source files live in <code>database/schema.sql</code> and <code>database/seed.sql</code>.</span></div>
                         <div class="list-item"><strong>Uploads</strong><span class="muted">Back up the <code>uploads/</code> folder for documents and avatars.</span></div>
                     </div>

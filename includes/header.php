@@ -67,20 +67,46 @@ $theme = in_array($themeSetting, ['light', 'dark'], true) ? $themeSetting : 'lig
             <button class="nav-toggle" type="button" aria-label="Toggle menu">☰</button>
             <div class="topbar-title">
                 <h1><?= e($pageTitle ?? 'Dashboard') ?></h1>
-                <?php if (!empty($pageSubtitle)): ?>
-                    <p class="muted"><?= e($pageSubtitle) ?></p>
-                <?php endif; ?>
+                <p class="muted">Welcome back, <?= e(full_name($user)) ?></p>
             </div>
             <div class="topbar-actions">
                 <button class="icon-btn theme-toggle" type="button" title="Toggle light / dark mode" aria-label="Toggle theme">
-                    <span class="theme-icon theme-icon-dark">☀</span>
-                    <span class="theme-icon theme-icon-light">☾</span>
+                    <span class="theme-icon theme-icon-dark" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 3v1.5M12 19.5V21M4.9 4.9l1.1 1.1M18 18l1.1 1.1M3 12h1.5M19.5 12H21M4.9 19.1l1.1-1.1M18 6l1.1-1.1"/></svg>
+                    </span>
+                    <span class="theme-icon theme-icon-light" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14.5 4A7.5 7.5 0 1 0 20 15.5 7.5 7.5 0 0 1 14.5 4z"/>
+                            <path d="M17 3.5v3M15.5 5h3"/>
+                            <path d="M20 7.5v2M19 8.5h2"/>
+                        </svg>
+                    </span>
                 </button>
                 <a class="icon-btn" href="<?= e($portalBase) ?>/notifications.php" title="Notifications" aria-label="Notifications">
-                    <span class="bell">🔔</span>
-                    <?php if ($unread > 0): ?><span class="dot"><?= (int) $unread ?></span><?php endif; ?>
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 9a5 5 0 0 1 10 0c0 5 2 6.5 2 6.5H5S7 14 7 9"/><path d="M10.5 19a1.5 1.5 0 0 0 3 0"/></svg>
+                    <?php if ($unread > 0): ?><span class="dot"><?= $unread > 9 ? '9+' : (int) $unread ?></span><?php endif; ?>
                 </a>
-                <a class="btn btn-primary btn-sm" href="<?= e($portalBase) ?>/ai.php">AI Assistant</a>
+                <div class="topbar-user">
+                    <div class="topbar-avatar"><?= e(strtoupper(substr($user['first_name'], 0, 1) . substr($user['last_name'], 0, 1))) ?></div>
+                    <div class="topbar-user-meta">
+                        <strong><?= e(full_name($user)) ?></strong>
+                        <span><?= e(ucwords(str_replace('_', ' ', $user['role']))) ?></span>
+                    </div>
+                    <details class="topbar-menu">
+                        <summary aria-label="Account menu">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                        </summary>
+                        <div class="topbar-menu-panel">
+                            <?php if ($portal === 'admin'): ?>
+                                <a href="<?= e($portalBase) ?>/settings.php">Settings</a>
+                                <a href="<?= e($portalBase) ?>/users.php">Users</a>
+                            <?php elseif ($portal === 'lawyer'): ?>
+                                <a href="<?= e($portalBase) ?>/profile.php">Profile</a>
+                            <?php endif; ?>
+                            <a href="<?= e($base) ?>/logout.php">Sign out</a>
+                        </div>
+                    </details>
+                </div>
             </div>
         </header>
         <main class="content">

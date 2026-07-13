@@ -1,5 +1,5 @@
 -- Seed data for Legal Case Management System
-USE `legal-system`;
+USE `legal_system`;
 
 -- Demo logins (username or email + password):
 -- admin / admin@admin.mu  → admin123

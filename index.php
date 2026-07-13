@@ -19,6 +19,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 $appName = app_config('name');
+$base = app_config('url');
+$cssVer = filemtime(__DIR__ . '/assets/css/login.css');
 ?>
 <!DOCTYPE html>
 <html lang="en" data-theme="light">
@@ -37,34 +39,65 @@ $appName = app_config('name');
         })();
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="<?= e($base) ?>/assets/css/login.css?v=<?= (int) $cssVer ?>">
 </head>
-<body class="auth-page">
-    <div class="login-card">
-        <div class="brand-mark">L</div>
-        <h1><?= e($appName) ?></h1>
-        <p class="muted">Secure access to Admin, Lawyer, and Client portals.</p>
-        <?php if ($error): ?><div class="alert alert-danger"><?= e($error) ?></div><?php endif; ?>
-        <form method="post" class="form-grid" style="grid-template-columns:1fr; margin-top:1rem;">
-            <?= csrf_field() ?>
-            <div class="form-group">
-                <label for="login">Username / Email</label>
-                <input type="text" id="login" name="login" required autocomplete="username" placeholder="username or email" value="<?= e(post('login', '')) ?>">
-            </div>
-            <div class="form-group">
-                <label for="password">Password</label>
-                <input type="password" id="password" name="password" required autocomplete="current-password" placeholder="••••••••">
-            </div>
-            <button class="btn btn-accent" type="submit">Sign in</button>
-        </form>
-        <div class="demo-box">
-            <strong>Demo accounts</strong><br>
-            Admin: <code>admin</code> or <code>admin@admin.mu</code> / <code>admin123</code><br>
-            Lawyer: <code>lawyer01</code> / <code>lawyer01</code><br>
-            Client: <code>yeshna</code> / <code>yeshna</code>
-        </div>
-        <p class="muted" style="margin-top:1rem;font-size:0.85rem;">First time? Run <a href="install.php"><strong>install.php</strong></a></p>
+<body class="auth-landing">
+    <div class="glass-scene" aria-hidden="true">
+        <div class="glass-orb glass-orb-a"></div>
+        <div class="glass-orb glass-orb-b"></div>
+        <div class="glass-orb glass-orb-c"></div>
+        <div class="glass-orb glass-orb-d"></div>
+        <div class="glass-stone glass-stone-a"></div>
+        <div class="glass-stone glass-stone-b"></div>
     </div>
+
+    <main class="glass-stage">
+        <section class="glass-login">
+            <header class="glass-login-top">
+                <div class="glass-brand">
+                    <span class="brand-mark">L</span>
+                    <span><?= e($appName) ?></span>
+                </div>
+                <span class="glass-portal-tag">Secure portal</span>
+            </header>
+
+            <h1 class="glass-title">Log in</h1>
+            <p class="glass-lead">Access your admin, lawyer, or client workspace.</p>
+
+            <?php if ($error): ?><div class="alert"><?= e($error) ?></div><?php endif; ?>
+
+            <form method="post" class="glass-form">
+                <?= csrf_field() ?>
+                <label class="glass-field">
+                    <span class="glass-ico" aria-hidden="true">@</span>
+                    <input type="text" name="login" required autocomplete="username" placeholder="Username or email" value="<?= e(post('login', '')) ?>">
+                </label>
+                <label class="glass-field">
+                    <span class="glass-ico" aria-hidden="true">•</span>
+                    <input type="password" name="password" required autocomplete="current-password" placeholder="Password">
+                </label>
+                <button class="glass-go" type="submit" aria-label="Sign in">→</button>
+            </form>
+
+            <div class="glass-demo">
+                <span><b>admin</b> / admin123</span>
+                <span><b>lawyer01</b> / lawyer01</span>
+                <span><b>yeshna</b> / yeshna</span>
+            </div>
+        </section>
+
+        <aside class="glass-side">
+            <div class="glass-side-orb"></div>
+            <p class="glass-side-kicker">Lexora Legal</p>
+            <h2>Clarity for every case.</h2>
+            <p>Cases, courts, billing, and AI support — unified for your firm.</p>
+            <div class="glass-side-cta">
+                <span>Enter workspace</span>
+                <span class="glass-mini-go">→</span>
+            </div>
+        </aside>
+    </main>
 </body>
 </html>
