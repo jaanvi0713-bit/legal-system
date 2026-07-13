@@ -1,0 +1,22 @@
+# Dependencies / env
+.env
+.env.*
+!.env.example
+
+# Uploads (keep folder, ignore files)
+uploads/documents/*
+uploads/avatars/*
+!uploads/**/.htaccess
+!uploads/**/.gitkeep
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.tmp
+
+# Logs / cache
+*.log
+/tmp/
