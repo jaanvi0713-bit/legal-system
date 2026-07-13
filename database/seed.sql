@@ -1,5 +1,5 @@
 -- Seed data for Legal Case Management System
-USE legal_system;
+USE `legal-system`;
 
 -- Demo logins (username or email + password):
 -- admin / admin@admin.mu  → admin123
@@ -79,8 +79,8 @@ INSERT INTO settings (setting_key, setting_value) VALUES
 ('company_email', 'contact@lexora.law'),
 ('company_phone', '+971-4-555-0100'),
 ('company_address', 'Gate Village Building 4, DIFC, Dubai, UAE'),
-('branding_primary', '#1a3a4a'),
-('branding_accent', '#c4a35a'),
+('branding_primary', '#0f3a6d'),
+('branding_accent', '#1a5a9c'),
 ('theme', 'light'),
 ('ai_enabled', '1'),
 ('ai_welcome_admin', 'You are the Lexora admin AI assistant. Help with firm operations, case summaries, and legal drafting guidance.'),

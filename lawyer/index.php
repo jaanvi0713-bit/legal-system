@@ -30,12 +30,48 @@ $portal = 'lawyer';
 $activeNav = 'dashboard';
 require __DIR__ . '/../includes/header.php';
 ?>
-<div class="grid grid-4">
-    <div class="stat-card"><div class="stat-label">Assigned cases</div><div class="stat-value"><?= count($cases) ?></div></div>
-    <div class="stat-card"><div class="stat-label">Today's appointments</div><div class="stat-value"><?= count($today) ?></div></div>
-    <div class="stat-card"><div class="stat-label">Upcoming hearings</div><div class="stat-value"><?= count($hearings) ?></div></div>
-    <div class="stat-card"><div class="stat-label">Pending tasks</div><div class="stat-value"><?= count($pending) ?></div></div>
-</div>
+<section class="kpi-grid">
+    <article class="kpi-card">
+        <div class="kpi-top">
+            <div class="kpi-icon primary">C</div>
+            <div class="kpi-meta">
+                <div class="kpi-label">Assigned cases</div>
+                <div class="kpi-value"><?= count($cases) ?></div>
+            </div>
+        </div>
+        <div class="kpi-foot"><span class="kpi-delta up">Active</span> your matter list</div>
+    </article>
+    <article class="kpi-card">
+        <div class="kpi-top">
+            <div class="kpi-icon info">A</div>
+            <div class="kpi-meta">
+                <div class="kpi-label">Today's appointments</div>
+                <div class="kpi-value"><?= count($today) ?></div>
+            </div>
+        </div>
+        <div class="kpi-foot"><span class="kpi-delta up"><?= count($pending) ?></span> pending replies</div>
+    </article>
+    <article class="kpi-card">
+        <div class="kpi-top">
+            <div class="kpi-icon warning">H</div>
+            <div class="kpi-meta">
+                <div class="kpi-label">Upcoming hearings</div>
+                <div class="kpi-value"><?= count($hearings) ?></div>
+            </div>
+        </div>
+        <div class="kpi-foot"><span class="kpi-delta down">Court</span> scheduled sessions</div>
+    </article>
+    <article class="kpi-card">
+        <div class="kpi-top">
+            <div class="kpi-icon success">T</div>
+            <div class="kpi-meta">
+                <div class="kpi-label">Pending tasks</div>
+                <div class="kpi-value"><?= count($pending) ?></div>
+            </div>
+        </div>
+        <div class="kpi-foot"><span class="kpi-delta up">Queue</span> appointments awaiting action</div>
+    </article>
+</section>
 <div class="grid grid-2">
     <div class="panel">
         <div class="panel-header"><h2>My cases</h2><a href="cases.php">View all</a></div>

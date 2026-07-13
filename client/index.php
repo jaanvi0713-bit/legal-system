@@ -38,12 +38,48 @@ $portal = 'client';
 $activeNav = 'dashboard';
 require __DIR__ . '/../includes/header.php';
 ?>
-<div class="grid grid-4">
-    <div class="stat-card"><div class="stat-label">Active cases</div><div class="stat-value"><?= count($active) ?></div></div>
-    <div class="stat-card"><div class="stat-label">Assigned lawyer</div><div class="stat-value" style="font-size:1.25rem;"><?= e($lawyer ? full_name($lawyer) : 'Pending') ?></div></div>
-    <div class="stat-card"><div class="stat-label">Upcoming appointments</div><div class="stat-value"><?= count($appointments) ?></div></div>
-    <div class="stat-card"><div class="stat-label">Outstanding</div><div class="stat-value" style="font-size:1.5rem;"><?= e(money($outstanding)) ?></div></div>
-</div>
+<section class="kpi-grid">
+    <article class="kpi-card">
+        <div class="kpi-top">
+            <div class="kpi-icon primary">C</div>
+            <div class="kpi-meta">
+                <div class="kpi-label">Active cases</div>
+                <div class="kpi-value"><?= count($active) ?></div>
+            </div>
+        </div>
+        <div class="kpi-foot"><span class="kpi-delta up">Open</span> matters in progress</div>
+    </article>
+    <article class="kpi-card">
+        <div class="kpi-top">
+            <div class="kpi-icon info">L</div>
+            <div class="kpi-meta">
+                <div class="kpi-label">Assigned lawyer</div>
+                <div class="kpi-value" style="font-size:1.05rem;"><?= e($lawyer ? full_name($lawyer) : 'Pending') ?></div>
+            </div>
+        </div>
+        <div class="kpi-foot"><span class="kpi-delta up">Counsel</span> your contact point</div>
+    </article>
+    <article class="kpi-card">
+        <div class="kpi-top">
+            <div class="kpi-icon warning">A</div>
+            <div class="kpi-meta">
+                <div class="kpi-label">Upcoming appointments</div>
+                <div class="kpi-value"><?= count($appointments) ?></div>
+            </div>
+        </div>
+        <div class="kpi-foot"><span class="kpi-delta up">Soon</span> meetings on calendar</div>
+    </article>
+    <article class="kpi-card">
+        <div class="kpi-top">
+            <div class="kpi-icon success">$</div>
+            <div class="kpi-meta">
+                <div class="kpi-label">Outstanding</div>
+                <div class="kpi-value" style="font-size:1.15rem;"><?= e(money($outstanding)) ?></div>
+            </div>
+        </div>
+        <div class="kpi-foot"><span class="kpi-delta down">Due</span> balance on invoices</div>
+    </article>
+</section>
 <div class="grid grid-2">
     <div class="panel">
         <div class="panel-header"><h2>My cases</h2><a href="cases.php">Open</a></div>
