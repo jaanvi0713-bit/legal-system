@@ -194,9 +194,9 @@ require __DIR__ . '/../includes/header.php';
                     <div class="color-fields">
                         <?php
                         $colors = [
-                            'branding_primary' => ['Primary Color', '#0f3a6d'],
+                            'branding_primary' => ['Primary Color', '#1e3a6e'],
                             'branding_secondary' => ['Secondary Color', '#002b5b'],
-                            'branding_accent' => ['Accent Color', '#1a5a9c'],
+                            'branding_accent' => ['Accent Color', '#5b4b8a'],
                         ];
                         foreach ($colors as $key => [$label, $default]):
                             $val = $get($key, $default);
@@ -282,8 +282,8 @@ require __DIR__ . '/../includes/header.php';
                         <div class="form-group">
                             <label>Currency</label>
                             <select name="payment_currency">
-                                <?php foreach (['AED', 'USD', 'EUR', 'GBP', 'MUR'] as $currency): ?>
-                                    <option value="<?= e($currency) ?>" <?= $get('payment_currency', 'AED') === $currency ? 'selected' : '' ?>><?= e($currency) ?></option>
+                                <?php foreach (['INR', 'AED', 'USD', 'EUR', 'GBP', 'MUR'] as $currency): ?>
+                                    <option value="<?= e($currency) ?>" <?= $get('payment_currency', 'INR') === $currency ? 'selected' : '' ?>><?= e($currency) ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>

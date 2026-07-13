@@ -48,7 +48,15 @@ function full_name(array $user): string
 
 function money($amount): string
 {
-    return app_config('currency_symbol', 'AED ') . number_format((float) $amount, 2);
+    $symbol = app_config('currency_symbol', '₹');
+    $value = (float) $amount;
+    if (class_exists('NumberFormatter')) {
+        $fmt = new NumberFormatter('en_IN', NumberFormatter::DECIMAL);
+        $fmt->setAttribute(NumberFormatter::MIN_FRACTION_DIGITS, 2);
+        $fmt->setAttribute(NumberFormatter::MAX_FRACTION_DIGITS, 2);
+        return $symbol . $fmt->format($value);
+    }
+    return $symbol . number_format($value, 2);
 }
 
 function format_date(?string $date, string $format = 'd M Y'): string
