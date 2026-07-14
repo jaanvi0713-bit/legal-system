@@ -63,36 +63,88 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
         $client = $stmt->fetch() ?: $client;
     }
     require __DIR__ . '/../includes/header.php';
+    $isEdit = (bool) $id;
     ?>
-    <div class="panel">
-        <h2><?= $id ? 'Edit client' : 'Add client' ?></h2>
-        <form method="post" class="form-grid">
+    <div class="entity-form panel">
+        <div class="entity-form-hero">
+            <div>
+                <p class="entity-form-eyebrow"><?= $isEdit ? 'Client profile' : 'New client' ?></p>
+                <h2><?= $isEdit ? 'Edit client' : 'Add client' ?></h2>
+                <p class="muted"><?= $isEdit ? 'Update contact details, assignment, and account status.' : 'Create a client account, assign a lawyer, and set login credentials.' ?></p>
+            </div>
+        </div>
+
+        <form method="post">
+            <div class="entity-form-body">
             <?= csrf_field() ?>
             <input type="hidden" name="form_action" value="save">
             <input type="hidden" name="id" value="<?= (int)$client['id'] ?>">
-            <div class="form-group"><label>First name</label><input name="first_name" required value="<?= e($client['first_name']) ?>"></div>
-            <div class="form-group"><label>Last name</label><input name="last_name" required value="<?= e($client['last_name']) ?>"></div>
-            <div class="form-group"><label>Username</label><input name="username" required value="<?= e($client['username']) ?>"></div>
-            <div class="form-group"><label>Email</label><input type="email" name="email" required value="<?= e($client['email']) ?>"></div>
-            <div class="form-group"><label>Phone</label><input name="phone" value="<?= e($client['phone']) ?>"></div>
-            <?php if (!$id): ?><div class="form-group"><label>Temporary password</label><input name="password" placeholder="Defaults to password123"></div><?php endif; ?>
-            <div class="form-group"><label>Company</label><input name="company_name" value="<?= e($client['company_name']) ?>"></div>
-            <div class="form-group"><label>Assigned lawyer</label>
-                <select name="assigned_lawyer_id">
+
+            <section class="entity-section">
+                <div class="entity-section-head">
+                    <h3>Personal details</h3>
+                    <p>Primary contact information for this client.</p>
+                </div>
+                <div class="form-grid">
+                    <div class="form-group"><label for="first_name">First name</label><input id="first_name" name="first_name" required value="<?= e($client['first_name']) ?>" placeholder="e.g. Priya"></div>
+                    <div class="form-group"><label for="last_name">Last name</label><input id="last_name" name="last_name" required value="<?= e($client['last_name']) ?>" placeholder="e.g. Sharma"></div>
+                    <div class="form-group"><label for="email">Email</label><input id="email" type="email" name="email" required value="<?= e($client['email']) ?>" placeholder="name@company.com"></div>
+                    <div class="form-group"><label for="phone">Phone</label><input id="phone" name="phone" value="<?= e($client['phone']) ?>" placeholder="+91 …"></div>
+                    <div class="form-group full"><label for="address">Address</label><textarea id="address" name="address" rows="2" placeholder="Street, city, state, PIN"><?= e($client['address']) ?></textarea></div>
+                </div>
+            </section>
+
+            <section class="entity-section">
+                <div class="entity-section-head">
+                    <h3>Account & access</h3>
+                    <p>Portal login credentials and activation status.</p>
+                </div>
+                <div class="form-grid">
+                    <div class="form-group"><label for="username">Username</label><input id="username" name="username" required value="<?= e($client['username']) ?>" placeholder="Unique login ID" autocomplete="off"></div>
+                    <?php if (!$isEdit): ?>
+                    <div class="form-group">
+                        <label for="password">Temporary password</label>
+                        <input id="password" name="password" type="text" placeholder="Leave blank for password123" autocomplete="off">
+                        <span class="field-hint">Client can change this after first login.</span>
+                    </div>
+                    <?php endif; ?>
+                    <div class="form-group">
+                        <label for="is_active">Account status</label>
+                        <select id="is_active" name="is_active">
+                            <option value="1" <?= $client['is_active'] ? 'selected' : '' ?>>Active</option>
+                            <option value="0" <?= !$client['is_active'] ? 'selected' : '' ?>>Inactive / pending approval</option>
+                        </select>
+                    </div>
+                </div>
+            </section>
+
+            <section class="entity-section">
+                <div class="entity-section-head">
+                    <h3>Firm assignment</h3>
+                    <p>Company affiliation and responsible lawyer.</p>
+                </div>
+                <div class="form-grid">
+                    <div class="form-group"><label for="company_name">Company</label><input id="company_name" name="company_name" value="<?= e($client['company_name']) ?>" placeholder="Optional organization name"></div>
+                    <div class="form-group">
+                        <label for="assigned_lawyer_id">Assigned lawyer</label>
+                        <select id="assigned_lawyer_id" name="assigned_lawyer_id">
                     <option value="">— Unassigned —</option>
                     <?php foreach ($lawyers as $l): ?>
                         <option value="<?= (int)$l['id'] ?>" <?= (int)$client['assigned_lawyer_id'] === (int)$l['id'] ? 'selected' : '' ?>><?= e(full_name($l)) ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="form-group full"><label>Address</label><textarea name="address"><?= e($client['address']) ?></textarea></div>
-            <div class="form-group full"><label>Notes / history</label><textarea name="notes"><?= e($client['notes']) ?></textarea></div>
-            <div class="form-group"><label>Account status</label>
-                <select name="is_active"><option value="1" <?= $client['is_active'] ? 'selected' : '' ?>>Active</option><option value="0" <?= !$client['is_active'] ? 'selected' : '' ?>>Inactive / pending</option></select>
+                    <div class="form-group full">
+                        <label for="notes">Notes / history</label>
+                        <textarea id="notes" name="notes" rows="3" placeholder="Intake notes, preferences, or internal history…"><?= e($client['notes']) ?></textarea>
+                    </div>
+                </div>
+            </section>
             </div>
-            <div class="form-actions full">
-                <button class="btn btn-primary" type="submit">Save client</button>
-                <a class="btn btn-ghost" href="clients.php">Cancel</a>
+
+            <div class="entity-form-footer">
+                <a class="btn btn-secondary" href="clients.php">Back to clients</a>
+                <button class="btn btn-primary" type="submit"><?= $isEdit ? 'Save changes' : 'Save client' ?></button>
             </div>
         </form>
     </div>
@@ -117,7 +169,7 @@ if ($action === 'view' && $id) {
             </div>
             <div class="quick-links">
                 <a class="btn btn-sm btn-primary" href="?action=edit&id=<?= $id ?>">Edit</a>
-                <a class="btn btn-sm btn-ghost" href="clients.php">Back</a>
+                <a class="btn btn-sm btn-secondary" href="clients.php">Back</a>
             </div>
         </div>
         <div class="grid grid-2">
@@ -167,11 +219,11 @@ require __DIR__ . '/../includes/header.php';
                     <td><?= e($c['lawyer_name'] ?: 'Unassigned') ?></td>
                     <td><?= status_badge($c['is_active'] ? 'active' : 'pending') ?></td>
                     <td class="quick-links">
-                        <a class="chip" href="?action=edit&id=<?= (int)$c['id'] ?>">Edit</a>
+                        <a class="chip chip-edit" href="?action=edit&id=<?= (int)$c['id'] ?>">Edit</a>
                         <?php if (!$c['is_active']): ?>
-                        <form method="post" style="display:inline"><?= csrf_field() ?><input type="hidden" name="form_action" value="approve"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>"><button class="chip" type="submit">Approve</button></form>
+                        <form method="post" style="display:inline"><?= csrf_field() ?><input type="hidden" name="form_action" value="approve"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>"><button class="chip chip-ok" type="submit">Approve</button></form>
                         <?php endif; ?>
-                        <form method="post" style="display:inline" onsubmit="return confirm('Delete this client?')"><?= csrf_field() ?><input type="hidden" name="form_action" value="delete"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>"><button class="chip" type="submit">Delete</button></form>
+                        <form method="post" style="display:inline" onsubmit="return confirm('Delete this client?')"><?= csrf_field() ?><input type="hidden" name="form_action" value="delete"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>"><button class="chip chip-danger" type="submit">Delete</button></form>
                     </td>
                 </tr>
             <?php endforeach; ?>

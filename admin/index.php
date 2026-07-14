@@ -221,7 +221,7 @@ require __DIR__ . '/../includes/header.php';
 
 <section class="dash-lists">
     <div class="panel">
-        <div class="panel-header"><h2>Revenue collections</h2><a href="finance.php">Finance</a></div>
+        <div class="panel-header"><h2>Revenue collections</h2><a href="cases.php">View cases</a></div>
         <div class="chart-wrap sm" style="margin-bottom:1rem;"><canvas id="chartRevenue"></canvas></div>
         <div class="list-stack">
             <?php foreach ($payments as $p): ?>

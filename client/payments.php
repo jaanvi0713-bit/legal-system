@@ -23,7 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && post('form_action') === 'record') {
     $paid = (float) $sumStmt->fetchColumn();
     $status = $paid >= (float)$invoice['total'] ? 'paid' : 'partial';
     $pdo->prepare('UPDATE invoices SET status=? WHERE id=?')->execute([$status, $invoiceId]);
-    create_notification($pdo, 1, 'Client payment recorded', $receipt . ' · ' . money($amount), 'payment', '../admin/finance.php', $uid);
+    create_notification($pdo, 1, 'Client payment recorded', $receipt . ' · ' . money($amount), 'payment', '../admin/cases.php', $uid);
     flash('success', 'Payment recorded. Receipt ' . $receipt);
     redirect('payments.php');
 }

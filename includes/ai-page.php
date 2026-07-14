@@ -132,20 +132,20 @@ function render_ai_page(string $portal): void
                 <div class="ai-library-head">
                     <strong>Chat library</strong>
                     <button type="button" class="ai-library-close" id="ai-library-close" aria-label="Close library">×</button>
-                </div>
+        </div>
                 <div class="ai-library-list">
                     <?php foreach ($sessions as $s): ?>
                         <a class="ai-session-link <?= (int) $s['id'] === $sessionId ? 'active' : '' ?>" href="?session=<?= (int) $s['id'] ?>">
                             <span><?= e($s['title']) ?></span>
                             <span class="muted"><?= e(format_datetime($s['updated_at'])) ?></span>
                         </a>
-                    <?php endforeach; ?>
-                </div>
-            </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
 
             <div class="ai-chat-panel">
-                <div class="ai-messages" id="ai-messages">
-                    <?php if (!$messages): ?>
+            <div class="ai-messages" id="ai-messages">
+                <?php if (!$messages): ?>
                         <div class="ai-welcome msg msg-assistant">
                             <div class="ai-bot-mark" aria-hidden="true">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
@@ -157,8 +157,8 @@ function render_ai_page(string $portal): void
                             </div>
                             <div><?= e($welcome) ?></div>
                         </div>
-                    <?php endif; ?>
-                    <?php foreach ($messages as $m): ?>
+                <?php endif; ?>
+                <?php foreach ($messages as $m): ?>
                         <?php if ($m['role'] === 'assistant'): ?>
                             <div class="msg msg-assistant ai-bubble">
                                 <div class="ai-bot-mark sm" aria-hidden="true">

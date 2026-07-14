@@ -12,24 +12,6 @@ $base = app_config('url');
 $portalBase = $base . '/' . $portal;
 $themeSetting = get_setting(db(), 'theme', 'light');
 $theme = in_array($themeSetting, ['light', 'dark'], true) ? $themeSetting : 'light';
-$accent = get_setting(db(), 'branding_accent', '#023e8a') ?: '#023e8a';
-$accent = preg_match('/^#[0-9a-fA-F]{6}$/', $accent) ? strtolower($accent) : '#023e8a';
-$ar = hexdec(substr($accent, 1, 2));
-$ag = hexdec(substr($accent, 3, 2));
-$ab = hexdec(substr($accent, 5, 2));
-$clamp = static fn(int $v): int => max(0, min(255, $v));
-$hexOf = static fn(int $r, int $g, int $b): string => sprintf('#%02x%02x%02x', $clamp($r), $clamp($g), $clamp($b));
-$accentDeep = $hexOf($ar - 40, $ag - 40, $ab - 40);
-$accentBright = $hexOf($ar + 28, $ag + 28, $ab + 28);
-$accentMid = $hexOf((int) round(($ar + 255) / 2), (int) round(($ag + 255) / 2), (int) round(($ab + 255) / 2));
-$accentSoft = sprintf('rgba(%d,%d,%d,0.12)', $ar, $ag, $ab);
-$accentLine = sprintf('rgba(%d,%d,%d,0.14)', $ar, $ag, $ab);
-$accentShadow = sprintf('0 10px 28px rgba(%d,%d,%d,0.18)', $ar, $ag, $ab);
-$gradPrimary = "linear-gradient(135deg, {$accentBright} 0%, {$accent} 100%)";
-$gradBtn = "linear-gradient(135deg, {$accent} 0%, {$accentDeep} 100%)";
-$gradBanner = "linear-gradient(125deg, {$accentDeep} 0%, {$accent} 48%, {$accentBright} 100%)";
-$gradBlue = "linear-gradient(135deg, {$accentBright} 0%, {$accentDeep} 100%)";
-$gradInfo = "linear-gradient(135deg, {$accent} 0%, {$accentDeep} 100%)";
 ?>
 <!DOCTYPE html>
 <html lang="en" data-theme="<?= e($theme) ?>">
@@ -49,80 +31,11 @@ $gradInfo = "linear-gradient(135deg, {$accent} 0%, {$accentDeep} 100%)";
                 }
             } catch (e) {}
         })();
-        window.applyLexoraAccent = function (hex) {
-            if (!/^#[0-9a-fA-F]{6}$/.test(hex || '')) return;
-            hex = hex.toLowerCase();
-            var n = parseInt(hex.slice(1), 16);
-            var r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
-            function clamp(v) { return Math.max(0, Math.min(255, v | 0)); }
-            function toHex(rr, gg, bb) {
-                return '#' + [rr, gg, bb].map(function (x) {
-                    return clamp(x).toString(16).padStart(2, '0');
-                }).join('');
-            }
-            var deep = toHex(r - 40, g - 40, b - 40);
-            var bright = toHex(r + 28, g + 28, b + 28);
-            var mid = toHex(Math.round((r + 255) / 2), Math.round((g + 255) / 2), Math.round((b + 255) / 2));
-            var root = document.documentElement;
-            var map = {
-                '--primary': hex,
-                '--primary-deep': deep,
-                '--primary-rgb': r + ', ' + g + ', ' + b,
-                '--blue': hex,
-                '--blue-bright': bright,
-                '--info': hex,
-                '--cyan': bright,
-                '--purple': deep,
-                '--purple-bright': mid,
-                '--accent': hex,
-                '--nav-active': deep,
-                '--nav-active-bg': 'rgba(' + r + ',' + g + ',' + b + ',0.12)',
-                '--line': 'rgba(' + r + ',' + g + ',' + b + ',0.14)',
-                '--shadow': '0 10px 28px rgba(' + r + ',' + g + ',' + b + ',0.18)',
-                '--chart-grid': 'rgba(' + r + ',' + g + ',' + b + ',0.1)',
-                '--grad-primary': 'linear-gradient(135deg, ' + bright + ' 0%, ' + hex + ' 100%)',
-                '--grad-btn': 'linear-gradient(135deg, ' + hex + ' 0%, ' + deep + ' 100%)',
-                '--grad-banner': 'linear-gradient(125deg, ' + deep + ' 0%, ' + hex + ' 48%, ' + bright + ' 100%)',
-                '--grad-blue': 'linear-gradient(135deg, ' + bright + ' 0%, ' + deep + ' 100%)',
-                '--grad-info': 'linear-gradient(135deg, ' + hex + ' 0%, ' + deep + ' 100%)',
-                '--grad-purple': 'linear-gradient(135deg, ' + mid + ' 0%, ' + hex + ' 100%)'
-            };
-            Object.keys(map).forEach(function (k) { root.style.setProperty(k, map[k]); });
-        };
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="<?= e($base) ?>/assets/css/style.css">
-    <style>
-        :root, [data-theme="light"], html[data-theme="dark"] {
-            --primary: <?= e($accent) ?>;
-            --primary-deep: <?= e($accentDeep) ?>;
-            --primary-rgb: <?= (int)$ar ?>, <?= (int)$ag ?>, <?= (int)$ab ?>;
-            --blue: <?= e($accent) ?>;
-            --blue-bright: <?= e($accentBright) ?>;
-            --info: <?= e($accent) ?>;
-            --cyan: <?= e($accentBright) ?>;
-            --purple: <?= e($accentDeep) ?>;
-            --purple-bright: <?= e($accentMid) ?>;
-            --accent: <?= e($accent) ?>;
-            --nav-active: <?= e($accentDeep) ?>;
-            --nav-active-bg: <?= e($accentSoft) ?>;
-            --line: <?= e($accentLine) ?>;
-            --shadow: <?= e($accentShadow) ?>;
-            --chart-grid: rgba(<?= (int)$ar ?>, <?= (int)$ag ?>, <?= (int)$ab ?>, 0.1);
-            --grad-primary: <?= e($gradPrimary) ?>;
-            --grad-btn: <?= e($gradBtn) ?>;
-            --grad-banner: <?= e($gradBanner) ?>;
-            --grad-blue: <?= e($gradBlue) ?>;
-            --grad-info: <?= e($gradInfo) ?>;
-            --grad-purple: linear-gradient(135deg, <?= e($accentMid) ?> 0%, <?= e($accent) ?> 100%);
-        }
-        html[data-theme="dark"] {
-            --nav-active-bg: rgba(<?= (int)$ar ?>, <?= (int)$ag ?>, <?= (int)$ab ?>, 0.22);
-            --line: rgba(<?= (int)$ar ?>, <?= (int)$ag ?>, <?= (int)$ab ?>, 0.22);
-        }
-    </style>
 </head>
 <body class="portal-<?= e($portal) ?>">
 <div class="app-shell">

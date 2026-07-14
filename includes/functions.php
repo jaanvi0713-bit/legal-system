@@ -48,24 +48,7 @@ function full_name(array $user): string
 
 function money($amount): string
 {
-    static $symbol = null;
-    if ($symbol === null) {
-        $code = 'INR';
-        try {
-            $code = strtoupper((string) get_setting(db(), 'payment_currency', app_config('currency', 'INR')));
-        } catch (Throwable $e) {
-            $code = strtoupper((string) app_config('currency', 'INR'));
-        }
-        $symbols = [
-            'INR' => '₹',
-            'MUR' => 'Rs ',
-            'AED' => 'AED ',
-            'USD' => '$',
-            'EUR' => '€',
-            'GBP' => '£',
-        ];
-        $symbol = $symbols[$code] ?? (app_config('currency_symbol', '₹'));
-    }
+    $symbol = app_config('currency_symbol', '₹');
     $value = (float) $amount;
     if (class_exists('NumberFormatter')) {
         $fmt = new NumberFormatter('en_IN', NumberFormatter::DECIMAL);
