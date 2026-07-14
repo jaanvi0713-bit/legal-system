@@ -40,11 +40,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         foreach ([
             'company_name', 'company_email', 'company_phone', 'company_address',
             'company_website', 'company_registration', 'branding_font',
-            'branding_primary', 'branding_secondary', 'branding_accent', 'theme',
+            'branding_accent', 'theme',
             'ai_enabled', 'ai_welcome_admin', 'ai_welcome_lawyer', 'ai_welcome_client',
         ] as $key) {
             if (isset($_POST[$key])) {
-                set_setting($pdo, $key, post($key));
+                $value = post($key);
+                if ($key === 'branding_accent') {
+                    $value = strtolower(trim($value));
+                    if (!preg_match('/^#[0-9a-f]{6}$/', $value)) {
+                        $value = '#023e8a';
+                    }
+                }
+                set_setting($pdo, $key, $value);
             }
         }
         flash('success', 'Branding settings saved.');
@@ -191,24 +198,66 @@ require __DIR__ . '/../includes/header.php';
                         </div>
                     </div>
 
-                    <div class="color-fields">
+                    <div class="accent-palette-block">
+                        <div class="settings-block-head" style="margin-bottom:0.85rem;">
+                            <h3>Accent colour</h3>
+                            <p>Choose a professional palette that fits your firm, or set your own brand colour below.</p>
+                        </div>
                         <?php
-                        $colors = [
-                            'branding_primary' => ['Primary Color', '#1e3a6e'],
-                            'branding_secondary' => ['Secondary Color', '#002b5b'],
-                            'branding_accent' => ['Accent Color', '#5b4b8a'],
+                        $accentPalettes = [
+                            '#023e8a' => ['Classic Navy', 'Trusted legal standard'],
+                            '#2d3748' => ['Executive Charcoal', 'Refined neutral tone'],
+                            '#0d5c63' => ['Professional Teal', 'Calm and contemporary'],
+                            '#1e4d3b' => ['Heritage Forest', 'Established and trustworthy'],
+                            '#475569' => ['Corporate Slate', 'Modern business gray'],
+                            '#5c2e37' => ['Deep Burgundy', 'Distinguished executive accent'],
                         ];
-                        foreach ($colors as $key => [$label, $default]):
-                            $val = $get($key, $default);
+                        $currentAccent = strtolower($get('branding_accent', '#023e8a'));
+                        if (!preg_match('/^#[0-9a-f]{6}$/', $currentAccent)) {
+                            $currentAccent = '#023e8a';
+                        }
+                        $isCustom = !isset($accentPalettes[$currentAccent]);
+                        $customHex = $isCustom ? $currentAccent : '#2563eb';
+                        $darken = static function (string $hex, int $amt = 40): string {
+                            $r = max(0, hexdec(substr($hex, 1, 2)) - $amt);
+                            $g = max(0, hexdec(substr($hex, 3, 2)) - $amt);
+                            $b = max(0, hexdec(substr($hex, 5, 2)) - $amt);
+                            return sprintf('#%02x%02x%02x', $r, $g, $b);
+                        };
                         ?>
-                            <label class="color-field">
-                                <span><?= e($label) ?></span>
-                                <span class="color-bar">
-                                    <input type="color" name="<?= e($key) ?>" value="<?= e($val) ?>">
-                                    <input type="text" value="<?= e($val) ?>" readonly>
+                        <div class="accent-palette" id="accent-palette">
+                            <?php foreach ($accentPalettes as $hex => [$label, $desc]):
+                                $grad = 'linear-gradient(135deg, ' . $hex . ' 0%, ' . $darken($hex) . ' 100%)';
+                            ?>
+                                <label class="accent-swatch">
+                                    <input type="radio" name="branding_accent_choice" value="<?= e($hex) ?>" <?= $currentAccent === $hex ? 'checked' : '' ?>>
+                                    <span class="accent-swatch-tone" style="background:<?= e($grad) ?>"></span>
+                                    <span class="accent-swatch-meta">
+                                        <strong><?= e($label) ?></strong>
+                                        <small><?= e($desc) ?></small>
+                                    </span>
+                                    <span class="accent-swatch-check" aria-hidden="true">✓</span>
+                                </label>
+                            <?php endforeach; ?>
+                            <label class="accent-swatch accent-swatch-custom">
+                                <input type="radio" name="branding_accent_choice" value="custom" <?= $isCustom ? 'checked' : '' ?>>
+                                <span class="accent-swatch-tone accent-swatch-tone-custom" id="accent-custom-stripe" style="background:linear-gradient(135deg, <?= e($customHex) ?> 0%, <?= e($darken($customHex)) ?> 100%)"></span>
+                                <span class="accent-swatch-meta">
+                                    <strong>Your brand colour</strong>
+                                    <small>Set any hex colour</small>
                                 </span>
+                                <span class="accent-swatch-check" aria-hidden="true">✓</span>
                             </label>
-                        <?php endforeach; ?>
+                        </div>
+                        <div class="accent-custom-panel" id="accent-custom-panel" <?= $isCustom ? '' : 'hidden' ?>>
+                            <label for="branding_accent_custom">Custom brand colour</label>
+                            <div class="accent-custom-controls">
+                                <input type="color" id="branding_accent_custom" value="<?= e($customHex) ?>" title="Pick brand colour">
+                                <input type="text" id="branding_accent_hex" value="<?= e(strtoupper($customHex)) ?>" maxlength="7" spellcheck="false" autocomplete="off" placeholder="#023E8A">
+                                <span class="field-hint">Use any hex colour for buttons, dashboards, and login.</span>
+                            </div>
+                        </div>
+                        <input type="hidden" name="branding_accent" id="branding_accent" value="<?= e($currentAccent) ?>">
                     </div>
                 </div>
 
@@ -332,9 +381,79 @@ require __DIR__ . '/../includes/header.php';
     </div>
 </section>
 <script>
-document.querySelectorAll('.color-field input[type="color"]').forEach((picker) => {
-  const text = picker.parentElement.querySelector('input[type="text"]');
-  picker.addEventListener('input', () => { text.value = picker.value; });
-});
+(function () {
+  const hidden = document.getElementById('branding_accent');
+  const custom = document.getElementById('branding_accent_custom');
+  const hexInput = document.getElementById('branding_accent_hex');
+  const panel = document.getElementById('accent-custom-panel');
+  const stripe = document.getElementById('accent-custom-stripe');
+  const palette = document.getElementById('accent-palette');
+  if (!hidden || !palette) return;
+
+  function normHex(v) {
+    v = (v || '').trim();
+    if (!v) return '';
+    if (v.charAt(0) !== '#') v = '#' + v;
+    return /^#[0-9a-fA-F]{6}$/.test(v) ? v.toLowerCase() : '';
+  }
+
+  function darken(hex, amt) {
+    amt = amt || 40;
+    const n = parseInt(hex.slice(1), 16);
+    const r = Math.max(0, ((n >> 16) & 255) - amt);
+    const g = Math.max(0, ((n >> 8) & 255) - amt);
+    const b = Math.max(0, (n & 255) - amt);
+    return '#' + [r, g, b].map((x) => x.toString(16).padStart(2, '0')).join('');
+  }
+
+  function applyThemePreview(hex) {
+    const c = normHex(hex);
+    if (!c || typeof window.applyLexoraAccent !== 'function') return;
+    window.applyLexoraAccent(c);
+  }
+
+  function setAccent(hex, fromCustom) {
+    const c = normHex(hex);
+    if (!c) return;
+    hidden.value = c;
+    if (custom) custom.value = c;
+    if (hexInput) hexInput.value = c.toUpperCase();
+    if (stripe) stripe.style.background = 'linear-gradient(135deg, ' + c + ' 0%, ' + darken(c) + ' 100%)';
+    if (panel) panel.hidden = !fromCustom;
+    applyThemePreview(c);
+  }
+
+  palette.querySelectorAll('input[name="branding_accent_choice"]').forEach((radio) => {
+    radio.addEventListener('change', () => {
+      if (radio.value === 'custom') {
+        setAccent(custom ? custom.value : hidden.value, true);
+      } else {
+        setAccent(radio.value, false);
+      }
+    });
+  });
+
+  if (custom) {
+    custom.addEventListener('input', () => {
+      const customRadio = palette.querySelector('input[value="custom"]');
+      if (customRadio) customRadio.checked = true;
+      setAccent(custom.value, true);
+    });
+  }
+
+  if (hexInput) {
+    hexInput.addEventListener('input', () => {
+      const n = normHex(hexInput.value);
+      if (!n) return;
+      const customRadio = palette.querySelector('input[value="custom"]');
+      if (customRadio) customRadio.checked = true;
+      setAccent(n, true);
+    });
+    hexInput.addEventListener('blur', () => {
+      const n = normHex(hexInput.value);
+      if (n) hexInput.value = n.toUpperCase();
+    });
+  }
+})();
 </script>
 <?php require __DIR__ . '/../includes/footer.php'; ?>

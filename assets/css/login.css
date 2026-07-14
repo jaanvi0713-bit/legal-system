@@ -1,362 +1,373 @@
-/* Lexora login — glass floating cards (standalone to avoid portal CSS conflicts) */
-.auth-landing {
+/* Lexora login — wave background, accent-tinted, no page scroll */
+* { box-sizing: border-box; }
+html, body {
+    height: 100%;
     margin: 0;
-    min-height: 100vh;
-    font-family: "Source Sans 3", "Segoe UI", sans-serif;
-    color: #14232e;
-    background:
-        radial-gradient(circle at 18% 20%, rgba(184, 146, 62, 0.28), transparent 34%),
-        radial-gradient(circle at 85% 75%, rgba(26, 58, 74, 0.2), transparent 38%),
-        linear-gradient(145deg, #f4efe4 0%, #e8e1d2 45%, #d5e2df 100%) !important;
-    overflow-x: hidden;
-    position: relative;
-}
-
-.auth-landing *,
-.auth-landing *::before,
-.auth-landing *::after {
-    box-sizing: border-box;
-}
-
-.glass-scene {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    z-index: 0;
     overflow: hidden;
 }
 
-.glass-orb {
+body.login-page {
+    font-family: Outfit, "Segoe UI", sans-serif;
+    background: #03050a;
+    color: #fff;
+    --lp-glass: rgba(45, 43, 66, 0.72);
+    --lp-text: #ffffff;
+    --lp-text-muted: #b0b0cc;
+    --lp-input-bg: rgba(0, 0, 0, 0.28);
+    --lp-input-border: rgba(255, 255, 255, 0.12);
+    overflow: hidden;
+}
+
+.login-scene {
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100dvh;
+    position: relative;
+    overflow: hidden;
+    background: #03050a;
+}
+
+.login-bg {
     position: absolute;
-    border-radius: 50%;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
 }
 
-.glass-orb-a {
-    width: 260px;
-    height: 260px;
-    left: 5%;
-    top: 10%;
-    background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.9), rgba(184,146,62,0.4) 48%, rgba(26,58,74,0.18));
-    animation: loginFloat 8s ease-in-out infinite;
-}
-
-.glass-orb-b {
-    width: 140px;
-    height: 140px;
-    right: 12%;
-    top: 16%;
-    background: radial-gradient(circle at 35% 30%, #fff, rgba(232,213,168,0.65));
-    animation: loginFloat 7s 0.5s ease-in-out infinite reverse;
-}
-
-.glass-orb-c {
-    width: 380px;
-    height: 380px;
-    right: -8%;
-    bottom: -12%;
-    background: radial-gradient(circle at 40% 35%, rgba(184,146,62,0.55), rgba(26,58,74,0.5));
-    opacity: 0.85;
-}
-
-.glass-orb-d {
-    width: 80px;
-    height: 80px;
-    left: 30%;
-    bottom: 16%;
-    background: radial-gradient(circle at 30% 30%, #fff, rgba(26,58,74,0.2));
-    animation: loginFloat 6s 1s ease-in-out infinite;
-}
-
-.glass-stone {
+/* Accent-tinted waves — hue locked to branding_accent */
+.login-bg-waves {
     position: absolute;
-    border-radius: 42% 58% 55% 45%;
-    background: linear-gradient(145deg, #f7f3ea, #d5ccba);
-    opacity: 0.5;
+    inset: -2%;
+    background:
+        linear-gradient(rgba(var(--lp-accent-rgb), 0.72), rgba(var(--lp-accent-rgb), 0.72)),
+        var(--lp-bg-image) center 45% / cover no-repeat;
+    background-blend-mode: color, normal;
+    filter: blur(0.8px) contrast(1.1) brightness(0.88) saturate(1.2);
+    transform: scale(1.03);
 }
 
-.glass-stone-a {
-    width: 170px;
-    height: 100px;
-    left: 7%;
-    bottom: 9%;
-    transform: rotate(-12deg);
+.login-bg-glow {
+    position: absolute;
+    inset: 0;
+    background:
+        linear-gradient(rgba(var(--lp-accent-rgb), 0.18), rgba(var(--lp-accent-rgb), 0.12)),
+        radial-gradient(ellipse 55% 50% at 50% 45%, transparent 25%, rgba(3, 5, 10, 0.5) 100%);
+    mix-blend-mode: multiply;
 }
 
-.glass-stone-b {
-    width: 110px;
-    height: 70px;
-    right: 30%;
-    bottom: 12%;
-    transform: rotate(16deg);
-    opacity: 0.35;
+.login-bg-vignette {
+    display: none;
 }
 
-.glass-stage {
+.login-stage {
     position: relative;
     z-index: 2;
-    min-height: 100vh;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: center;
-    gap: 1.25rem;
-    padding: 2rem 1.25rem;
-}
-
-.glass-login,
-.glass-side {
-    width: min(380px, 100%);
-    border-radius: 28px;
-    border: 1px solid rgba(255, 255, 255, 0.7);
-    background: rgba(255, 252, 247, 0.88);
-    box-shadow: 0 28px 60px rgba(16, 40, 50, 0.16);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    animation: loginRise 0.8s ease both;
-}
-
-.glass-side {
-    width: min(280px, 100%);
-    animation-delay: 0.12s;
-}
-
-.glass-login {
-    padding: 1.6rem 1.5rem 1.35rem;
-    display: flex;
-    flex-direction: column;
-    min-height: 500px;
-}
-
-.glass-login-top {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    margin-bottom: 1.5rem;
-}
-
-.glass-brand {
-    display: flex;
-    align-items: center;
-    gap: 0.65rem;
-    font-family: "Cormorant Garamond", Georgia, serif;
-    font-size: 1.4rem;
-    font-weight: 600;
-    color: #102832;
-}
-
-.glass-brand .brand-mark {
-    width: 40px;
-    height: 40px;
-    border-radius: 12px;
     display: grid;
     place-items: center;
-    background: linear-gradient(135deg, #b8923e, #d8b56a);
-    color: #102832;
-    font-family: "Cormorant Garamond", Georgia, serif;
-    font-size: 1.25rem;
-    font-weight: 700;
+    width: 100%;
+    height: 100%;
+    padding: clamp(0.5rem, 1.5vh, 1rem) clamp(0.75rem, 2vw, 1.25rem);
+    overflow: hidden;
 }
 
-.glass-portal-tag {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: #3d5363;
-    padding: 0.4rem 0.75rem;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.8);
-    border: 1px solid rgba(20, 35, 46, 0.08);
-    white-space: nowrap;
-}
-
-.glass-title {
-    font-family: "Cormorant Garamond", Georgia, serif;
-    font-size: 2.55rem;
-    margin: 0 0 0.35rem;
-    color: #102832;
-    line-height: 1;
-    font-weight: 600;
-}
-
-.glass-lead {
-    margin: 0 0 1.15rem;
-    color: #3d5363;
-    font-size: 0.95rem;
-}
-
-.auth-landing .alert {
-    margin-bottom: 0.85rem;
-    padding: 0.75rem 0.9rem;
-    border-radius: 14px;
-    background: rgba(139, 58, 58, 0.1);
-    color: #8b3a3a;
-    border: 1px solid rgba(139, 58, 58, 0.15);
-    font-size: 0.9rem;
-}
-
-.glass-form {
-    display: grid;
-    gap: 0.75rem;
-}
-
-.glass-field {
+.login-plate {
+    width: min(540px, 94vw);
+    max-height: 100%;
     display: flex;
     align-items: center;
-    gap: 0.55rem;
+    justify-content: center;
+}
+
+.glass-card {
+    --lp-corner-size: clamp(44px, 6vh, 68px);
+    --lp-corner-outset: clamp(22px, 3.2vh, 34px);
     width: 100%;
-    background: #fff;
-    border: 1px solid rgba(20, 35, 46, 0.1);
-    border-radius: 999px;
-    padding: 0.15rem 1rem;
-    min-height: 52px;
+    height: auto;
+    max-height: calc(100dvh - 1rem);
+    padding: clamp(1.35rem, 2.6vh, 2rem) clamp(1.55rem, 3.2vw, 2.25rem) clamp(1.2rem, 2.2vh, 1.65rem);
+    border-radius: 26px;
+    background: var(--lp-glass);
+    border: 1px solid color-mix(in srgb, var(--lp-accent) 70%, white 30%);
+    backdrop-filter: blur(24px) saturate(1.25);
+    -webkit-backdrop-filter: blur(24px) saturate(1.25);
+    box-shadow:
+        0 24px 64px rgba(0, 0, 0, 0.4),
+        0 0 0 1px color-mix(in srgb, var(--lp-accent) 55%, white 45%),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    position: relative;
+    animation: cardIn 0.55s ease both;
+    overflow: visible;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 0;
 }
 
-.glass-field:focus-within {
-    border-color: rgba(184, 146, 62, 0.7);
-    box-shadow: 0 0 0 4px rgba(184, 146, 62, 0.15);
+.glass-card::before,
+.glass-card::after {
+    content: "";
+    position: absolute;
+    width: var(--lp-corner-size);
+    height: var(--lp-corner-size);
+    pointer-events: none;
+    border-style: solid;
+    border-color: color-mix(in srgb, var(--lp-accent) 75%, white 25%);
+    border-width: 0;
 }
 
-.glass-field input {
-    width: 100% !important;
-    border: 0 !important;
-    background: transparent !important;
-    padding: 0.75rem 0 !important;
-    margin: 0 !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
-    font: inherit;
-    color: #14232e;
-    outline: none;
+.glass-card::before {
+    top: calc(-1 * var(--lp-corner-outset));
+    left: calc(-1 * var(--lp-corner-outset));
+    border-top-width: 2px;
+    border-left-width: 2px;
 }
 
-.glass-ico {
-    color: #3d5363;
-    width: 1.1rem;
-    text-align: center;
+.glass-card::after {
+    right: calc(-1 * var(--lp-corner-outset));
+    bottom: calc(-1 * var(--lp-corner-outset));
+    border-right-width: 2px;
+    border-bottom-width: 2px;
+}
+
+@keyframes cardIn {
+    from { opacity: 0; transform: translateY(16px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.card-head {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: clamp(0.35rem, 1vh, 0.7rem);
     flex-shrink: 0;
 }
 
-.glass-go {
-    margin-top: 0.4rem;
-    width: 64px;
-    height: 52px;
-    border: 0;
-    border-radius: 999px;
-    background: linear-gradient(145deg, #102832, #1a3a4a);
-    color: #f7f1e4;
-    font-size: 1.35rem;
-    cursor: pointer;
-    box-shadow: 0 14px 28px rgba(16, 40, 50, 0.28);
-}
-
-.glass-go:hover {
-    transform: translateX(3px);
-}
-
-.glass-demo {
-    margin-top: auto;
-    padding-top: 1.35rem;
-    display: grid;
-    gap: 0.25rem;
-    font-size: 0.78rem;
-    color: #3d5363;
-}
-
-.glass-demo b {
-    color: #1a3a4a;
-}
-
-.glass-side {
-    position: relative;
-    overflow: hidden;
-    padding: 1.5rem;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-    min-height: 500px;
-    color: #f7f1e4;
-    background: linear-gradient(160deg, #b8923e 0%, #1a3a4a 58%, #102832 100%);
-}
-
-.glass-side-orb {
-    position: absolute;
-    width: 200px;
-    height: 200px;
-    right: -40px;
-    top: -36px;
-    border-radius: 50%;
-    background: radial-gradient(circle at 35% 35%, rgba(255,255,255,0.5), rgba(232,213,168,0.75) 50%, rgba(16,40,50,0.15));
-    animation: loginFloat 9s ease-in-out infinite;
-}
-
-.glass-side-kicker {
-    position: relative;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    font-size: 0.72rem;
-    font-weight: 700;
-    color: #e8d5a8;
-    margin: 0 0 0.5rem;
-}
-
-.glass-side h2 {
-    position: relative;
-    font-family: "Cormorant Garamond", Georgia, serif;
-    font-size: 2.05rem;
-    line-height: 1.1;
-    margin: 0 0 0.65rem;
-    max-width: 10ch;
-    font-weight: 600;
-    color: #f7f1e4;
-}
-
-.glass-side p {
-    position: relative;
-    margin: 0 0 1.35rem;
-    color: rgba(247, 241, 228, 0.85);
-    font-size: 0.92rem;
-    line-height: 1.5;
-}
-
-.glass-side-cta {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    background: rgba(16, 40, 50, 0.75);
-    border-radius: 999px;
-    padding: 0.5rem 0.5rem 0.5rem 1rem;
-    font-size: 0.88rem;
-    font-weight: 600;
-}
-
-.glass-mini-go {
-    width: 40px;
-    height: 40px;
+.brand-badge {
+    width: clamp(48px, 6.5vh, 58px);
+    height: clamp(48px, 6.5vh, 58px);
     border-radius: 50%;
     display: grid;
     place-items: center;
-    background: #b8923e;
-    color: #102832;
+    margin-bottom: clamp(0.4rem, 1vh, 0.65rem);
+    font-family: Georgia, serif;
+    font-size: clamp(1.2rem, 2.5vh, 1.4rem);
+    font-weight: 700;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    box-shadow: 0 0 24px rgba(var(--lp-accent-rgb), 0.35);
 }
 
-@keyframes loginFloat {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-14px); }
+.company-name {
+    margin: 0;
+    width: 100%;
+    text-align: center;
+    font-size: clamp(1rem, 2.2vh, 1.12rem);
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #fff;
+    padding-bottom: 0.4rem;
+    border-bottom: 2px solid var(--lp-accent);
+    text-shadow: 0 1px 12px rgba(var(--lp-accent-rgb), 0.3);
 }
 
-@keyframes loginRise {
-    from { opacity: 0; transform: translateY(22px); }
-    to { opacity: 1; transform: translateY(0); }
+.glass-card h2 {
+    margin: 0 0 0.2rem;
+    font-size: clamp(1rem, 2.1vh, 1.12rem);
+    font-weight: 500;
+    color: var(--lp-text-muted);
 }
 
-@media (max-width: 760px) {
-    .glass-side {
-        min-height: 260px;
-        order: -1;
+.subtitle {
+    margin: 0 0 clamp(0.5rem, 1.4vh, 0.85rem);
+    font-size: 0.86rem;
+    color: rgba(176, 176, 204, 0.85);
+    line-height: 1.4;
+}
+
+.alert {
+    margin-bottom: clamp(0.45rem, 1vh, 0.65rem);
+    padding: 0.55rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.82rem;
+    background: rgba(200, 50, 65, 0.2);
+    color: #ffc8ce;
+    border: 1px solid rgba(255, 100, 110, 0.25);
+}
+
+.login-form {
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 auto;
+    justify-content: flex-start;
+    min-height: 0;
+}
+
+.field { margin-bottom: clamp(0.65rem, 1.8vh, 1.05rem); }
+.field label {
+    display: block;
+    margin-bottom: 0.35rem;
+    font-size: 0.84rem;
+    font-weight: 500;
+    color: var(--lp-text-muted);
+}
+
+.field-input { position: relative; }
+.field-input input {
+    width: 100%;
+    padding: clamp(0.85rem, 1.9vh, 1.05rem) 2.5rem clamp(0.85rem, 1.9vh, 1.05rem) 0.95rem;
+    font: inherit;
+    font-size: 0.95rem;
+    color: #fff;
+    background: var(--lp-input-bg);
+    border: 1px solid var(--lp-input-border);
+    border-radius: 12px;
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.field-input input::placeholder { color: var(--lp-text-muted); opacity: 0.7; }
+.field-input input:focus {
+    border-color: rgba(var(--lp-accent-rgb), 0.65);
+    box-shadow: 0 0 0 3px rgba(var(--lp-accent-rgb), 0.18);
+}
+
+.password-toggle {
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    border: 0;
+    background: transparent;
+    color: var(--lp-text-muted);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    padding: 0;
+}
+.password-toggle:hover { color: var(--lp-accent); }
+.password-toggle svg { width: 18px; height: 18px; }
+.eye-icon.is-hidden { display: none; }
+
+.login-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0.2rem 0 clamp(0.85rem, 2vh, 1.15rem);
+    font-size: 0.8rem;
+    color: var(--lp-text-muted);
+}
+.remember {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    cursor: pointer;
+}
+.remember input { accent-color: var(--lp-accent); }
+.forgot {
+    color: var(--lp-text-muted);
+    text-decoration: none;
+    opacity: 0.9;
+}
+.forgot:hover { color: #fff; }
+
+.login-btn {
+    width: 100%;
+    border: 0;
+    border-radius: 999px;
+    padding: clamp(0.85rem, 1.9vh, 1.05rem) 1.2rem;
+    font: inherit;
+    font-size: 0.98rem;
+    font-weight: 700;
+    cursor: pointer;
+    color: #0b0d14;
+    background: #fff;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+.login-btn:hover {
+    transform: translateY(-1px);
+    background: color-mix(in srgb, #fff 88%, var(--lp-accent) 12%);
+    box-shadow: 0 12px 28px rgba(var(--lp-accent-rgb), 0.28);
+}
+
+.role-divider {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: clamp(0.85rem, 2vh, 1.2rem) 0 clamp(0.55rem, 1.3vh, 0.8rem);
+    color: var(--lp-text-muted);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    flex-shrink: 0;
+}
+.role-divider::before,
+.role-divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.14);
+}
+
+.role-picker {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.55rem;
+    flex-shrink: 0;
+}
+
+.role-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
+    min-height: clamp(64px, 9.5vh, 78px);
+    padding: 0.55rem 0.35rem;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(0, 0, 0, 0.22);
+    color: var(--lp-text-muted);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.76rem;
+    font-weight: 600;
+    transition: border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+.role-btn svg { width: 18px; height: 18px; }
+.role-btn:hover {
+    color: #fff;
+    border-color: rgba(var(--lp-accent-rgb), 0.45);
+}
+.role-btn.is-active {
+    color: #fff;
+    border-color: var(--lp-accent);
+    background: rgba(var(--lp-accent-rgb), 0.18);
+    box-shadow: 0 0 0 1px rgba(var(--lp-accent-rgb), 0.35), inset 0 0 20px rgba(var(--lp-accent-rgb), 0.12);
+}
+.role-btn.is-active svg { color: var(--lp-accent); }
+
+@media (max-height: 720px) {
+    .glass-card {
+        height: auto;
+        max-height: calc(100dvh - 0.75rem);
+        padding: 1rem 1.25rem;
+        justify-content: flex-start;
+        gap: 0.25rem;
     }
-    .glass-login {
-        min-height: auto;
-    }
+    .brand-badge { width: 40px; height: 40px; font-size: 1.05rem; margin-bottom: 0.25rem; }
+    .subtitle { display: none; }
+    .field { margin-bottom: 0.5rem; }
+    .field-input input { padding: 0.7rem 2.4rem 0.7rem 0.9rem; }
+    .login-btn { padding: 0.7rem 1rem; }
+    .role-btn { min-height: 52px; }
+    .role-divider { margin: 0.55rem 0 0.4rem; }
+}
+
+@media (max-width: 480px) {
+    .login-plate { width: min(100%, 94vw); }
+    .login-meta { flex-wrap: wrap; }
 }

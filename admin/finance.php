@@ -51,7 +51,7 @@ $invoices = $pdo->query("SELECT i.*, CONCAT(u.first_name,' ',u.last_name) AS cli
 $payments = $pdo->query("SELECT p.*, CONCAT(u.first_name,' ',u.last_name) AS client_name, i.invoice_number FROM payments p JOIN users u ON u.id=p.client_id LEFT JOIN invoices i ON i.id=p.invoice_id ORDER BY p.paid_at DESC LIMIT 20")->fetchAll();
 $revenue = (float) $pdo->query('SELECT COALESCE(SUM(amount),0) FROM payments')->fetchColumn();
 $outstanding = (float) $pdo->query("SELECT COALESCE(SUM(total),0) FROM invoices WHERE status IN ('sent','partial','overdue')")->fetchColumn();
-$paidSum = (float) $pdo->query("SELECT COALESCE(SUM(amount),0) FROM payments p JOIN invoices i ON i.id=p.invoice_id WHERE i.status IN ('sent','partial','overdue','paid')")->fetchColumn();
+$paidSum = (float) $pdo->query("SELECT COALESCE(SUM(p.amount),0) FROM payments p JOIN invoices i ON i.id=p.invoice_id WHERE i.status IN ('sent','partial','overdue','paid')")->fetchColumn();
 $outstandingBal = max(0, (float)$pdo->query("SELECT COALESCE(SUM(i.total - IFNULL((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id=i.id),0)),0) FROM invoices i WHERE i.status IN ('sent','partial','overdue','draft')")->fetchColumn());
 
 $pageTitle = 'Financial Management';
