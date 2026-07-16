@@ -30,7 +30,7 @@ $cases = $pdo->prepare('SELECT id, case_number, title FROM cases WHERE lawyer_id
 $cases->execute([$uid]);
 $cases = $cases->fetchAll();
 
-$pageTitle = 'Document Management';
+$pageTitle = __('page.document_management');
 $pageSubtitle = 'Upload evidence, legal docs, review contracts, generate work product';
 $portal = 'lawyer';
 $activeNav = 'documents';

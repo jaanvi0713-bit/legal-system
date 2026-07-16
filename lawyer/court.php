@@ -46,7 +46,7 @@ $cases = $pdo->prepare('SELECT id, case_number, title FROM cases WHERE lawyer_id
 $cases->execute([$uid]);
 $cases = $cases->fetchAll();
 
-$pageTitle = 'Court Tracking';
+$pageTitle = __('page.court');
 $pageSubtitle = 'Hearing schedules, outcomes, notes, and court documents';
 $portal = 'lawyer';
 $activeNav = 'court';

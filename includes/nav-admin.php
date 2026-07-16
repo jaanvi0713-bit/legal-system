@@ -1,22 +1,22 @@
 <?php
 $items = [
-    ['index.php', 'Dashboard', 'dashboard', 'dashboard'],
-    ['clients.php', 'Clients', 'clients', 'clients'],
-    ['lawyers.php', 'Lawyers', 'lawyers', 'lawyers'],
-    ['cases.php', 'Cases', 'cases', 'cases'],
-    ['appointments.php', 'Appointments', 'appointments', 'appointments'],
-    ['court.php', 'Court Tracking', 'court', 'court'],
-    ['staff.php', 'Staff', 'staff', 'staff'],
-    ['notifications.php', 'Notifications', 'notifications', 'notifications'],
-    ['ai.php', 'AI Assistant', 'ai', 'ai'],
-    ['settings.php', 'Settings', 'settings', 'settings'],
-    ['users.php', 'User Management', 'users', 'users'],
+    ['index.php', 'nav.dashboard', 'dashboard', 'dashboard'],
+    ['clients.php', 'nav.clients', 'clients', 'clients'],
+    ['lawyers.php', 'nav.lawyers', 'lawyers', 'lawyers'],
+    ['cases.php', 'nav.cases', 'cases', 'cases'],
+    ['appointments.php', 'nav.appointments', 'appointments', 'appointments'],
+    ['court.php', 'nav.court', 'court', 'court'],
+    ['finance.php', 'nav.finance', 'finance', 'finance'],
+    ['notifications.php', 'nav.notifications', 'notifications', 'notifications'],
+    ['ai.php', 'nav.ai', 'ai', 'ai'],
+    ['settings.php', 'nav.settings', 'settings', 'settings'],
+    ['users.php', 'nav.users', 'users', 'users'],
 ];
-foreach ($items as [$href, $label, $key, $icon]):
+foreach ($items as [$href, $labelKey, $key, $icon]):
     $active = ($activeNav ?? '') === $key ? 'active' : '';
 ?>
 <a class="nav-link <?= $active ?>" href="<?= e($portalBase . '/' . $href) ?>">
     <span class="nav-icon"><?= nav_icon($icon) ?></span>
-    <span class="nav-label"><?= e($label) ?></span>
+    <span class="nav-label"><?= __e($labelKey) ?></span>
 </a>
 <?php endforeach; ?>

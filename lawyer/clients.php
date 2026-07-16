@@ -9,7 +9,7 @@ $clients->execute([$uid, $uid, $uid]);
 $clients = $clients->fetchAll();
 
 $id = (int) get('id', 0);
-$pageTitle = 'Clients';
+$pageTitle = __('page.clients_short');
 $pageSubtitle = 'Assigned clients only — view, contact, and review history';
 $portal = 'lawyer';
 $activeNav = 'clients';

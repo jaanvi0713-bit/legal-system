@@ -40,7 +40,7 @@ $cases = $pdo->prepare('SELECT id, case_number FROM cases WHERE client_id=?');
 $cases->execute([$uid]);
 $cases = $cases->fetchAll();
 
-$pageTitle = 'Contact Lawyer';
+$pageTitle = __('page.contact');
 $pageSubtitle = 'Send messages, submit requests, and ask case questions';
 $portal = 'client';
 $activeNav = 'contact';

@@ -45,7 +45,7 @@ $myCases = $pdo->prepare('SELECT id, case_number, title FROM cases WHERE lawyer_
 $myCases->execute([$uid]);
 $myCases = $myCases->fetchAll();
 
-$pageTitle = 'Appointments';
+$pageTitle = __('page.appointments_short');
 $pageSubtitle = 'Accept, reject, schedule, and manage availability';
 $portal = 'lawyer';
 $activeNav = 'appointments';

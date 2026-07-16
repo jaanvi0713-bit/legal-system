@@ -17,7 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $u = current_user();
-$pageTitle = 'Profile Management';
+$pageTitle = __('page.profile');
 $pageSubtitle = 'Personal information, password, and contact details';
 $portal = 'lawyer';
 $activeNav = 'profile';

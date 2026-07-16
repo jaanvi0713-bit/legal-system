@@ -42,7 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $clients = $pdo->query("SELECT id, first_name, last_name FROM users WHERE role='client' ORDER BY first_name")->fetchAll();
 $lawyers = $pdo->query("SELECT id, first_name, last_name FROM users WHERE role='lawyer' AND is_active=1 ORDER BY first_name")->fetchAll();
 $cases = $pdo->query('SELECT id, case_number, title FROM cases ORDER BY created_at DESC')->fetchAll();
-$pageTitle = 'Appointment Management';
+$pageTitle = __('page.appointments');
 $pageSubtitle = 'Meetings, consultations, and hearing schedules';
 $portal = 'admin';
 $activeNav = 'appointments';

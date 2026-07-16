@@ -38,7 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     redirect('cases.php?id=' . $caseId);
 }
 
-$pageTitle = 'My Cases';
+$pageTitle = __('page.my_cases');
 $pageSubtitle = 'Update notes, status, and documents for assigned matters';
 $portal = 'lawyer';
 $activeNav = 'cases';

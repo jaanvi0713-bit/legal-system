@@ -23,7 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && post('form_action') === 'record') {
     $paid = (float) $sumStmt->fetchColumn();
     $status = $paid >= (float)$invoice['total'] ? 'paid' : 'partial';
     $pdo->prepare('UPDATE invoices SET status=? WHERE id=?')->execute([$status, $invoiceId]);
-    create_notification($pdo, 1, 'Client payment recorded', $receipt . ' · ' . money($amount), 'payment', '../admin/cases.php', $uid);
+    create_notification($pdo, 1, 'Client payment recorded', $receipt . ' · ' . money($amount), 'payment', '../admin/finance.php', $uid);
     flash('success', 'Payment recorded. Receipt ' . $receipt);
     redirect('payments.php');
 }
@@ -41,19 +41,19 @@ foreach ($invoices as $i) {
     }
 }
 
-$pageTitle = 'Payments';
+$pageTitle = __('page.payments');
 $pageSubtitle = 'Invoices, balances, history, receipts, and payment recording';
 $portal = 'client';
 $activeNav = 'payments';
 require __DIR__ . '/../includes/header.php';
 ?>
-<div class="stat-card"><div class="stat-label">Outstanding balance</div><div class="stat-value"><?= e(money($outstanding)) ?></div></div>
+<div class="stat-card"><div class="stat-label"><?= __e('payments.outstanding_balance') ?></div><div class="stat-value"><?= e(money($outstanding)) ?></div></div>
 <div class="grid grid-2">
     <div class="panel">
-        <h2>Invoices</h2>
+        <h2><?= __e('payments.my_invoices') ?></h2>
         <div class="table-wrap">
             <table>
-                <thead><tr><th>Invoice</th><th>Total</th><th>Paid</th><th>Status</th></tr></thead>
+                <thead><tr><th><?= __e('finance.invoice_number') ?></th><th><?= __e('common.total') ?></th><th><?= __e('finance.paid') ?></th><th><?= __e('common.status') ?></th></tr></thead>
                 <tbody>
                 <?php foreach ($invoices as $i): ?>
                     <tr>
@@ -78,18 +78,18 @@ require __DIR__ . '/../includes/header.php';
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="form-group"><label>Amount</label><input type="number" step="0.01" name="amount" required></div>
-            <div class="form-group"><label>Method</label><select name="payment_method"><option value="bank_transfer">Bank transfer</option><option value="card">Card</option><option value="online">Online</option><option value="cash">Cash</option></select></div>
+            <div class="form-group"><label><?= __e('common.amount') ?></label><input type="number" step="0.01" name="amount" required></div>
+            <div class="form-group"><label><?= __e('finance.method') ?></label><select name="payment_method"><option value="bank_transfer">Bank transfer</option><option value="card">Card</option><option value="online">Online</option><option value="cash">Cash</option></select></div>
             <div class="form-group full"><label>Reference number</label><input name="reference_number"></div>
             <div class="form-actions full"><button class="btn btn-accent" type="submit">Submit payment</button></div>
         </form>
     </div>
 </div>
 <div class="panel">
-    <h2>Payment history &amp; receipts</h2>
+    <h2><?= __e('payments.history') ?></h2>
     <div class="table-wrap">
         <table>
-            <thead><tr><th>Receipt</th><th>Amount</th><th>Method</th><th>Date</th></tr></thead>
+            <thead><tr><th><?= __e('finance.receipt') ?></th><th><?= __e('common.amount') ?></th><th><?= __e('finance.method') ?></th><th><?= __e('common.date') ?></th></tr></thead>
             <tbody>
             <?php foreach ($payments as $p): ?>
                 <tr>

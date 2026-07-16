@@ -31,7 +31,7 @@ $cases = $pdo->prepare('SELECT id, case_number FROM cases WHERE client_id=?');
 $cases->execute([$uid]);
 $cases = $cases->fetchAll();
 
-$pageTitle = 'Appointments';
+$pageTitle = __('page.appointments_short');
 $pageSubtitle = 'Request meetings, view history, and cancel when needed';
 $portal = 'client';
 $activeNav = 'appointments';

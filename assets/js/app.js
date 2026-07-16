@@ -227,10 +227,20 @@ function initDashboardCharts() {
 
   const gridColor = () => cssVar('--chart-grid', 'rgba(26,32,44,0.06)');
   const inkSoft = () => cssVar('--ink-soft', '#718096');
-  const blue = () => cssVar('--blue', '#1e3a6e');
-  const purple = () => cssVar('--purple', '#5b4b8a');
-  const magenta = () => cssVar('--purple-bright', '#6d5a9e');
-  const primary = () => cssVar('--primary', '#1e3a6e');
+  const blue = () => cssVar('--blue', '#023e8a');
+  const purple = () => cssVar('--purple', '#001845');
+  const magenta = () => cssVar('--purple-bright', '#7f9ec4');
+  const primary = () => cssVar('--primary', '#023e8a');
+  const primaryRgb = () => cssVar('--primary-rgb', '2, 62, 138');
+  const rgbaPrimary = (alpha) => `rgba(${primaryRgb()}, ${alpha})`;
+  const rgbaPurple = (alpha) => {
+    const hex = purple().replace('#', '');
+    if (hex.length !== 6) return `rgba(0, 24, 69, ${alpha})`;
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  };
 
   const commonOptions = {
     responsive: true,
@@ -258,7 +268,7 @@ function initDashboardCharts() {
             label: 'Cases opened',
             data: data.opened,
             borderColor: blue(),
-            backgroundColor: 'rgba(37, 99, 235, 0.16)',
+            backgroundColor: rgbaPrimary(0.16),
             fill: true,
             borderWidth: 3,
             tension: 0.4,
@@ -269,7 +279,7 @@ function initDashboardCharts() {
             label: 'Cases closed',
             data: data.closed,
             borderColor: purple(),
-            backgroundColor: 'rgba(124, 58, 237, 0.14)',
+            backgroundColor: rgbaPurple(0.14),
             fill: true,
             borderWidth: 3,
             tension: 0.4,
@@ -312,7 +322,7 @@ function initDashboardCharts() {
     });
   }
 
-  const typeColors = [blue(), purple(), magenta(), primary(), '#3a4d7a'];
+  const typeColors = [blue(), purple(), magenta(), primary(), cssVar('--blue-bright', '#1e5fad')];
   const typesEl = document.getElementById('chartTypes');
   if (typesEl) {
     new Chart(typesEl, {

@@ -1,7 +1,7 @@
 </main>
         <footer class="app-footer">
             <span>&copy; <?= date('Y') ?> <?= e(get_setting(db(), 'company_name', app_config('name'))) ?></span>
-            <span>Legal Case Management System</span>
+            <span><?= __e('app.tagline') ?></span>
         </footer>
     </div>
 </div>

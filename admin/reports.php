@@ -11,7 +11,7 @@ $revenueReport = $pdo->query("SELECT DATE_FORMAT(paid_at,'%Y-%m') AS month, SUM(
 $appointmentReport = $pdo->query("SELECT status, COUNT(*) AS total FROM appointments GROUP BY status")->fetchAll();
 $paymentReport = $pdo->query("SELECT payment_method, COUNT(*) AS cnt, SUM(amount) AS total FROM payments GROUP BY payment_method")->fetchAll();
 
-$pageTitle = 'Reports';
+$pageTitle = __('page.reports');
 $pageSubtitle = 'Client, lawyer, case, revenue, appointment, and payment reports';
 $portal = 'admin';
 $activeNav = 'reports';

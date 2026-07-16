@@ -43,7 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$pageTitle = 'Lawyer Management';
+$pageTitle = __('page.lawyers');
 $pageSubtitle = 'Profiles, workload, availability, and case assignment';
 $portal = 'admin';
 $activeNav = 'lawyers';
@@ -56,109 +56,31 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
         $lawyer = $stmt->fetch() ?: $lawyer;
     }
     require __DIR__ . '/../includes/header.php';
-    $isEdit = (bool) $id;
     ?>
-    <div class="entity-form panel">
-        <div class="entity-form-hero">
-            <div>
-                <p class="entity-form-eyebrow"><?= $isEdit ? 'Lawyer profile' : 'New lawyer' ?></p>
-                <h2><?= $isEdit ? 'Edit lawyer' : 'Add lawyer' ?></h2>
-                <p class="muted"><?= $isEdit ? 'Update practice details, availability, and portal access.' : 'Create a lawyer profile with credentials, specialization, and availability.' ?></p>
-            </div>
-        </div>
-
-        <form method="post">
-            <div class="entity-form-body">
-            <?= csrf_field() ?>
-            <input type="hidden" name="form_action" value="save">
-            <input type="hidden" name="id" value="<?= (int)$lawyer['id'] ?>">
-
-            <section class="entity-section">
-                <div class="entity-section-head">
-                    <h3>Personal details</h3>
-                    <p>Contact information shown on the lawyer profile.</p>
-                </div>
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label for="first_name">First name</label>
-                        <input id="first_name" name="first_name" required value="<?= e($lawyer['first_name']) ?>" placeholder="e.g. Arjun">
-                    </div>
-                    <div class="form-group">
-                        <label for="last_name">Last name</label>
-                        <input id="last_name" name="last_name" required value="<?= e($lawyer['last_name']) ?>" placeholder="e.g. Mehta">
-                    </div>
-                    <div class="form-group">
-                        <label for="email">Email</label>
-                        <input id="email" type="email" name="email" required value="<?= e($lawyer['email']) ?>" placeholder="name@firm.com">
-                    </div>
-                    <div class="form-group">
-                        <label for="phone">Phone</label>
-                        <input id="phone" name="phone" value="<?= e($lawyer['phone']) ?>" placeholder="+91 …">
-                    </div>
-                    <div class="form-group full">
-                        <label for="address">Address</label>
-                        <textarea id="address" name="address" rows="2" placeholder="Office / chamber address"><?= e($lawyer['address']) ?></textarea>
-                    </div>
-                </div>
-            </section>
-
-            <section class="entity-section">
-                <div class="entity-section-head">
-                    <h3>Account & access</h3>
-                    <p>Portal login credentials and account status.</p>
-                </div>
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label for="username">Username</label>
-                        <input id="username" name="username" required value="<?= e($lawyer['username']) ?>" placeholder="Unique login ID" autocomplete="off">
-                    </div>
-                    <?php if (!$isEdit): ?>
-                    <div class="form-group">
-                        <label for="password">Temporary password</label>
-                        <input id="password" name="password" type="text" placeholder="Leave blank for password123" autocomplete="off">
-                        <span class="field-hint">Lawyer can change this after first login.</span>
-                    </div>
-                    <?php endif; ?>
-                    <div class="form-group">
-                        <label for="is_active">Account status</label>
-                        <select id="is_active" name="is_active">
-                            <option value="1" <?= $lawyer['is_active'] ? 'selected' : '' ?>>Active</option>
-                            <option value="0" <?= !$lawyer['is_active'] ? 'selected' : '' ?>>Inactive</option>
-                        </select>
-                    </div>
-                </div>
-            </section>
-
-            <section class="entity-section">
-                <div class="entity-section-head">
-                    <h3>Practice & availability</h3>
-                    <p>Bar credentials, specialization, and current workload status.</p>
-                </div>
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label for="specialization">Specialization</label>
-                        <input id="specialization" name="specialization" value="<?= e($lawyer['specialization']) ?>" placeholder="e.g. Corporate, Criminal, Family">
-                    </div>
-                    <div class="form-group">
-                        <label for="bar_number">Bar number</label>
-                        <input id="bar_number" name="bar_number" value="<?= e($lawyer['bar_number']) ?>" placeholder="Enrollment / bar ID">
-                    </div>
-                    <div class="form-group">
-                        <label for="availability">Availability</label>
-                        <select id="availability" name="availability">
-                            <?php foreach (['available' => 'Available', 'busy' => 'Busy', 'unavailable' => 'Unavailable'] as $val => $label): ?>
-                                <option value="<?= $val ?>" <?= $lawyer['availability'] === $val ? 'selected' : '' ?>><?= $label ?></option>
+    <div class="panel">
+        <h2><?= $id ? 'Edit lawyer' : 'Add lawyer' ?></h2>
+        <form method="post" class="form-grid">
+            <?= csrf_field() ?><input type="hidden" name="form_action" value="save"><input type="hidden" name="id" value="<?= (int)$lawyer['id'] ?>">
+            <div class="form-group"><label>First name</label><input name="first_name" required value="<?= e($lawyer['first_name']) ?>"></div>
+            <div class="form-group"><label>Last name</label><input name="last_name" required value="<?= e($lawyer['last_name']) ?>"></div>
+            <div class="form-group"><label>Username</label><input name="username" required value="<?= e($lawyer['username']) ?>"></div>
+            <div class="form-group"><label>Email</label><input type="email" name="email" required value="<?= e($lawyer['email']) ?>"></div>
+            <div class="form-group"><label>Phone</label><input name="phone" value="<?= e($lawyer['phone']) ?>"></div>
+            <?php if (!$id): ?><div class="form-group"><label>Password</label><input name="password" placeholder="Defaults to password123"></div><?php endif; ?>
+            <div class="form-group"><label>Specialization</label><input name="specialization" value="<?= e($lawyer['specialization']) ?>"></div>
+            <div class="form-group"><label>Bar number</label><input name="bar_number" value="<?= e($lawyer['bar_number']) ?>"></div>
+            <div class="form-group"><label>Availability</label>
+                <select name="availability">
+                    <?php foreach (['available','busy','unavailable'] as $a): ?>
+                        <option value="<?= $a ?>" <?= $lawyer['availability'] === $a ? 'selected' : '' ?>><?= ucfirst($a) ?></option>
                     <?php endforeach; ?>
                 </select>
-                    </div>
-                </div>
-            </section>
             </div>
-
-            <div class="entity-form-footer">
-                <a class="btn btn-secondary" href="lawyers.php">Back to lawyers</a>
-                <button class="btn btn-primary" type="submit"><?= $isEdit ? 'Save changes' : 'Save lawyer' ?></button>
+            <div class="form-group"><label>Status</label>
+                <select name="is_active"><option value="1" <?= $lawyer['is_active'] ? 'selected' : '' ?>>Active</option><option value="0" <?= !$lawyer['is_active'] ? 'selected' : '' ?>>Inactive</option></select>
             </div>
+            <div class="form-group full"><label>Address</label><textarea name="address"><?= e($lawyer['address']) ?></textarea></div>
+            <div class="form-actions full"><button class="btn btn-primary" type="submit">Save</button><a class="btn btn-ghost" href="lawyers.php">Cancel</a></div>
         </form>
     </div>
     <?php require __DIR__ . '/../includes/footer.php'; exit;
@@ -246,8 +168,8 @@ require __DIR__ . '/../includes/header.php';
                     <td><?= (int)$l['open_cases'] ?> open</td>
                     <td><?= status_badge($l['availability']) ?></td>
                     <td class="quick-links">
-                        <a class="chip chip-edit" href="?action=edit&id=<?= (int)$l['id'] ?>">Edit</a>
-                        <form method="post" style="display:inline" onsubmit="return confirm('Remove this lawyer?')"><?= csrf_field() ?><input type="hidden" name="form_action" value="delete"><input type="hidden" name="id" value="<?= (int)$l['id'] ?>"><button class="chip chip-danger" type="submit">Remove</button></form>
+                        <a class="chip" href="?action=edit&id=<?= (int)$l['id'] ?>">Edit</a>
+                        <form method="post" style="display:inline" onsubmit="return confirm('Remove this lawyer?')"><?= csrf_field() ?><input type="hidden" name="form_action" value="delete"><input type="hidden" name="id" value="<?= (int)$l['id'] ?>"><button class="chip" type="submit">Remove</button></form>
                     </td>
                 </tr>
             <?php endforeach; ?>

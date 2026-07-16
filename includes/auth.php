@@ -5,12 +5,14 @@
 
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/functions.php';
+require_once __DIR__ . '/i18n.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
 date_default_timezone_set(app_config('timezone', 'UTC'));
+bootstrap_locale();
 
 function current_user(): ?array
 {
@@ -35,7 +37,7 @@ function require_role(array $roles): void
     $user = current_user();
     if (!in_array($user['role'], $roles, true)) {
         http_response_code(403);
-        exit('Access denied for this portal.');
+        exit(__('common.access_denied'));
     }
 }
 

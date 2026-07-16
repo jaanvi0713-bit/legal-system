@@ -1,19 +1,19 @@
 <?php
 $items = [
-    ['index.php', 'Dashboard', 'dashboard', 'dashboard'],
-    ['cases.php', 'My Cases', 'cases', 'cases'],
-    ['documents.php', 'Documents', 'documents', 'documents'],
-    ['appointments.php', 'Appointments', 'appointments', 'appointments'],
-    ['payments.php', 'Payments', 'payments', 'payments'],
-    ['contact.php', 'Contact Lawyer', 'contact', 'contact'],
-    ['notifications.php', 'Notifications', 'notifications', 'notifications'],
-    ['ai.php', 'AI Assistant', 'ai', 'ai'],
+    ['index.php', 'nav.dashboard', 'dashboard', 'dashboard'],
+    ['cases.php', 'nav.my_cases', 'cases', 'cases'],
+    ['documents.php', 'nav.documents', 'documents', 'documents'],
+    ['appointments.php', 'nav.appointments', 'appointments', 'appointments'],
+    ['payments.php', 'nav.payments', 'payments', 'payments'],
+    ['contact.php', 'nav.contact', 'contact', 'contact'],
+    ['notifications.php', 'nav.notifications', 'notifications', 'notifications'],
+    ['ai.php', 'nav.ai', 'ai', 'ai'],
 ];
-foreach ($items as [$href, $label, $key, $icon]):
+foreach ($items as [$href, $labelKey, $key, $icon]):
     $active = ($activeNav ?? '') === $key ? 'active' : '';
 ?>
 <a class="nav-link <?= $active ?>" href="<?= e($portalBase . '/' . $href) ?>">
     <span class="nav-icon"><?= nav_icon($icon) ?></span>
-    <span class="nav-label"><?= e($label) ?></span>
+    <span class="nav-label"><?= __e($labelKey) ?></span>
 </a>
 <?php endforeach; ?>

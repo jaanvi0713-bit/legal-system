@@ -48,10 +48,40 @@ function full_name(array $user): string
 
 function money($amount): string
 {
-    $symbol = app_config('currency_symbol', '₹');
+    static $symbol = null;
+    static $locale = null;
+    if ($symbol === null) {
+        $code = 'MUR';
+        try {
+            $code = strtoupper((string) get_setting(db(), 'payment_currency', app_config('currency', 'MUR')));
+        } catch (Throwable $e) {
+            $code = strtoupper((string) app_config('currency', 'MUR'));
+        }
+        $symbols = [
+            'MUR' => 'Rs ',
+            'INR' => '₹',
+            'AED' => 'AED ',
+            'USD' => '$',
+            'EUR' => '€',
+            'GBP' => '£',
+        ];
+        $symbol = $symbols[$code] ?? (app_config('currency_symbol', 'Rs '));
+        $locales = [
+            'MUR' => 'en_MU',
+            'INR' => 'en_IN',
+            'AED' => 'en_AE',
+            'USD' => 'en_US',
+            'EUR' => 'fr_FR',
+            'GBP' => 'en_GB',
+        ];
+        $locale = $locales[$code] ?? 'en_MU';
+        if (function_exists('current_lang') && current_lang() === 'fr' && $code === 'MUR') {
+            $locale = 'fr_MU';
+        }
+    }
     $value = (float) $amount;
     if (class_exists('NumberFormatter')) {
-        $fmt = new NumberFormatter('en_IN', NumberFormatter::DECIMAL);
+        $fmt = new NumberFormatter($locale, NumberFormatter::DECIMAL);
         $fmt->setAttribute(NumberFormatter::MIN_FRACTION_DIGITS, 2);
         $fmt->setAttribute(NumberFormatter::MAX_FRACTION_DIGITS, 2);
         return $symbol . $fmt->format($value);
@@ -102,7 +132,8 @@ function status_badge(string $status): string
         'urgent' => 'badge-danger',
     ];
     $class = $map[$status] ?? 'badge-muted';
-    return '<span class="badge ' . $class . '">' . e(ucwords(str_replace('_', ' ', $status))) . '</span>';
+    $label = function_exists('translate_status') ? translate_status($status) : ucwords(str_replace('_', ' ', $status));
+    return '<span class="badge ' . $class . '">' . e($label) . '</span>';
 }
 
 function generate_case_number(PDO $pdo): string

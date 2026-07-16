@@ -24,7 +24,7 @@ $notes = $pdo->prepare('SELECT * FROM notifications WHERE user_id=? ORDER BY cre
 $notes->execute([$uid]);
 $notes = $notes->fetchAll();
 
-$pageTitle = 'Dashboard';
+$pageTitle = __('page.dashboard');
 $pageSubtitle = 'Your assigned work for today';
 $portal = 'lawyer';
 $activeNav = 'dashboard';

@@ -5,7 +5,7 @@ $pdo = db();
 $uid = (int) current_user()['id'];
 $id = (int) get('id', 0);
 
-$pageTitle = 'My Cases';
+$pageTitle = __('page.my_cases');
 $pageSubtitle = 'View status and progress — official records are read-only';
 $portal = 'client';
 $activeNav = 'cases';

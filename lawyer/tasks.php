@@ -16,7 +16,7 @@ $notes = $pdo->prepare('SELECT * FROM notifications WHERE user_id=? AND is_read=
 $notes->execute([$uid]);
 $notes = $notes->fetchAll();
 
-$pageTitle = 'My Tasks';
+$pageTitle = __('page.tasks');
 $pageSubtitle = 'Pending appointments, reminders, and follow-ups';
 $portal = 'lawyer';
 $activeNav = 'tasks';

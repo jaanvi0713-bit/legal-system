@@ -54,16 +54,16 @@ $outstanding = (float) $pdo->query("SELECT COALESCE(SUM(total),0) FROM invoices 
 $paidSum = (float) $pdo->query("SELECT COALESCE(SUM(p.amount),0) FROM payments p JOIN invoices i ON i.id=p.invoice_id WHERE i.status IN ('sent','partial','overdue','paid')")->fetchColumn();
 $outstandingBal = max(0, (float)$pdo->query("SELECT COALESCE(SUM(i.total - IFNULL((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id=i.id),0)),0) FROM invoices i WHERE i.status IN ('sent','partial','overdue','draft')")->fetchColumn());
 
-$pageTitle = 'Financial Management';
+$pageTitle = __('page.finance');
 $pageSubtitle = 'Billing, invoices, payments, and revenue';
 $portal = 'admin';
 $activeNav = 'finance';
 require __DIR__ . '/../includes/header.php';
 ?>
 <div class="grid grid-3">
-    <div class="stat-card"><div class="stat-label">Total revenue</div><div class="stat-value"><?= e(money($revenue)) ?></div></div>
-    <div class="stat-card"><div class="stat-label">Outstanding balance</div><div class="stat-value"><?= e(money($outstandingBal)) ?></div></div>
-    <div class="stat-card"><div class="stat-label">Invoices</div><div class="stat-value"><?= count($invoices) ?></div></div>
+    <div class="stat-card"><div class="stat-label"><?= __e('finance.revenue') ?></div><div class="stat-value"><?= e(money($revenue)) ?></div></div>
+    <div class="stat-card"><div class="stat-label"><?= __e('payments.outstanding_balance') ?></div><div class="stat-value"><?= e(money($outstandingBal)) ?></div></div>
+    <div class="stat-card"><div class="stat-label"><?= __e('finance.invoices') ?></div><div class="stat-value"><?= count($invoices) ?></div></div>
 </div>
 
 <?php if ($action === 'invoice'): ?>
@@ -71,13 +71,13 @@ require __DIR__ . '/../includes/header.php';
     <h2>Create invoice</h2>
     <form method="post" class="form-grid">
         <?= csrf_field() ?><input type="hidden" name="form_action" value="invoice">
-        <div class="form-group"><label>Client</label><select name="client_id" required><?php foreach ($clients as $c): ?><option value="<?= (int)$c['id'] ?>"><?= e(full_name($c)) ?></option><?php endforeach; ?></select></div>
-        <div class="form-group"><label>Case</label><select name="case_id"><option value="">—</option><?php foreach ($cases as $c): ?><option value="<?= (int)$c['id'] ?>"><?= e($c['case_number']) ?></option><?php endforeach; ?></select></div>
-        <div class="form-group full"><label>Title</label><input name="title" required></div>
-        <div class="form-group"><label>Amount</label><input type="number" step="0.01" name="amount" required></div>
+        <div class="form-group"><label><?= __e('finance.client') ?></label><select name="client_id" required><?php foreach ($clients as $c): ?><option value="<?= (int)$c['id'] ?>"><?= e(full_name($c)) ?></option><?php endforeach; ?></select></div>
+        <div class="form-group"><label><?= __e('nav.cases') ?></label><select name="case_id"><option value="">—</option><?php foreach ($cases as $c): ?><option value="<?= (int)$c['id'] ?>"><?= e($c['case_number']) ?></option><?php endforeach; ?></select></div>
+        <div class="form-group full"><label><?= __e('common.name') ?></label><input name="title" required></div>
+        <div class="form-group"><label><?= __e('common.amount') ?></label><input type="number" step="0.01" name="amount" required></div>
         <div class="form-group"><label>Tax</label><input type="number" step="0.01" name="tax" value="0"></div>
-        <div class="form-group"><label>Status</label><select name="status"><?php foreach (['draft','sent','partial','paid','overdue'] as $s): ?><option value="<?= $s ?>"><?= ucfirst($s) ?></option><?php endforeach; ?></select></div>
-        <div class="form-group"><label>Due date</label><input type="date" name="due_date"></div>
+        <div class="form-group"><label><?= __e('common.status') ?></label><select name="status"><?php foreach (['draft','sent','partial','paid','overdue'] as $s): ?><option value="<?= $s ?>"><?= e(translate_status($s)) ?></option><?php endforeach; ?></select></div>
+        <div class="form-group"><label><?= __e('finance.due_date') ?></label><input type="date" name="due_date"></div>
         <div class="form-group"><label>Issued</label><input type="date" name="issued_at" value="<?= date('Y-m-d') ?>"></div>
         <div class="form-group full"><label>Description</label><textarea name="description"></textarea></div>
         <div class="form-actions full"><button class="btn btn-primary" type="submit">Save invoice</button><a class="btn btn-ghost" href="finance.php">Cancel</a></div>
@@ -88,10 +88,10 @@ require __DIR__ . '/../includes/header.php';
     <h2>Record payment</h2>
     <form method="post" class="form-grid">
         <?= csrf_field() ?><input type="hidden" name="form_action" value="payment">
-        <div class="form-group"><label>Client</label><select name="client_id" required><?php foreach ($clients as $c): ?><option value="<?= (int)$c['id'] ?>"><?= e(full_name($c)) ?></option><?php endforeach; ?></select></div>
-        <div class="form-group"><label>Invoice</label><select name="invoice_id"><option value="">—</option><?php foreach ($invoices as $i): ?><option value="<?= (int)$i['id'] ?>"><?= e($i['invoice_number'].' · '.money($i['total'])) ?></option><?php endforeach; ?></select></div>
-        <div class="form-group"><label>Amount</label><input type="number" step="0.01" name="amount" required></div>
-        <div class="form-group"><label>Method</label><select name="payment_method"><?php foreach (['bank_transfer','card','cash','cheque','online','other'] as $m): ?><option value="<?= $m ?>"><?= ucwords(str_replace('_',' ',$m)) ?></option><?php endforeach; ?></select></div>
+        <div class="form-group"><label><?= __e('finance.client') ?></label><select name="client_id" required><?php foreach ($clients as $c): ?><option value="<?= (int)$c['id'] ?>"><?= e(full_name($c)) ?></option><?php endforeach; ?></select></div>
+        <div class="form-group"><label><?= __e('finance.invoice_number') ?></label><select name="invoice_id"><option value="">—</option><?php foreach ($invoices as $i): ?><option value="<?= (int)$i['id'] ?>"><?= e($i['invoice_number'].' · '.money($i['total'])) ?></option><?php endforeach; ?></select></div>
+        <div class="form-group"><label><?= __e('common.amount') ?></label><input type="number" step="0.01" name="amount" required></div>
+        <div class="form-group"><label><?= __e('finance.method') ?></label><select name="payment_method"><?php foreach (['bank_transfer','card','cash','cheque','online','other'] as $m): ?><option value="<?= $m ?>"><?= ucwords(str_replace('_',' ',$m)) ?></option><?php endforeach; ?></select></div>
         <div class="form-group"><label>Reference</label><input name="reference_number"></div>
         <div class="form-group"><label>Paid at</label><input type="datetime-local" name="paid_at" value="<?= date('Y-m-d\TH:i') ?>"></div>
         <div class="form-group full"><label>Notes</label><textarea name="notes"></textarea></div>
@@ -110,10 +110,10 @@ require __DIR__ . '/../includes/header.php';
 </div>
 <div class="grid grid-2">
     <div class="panel">
-        <h2>Invoices</h2>
+        <h2><?= __e('finance.invoices') ?></h2>
         <div class="table-wrap">
             <table>
-                <thead><tr><th>Invoice</th><th>Client</th><th>Total</th><th>Status</th><th>Due</th></tr></thead>
+                <thead><tr><th><?= __e('finance.invoice_number') ?></th><th><?= __e('finance.client') ?></th><th><?= __e('common.total') ?></th><th><?= __e('common.status') ?></th><th><?= __e('finance.due_date') ?></th></tr></thead>
                 <tbody>
                 <?php foreach ($invoices as $i): ?>
                     <tr>
@@ -129,10 +129,10 @@ require __DIR__ . '/../includes/header.php';
         </div>
     </div>
     <div class="panel">
-        <h2>Recent payments / receipts</h2>
+        <h2><?= __e('finance.payments') ?> / <?= __e('finance.receipt') ?></h2>
         <div class="table-wrap">
             <table>
-                <thead><tr><th>Receipt</th><th>Client</th><th>Amount</th><th>Invoice</th></tr></thead>
+                <thead><tr><th><?= __e('finance.receipt') ?></th><th><?= __e('finance.client') ?></th><th><?= __e('common.amount') ?></th><th><?= __e('finance.invoice_number') ?></th></tr></thead>
                 <tbody>
                 <?php foreach ($payments as $p): ?>
                     <tr>

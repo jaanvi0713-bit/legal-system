@@ -41,7 +41,7 @@ $mine->execute([$user['id']]);
 $mine = $mine->fetchAll();
 $history = $pdo->query('SELECT n.*, CONCAT(u.first_name," ",u.last_name) AS recipient FROM notifications n JOIN users u ON u.id=n.user_id ORDER BY n.created_at DESC LIMIT 40')->fetchAll();
 
-$pageTitle = 'Notifications';
+$pageTitle = __('page.notifications');
 $pageSubtitle = 'Send, receive, and monitor notification history';
 $portal = 'admin';
 $activeNav = 'notifications';

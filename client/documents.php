@@ -38,7 +38,7 @@ $invoices = $pdo->prepare('SELECT * FROM invoices WHERE client_id=? ORDER BY cre
 $invoices->execute([$uid]);
 $invoices = $invoices->fetchAll();
 
-$pageTitle = 'Documents';
+$pageTitle = __('page.documents');
 $pageSubtitle = 'Upload requested files, download legal docs, contracts, and invoices';
 $portal = 'client';
 $activeNav = 'documents';

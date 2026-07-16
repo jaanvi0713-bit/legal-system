@@ -19,7 +19,7 @@ $rows = $pdo->prepare('SELECT * FROM notifications WHERE user_id=? ORDER BY crea
 $rows->execute([$uid]);
 $rows = $rows->fetchAll();
 
-$pageTitle = 'Notifications';
+$pageTitle = __('page.notifications');
 $pageSubtitle = 'Appointments, case updates, payments, and document requests';
 $portal = 'client';
 $activeNav = 'notifications';

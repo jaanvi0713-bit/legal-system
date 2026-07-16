@@ -54,12 +54,12 @@ INSERT INTO payments (invoice_id, client_id, amount, payment_method, reference_n
 
 INSERT INTO notifications (user_id, title, message, type, link, is_read, created_by) VALUES
 (1, 'New client registered', 'Raj Sharma has been added as a client.', 'info', 'clients.php', 0, 1),
-(1, 'Payment received', '₹4,725 received from Sharma Logistics.', 'success', 'finance.php', 1, 1),
+(1, 'Payment received', 'Rs 4,725.00 received from Sharma Logistics.', 'success', 'finance.php', 1, 1),
 (2, 'New case assigned', 'You have been assigned to LEX-2026-001.', 'case', 'cases.php?id=1', 0, 1),
 (2, 'Hearing reminder', 'Commercial hearing scheduled for 20 Jul 2026.', 'reminder', 'court.php', 0, 1),
 (3, 'Appointment pending', 'Labour Hearing Prep awaits your response.', 'appointment', 'appointments.php', 0, 1),
 (6, 'Document requested', 'Please upload the original supply contract.', 'document', 'documents.php', 0, 2),
-(6, 'Payment reminder', 'Outstanding balance of ₹5,750 on INV-2026-001.', 'payment', 'payments.php', 0, 1),
+(6, 'Payment reminder', 'Outstanding balance of Rs 5,750.00 on INV-2026-001.', 'payment', 'payments.php', 0, 1),
 (7, 'Case update', 'Mediation date confirmed for 25 Jul 2026.', 'case', 'cases.php?id=2', 0, 3);
 
 INSERT INTO messages (sender_id, receiver_id, case_id, subject, body, is_read) VALUES
@@ -79,10 +79,11 @@ INSERT INTO settings (setting_key, setting_value) VALUES
 ('company_email', 'contact@lexora.law'),
 ('company_phone', '+971-4-555-0100'),
 ('company_address', 'Gate Village Building 4, DIFC, Dubai, UAE'),
-('branding_primary', '#1e3a6e'),
-('branding_accent', '#5b4b8a'),
+('branding_primary', '#023e8a'),
+('branding_accent', '#023e8a'),
 ('theme', 'light'),
-('payment_currency', 'INR'),
+('payment_currency', 'MUR'),
+('app_language', 'en'),
 ('ai_enabled', '1'),
 ('ai_welcome_admin', 'You are the Lexora admin AI assistant. Help with firm operations, case summaries, and legal drafting guidance.'),
 ('ai_welcome_lawyer', 'You are a lawyer AI assistant for Lexora. Help with case analysis, document drafting, and hearing preparation.'),

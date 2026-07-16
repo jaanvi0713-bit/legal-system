@@ -30,7 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $cases = $pdo->query('SELECT id, case_number, title FROM cases ORDER BY created_at DESC')->fetchAll();
-$pageTitle = 'Court Tracking';
+$pageTitle = __('page.court');
 $pageSubtitle = 'Hearings, locations, outcomes, and progress';
 $portal = 'admin';
 $activeNav = 'court';

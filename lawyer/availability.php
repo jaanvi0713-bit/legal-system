@@ -18,7 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $u = current_user();
-$pageTitle = 'Availability';
+$pageTitle = __('page.availability');
 $pageSubtitle = 'Set your current availability for clients and the firm';
 $portal = 'lawyer';
 $activeNav = 'availability';

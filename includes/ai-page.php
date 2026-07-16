@@ -11,7 +11,7 @@ function render_ai_page(string $portal): void
 
     if (isset($_GET['new'])) {
         $stmt = $pdo->prepare('INSERT INTO ai_chat_sessions (user_id, portal, title) VALUES (?, ?, ?)');
-        $stmt->execute([$user['id'], $portal, 'New Chat']);
+        $stmt->execute([$user['id'], $portal, __('ai.new_chat')]);
         redirect(app_config('url') . "/{$portal}/ai.php?session=" . $pdo->lastInsertId());
     }
 
@@ -22,7 +22,7 @@ function render_ai_page(string $portal): void
     $sessionId = (int) (get('session') ?: ($sessions[0]['id'] ?? 0));
     if (!$sessionId) {
         $stmt = $pdo->prepare('INSERT INTO ai_chat_sessions (user_id, portal, title) VALUES (?, ?, ?)');
-        $stmt->execute([$user['id'], $portal, 'New Chat']);
+        $stmt->execute([$user['id'], $portal, __('ai.new_chat')]);
         $sessionId = (int) $pdo->lastInsertId();
         $sessions = $pdo->prepare('SELECT * FROM ai_chat_sessions WHERE user_id = ? AND portal = ? ORDER BY updated_at DESC');
         $sessions->execute([$user['id'], $portal]);
@@ -37,7 +37,7 @@ function render_ai_page(string $portal): void
         'admin' => [
             ['Client count', 'How many clients do we have?', 'user'],
             ['Active cases', 'How many active cases are there?', 'briefcase'],
-            ['Total revenue', 'What is our total revenue in rupees?', 'money'],
+            ['Total revenue', __('ai.prompt.total_revenue'), 'money'],
             ['Appointments', 'Show upcoming appointments', 'calendar'],
             ['Recent payments', 'Summarize recent payments', 'doc'],
             ['Overdue invoices', 'Which invoices are overdue or outstanding?', 'alert'],
@@ -63,7 +63,7 @@ function render_ai_page(string $portal): void
             ['My cases', 'Summarize my cases in plain language', 'briefcase'],
             ['Documents', 'Explain my recent documents simply', 'doc'],
             ['Appointments', 'What appointments do I have coming up?', 'calendar'],
-            ['Outstanding balance', 'What is my outstanding balance in rupees?', 'money'],
+            ['Outstanding balance', __('ai.prompt.outstanding_balance'), 'money'],
             ['Notifications', 'Summarize my latest notifications', 'bell'],
             ['Invoice help', 'Explain my latest invoice simply', 'doc'],
             ['Court dates', 'What court dates are scheduled for my cases?', 'court'],
@@ -72,9 +72,9 @@ function render_ai_page(string $portal): void
     };
 
     $welcome = match ($portal) {
-        'admin' => "Welcome to the {$company} AI Assistant! From this unified space, you can instantly view dashboard metrics, search clients or cases, scan documents for quick Q&As, handle client intake, schedule appointments, and draft messages or reminders — all in rupees (₹) where money is involved.",
-        'lawyer' => "Welcome to the {$company} AI Assistant! Ask about your assigned cases, hearings, appointments, clients, and documents. I can draft letters, summarize files, and help you prepare for court.",
-        default => "Welcome to the {$company} AI Assistant! I can explain your own cases, documents, appointments, and invoices in plain language. I never share other clients' information.",
+        'admin' => __('ai.welcome_admin', ['company' => $company]),
+        'lawyer' => __('ai.welcome_lawyer', ['company' => $company]),
+        default => __('ai.welcome_client', ['company' => $company]),
     };
 
     $subtitle = match ($portal) {
@@ -89,7 +89,7 @@ function render_ai_page(string $portal): void
         default => 'Ask about your cases, documents, or invoices…',
     };
 
-    $pageTitle = 'AI Assistant';
+    $pageTitle = __('page.ai');
     $pageSubtitle = $subtitle;
     $activeNav = 'ai';
     require __DIR__ . '/header.php';
@@ -132,20 +132,20 @@ function render_ai_page(string $portal): void
                 <div class="ai-library-head">
                     <strong>Chat library</strong>
                     <button type="button" class="ai-library-close" id="ai-library-close" aria-label="Close library">×</button>
-        </div>
+                </div>
                 <div class="ai-library-list">
                     <?php foreach ($sessions as $s): ?>
                         <a class="ai-session-link <?= (int) $s['id'] === $sessionId ? 'active' : '' ?>" href="?session=<?= (int) $s['id'] ?>">
                             <span><?= e($s['title']) ?></span>
                             <span class="muted"><?= e(format_datetime($s['updated_at'])) ?></span>
                         </a>
-            <?php endforeach; ?>
-        </div>
-    </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
 
             <div class="ai-chat-panel">
-            <div class="ai-messages" id="ai-messages">
-                <?php if (!$messages): ?>
+                <div class="ai-messages" id="ai-messages">
+                    <?php if (!$messages): ?>
                         <div class="ai-welcome msg msg-assistant">
                             <div class="ai-bot-mark" aria-hidden="true">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
@@ -157,8 +157,8 @@ function render_ai_page(string $portal): void
                             </div>
                             <div><?= e($welcome) ?></div>
                         </div>
-                <?php endif; ?>
-                <?php foreach ($messages as $m): ?>
+                    <?php endif; ?>
+                    <?php foreach ($messages as $m): ?>
                         <?php if ($m['role'] === 'assistant'): ?>
                             <div class="msg msg-assistant ai-bubble">
                                 <div class="ai-bot-mark sm" aria-hidden="true">
