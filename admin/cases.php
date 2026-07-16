@@ -588,13 +588,6 @@ if ($action === 'view' && $id) {
                             <td><?= status_badge($i['status']) ?></td>
                             <td class="is-right case-row-actions inv-row-actions">
                                 <a class="btn btn-row-open btn-sm" href="invoice.php?id=<?= (int) $i['id'] ?>&from=<?= e(urlencode($caseInvReturn)) ?>"><?= __e('common.view') ?></a>
-                                <form method="post" action="invoice.php" class="inline-form">
-                                    <?= csrf_field() ?>
-                                    <input type="hidden" name="form_action" value="email_client">
-                                    <input type="hidden" name="invoice_id" value="<?= (int) $i['id'] ?>">
-                                    <input type="hidden" name="return_to" value="<?= e($caseInvReturn) ?>">
-                                    <button class="btn btn-row-open btn-sm" type="submit"><?= __e('finance.email_client') ?></button>
-                                </form>
                                 <form method="post" action="invoice.php" class="inline-form" onsubmit="return confirm('<?= e(__('finance.delete_confirm', ['number' => $i['invoice_number']])) ?>');">
                                     <?= csrf_field() ?>
                                     <input type="hidden" name="form_action" value="delete_invoice">
@@ -618,7 +611,7 @@ if ($action === 'view' && $id) {
         ?>
         <section class="panel case-hub-card">
             <div class="panel-header">
-                <h2><?= __e('finance.payments') ?> / <?= __e('finance.receipt') ?></h2>
+                <h2>Receipts</h2>
                 <a class="btn btn-primary btn-sm" href="<?= e($tabUrl('receipts')) ?>&compose=payment">+ <?= __e('finance.record_payment') ?></a>
             </div>
             <?php if ($compose === 'payment'): ?>
@@ -780,27 +773,28 @@ if ($filter === 'active') {
 } else {
     $cases = $pdo->query($sql . ' ORDER BY c.updated_at DESC')->fetchAll();
 }
+$listTitle = $filter === 'active' ? 'Active cases' : ($filter === 'outstanding' ? 'Outstanding' : 'Case Management');
 $pageTitle = 'Cases';
 $pageSubtitle = $filter === 'active'
-    ? 'Active cases'
-    : ($filter === 'outstanding' ? 'Cases with outstanding invoices' : 'View and manage all legal cases');
+    ? 'Open and in-progress matters'
+    : ($filter === 'outstanding' ? 'Cases with unpaid invoices' : 'View and manage all legal cases');
 require __DIR__ . '/../includes/header.php';
 $totalCases = count($cases);
-$filterLabel = $filter === 'active' ? 'Active cases' : ($filter === 'outstanding' ? 'Outstanding balance' : '');
+$amountLabel = $filter === 'outstanding' ? 'Outstanding' : 'Fee';
 ?>
 <div class="panel case-list-panel">
     <div class="case-list-head">
-        <h2>Case Management</h2>
-        <div class="case-row-actions">
-            <?php if ($filterLabel !== ''): ?>
-                <a class="btn btn-secondary btn-sm" href="cases.php">Clear filter</a>
+        <div class="case-list-title">
+            <h2><?= e($listTitle) ?></h2>
+            <?php if ($filter === 'active' || $filter === 'outstanding'): ?>
+                <a class="case-filter-chip" href="cases.php" title="Show all cases">
+                    <?= $filter === 'active' ? 'Active' : 'Unpaid' ?>
+                    <span aria-hidden="true">×</span>
+                </a>
             <?php endif; ?>
-            <a class="btn btn-primary" href="?action=create">+ Open case</a>
         </div>
+        <a class="btn btn-primary btn-sm" href="?action=create">+ Open case</a>
     </div>
-    <?php if ($filterLabel !== ''): ?>
-        <p class="muted" style="margin:0 0 0.85rem;">Showing: <strong><?= e($filterLabel) ?></strong></p>
-    <?php endif; ?>
     <div class="table-wrap case-table-wrap">
         <table class="case-table">
             <thead>
@@ -808,26 +802,28 @@ $filterLabel = $filter === 'active' ? 'Active cases' : ($filter === 'outstanding
                     <th>Case #</th>
                     <th>Title</th>
                     <th>Client</th>
-                    <th>Service</th>
-                    <th>Fee</th>
+                    <th>Status</th>
+                    <th><?= e($amountLabel) ?></th>
                     <th class="col-actions">Actions</th>
                 </tr>
             </thead>
             <tbody>
-            <?php foreach ($cases as $c): ?>
+            <?php foreach ($cases as $c):
+                $amount = $filter === 'outstanding' ? (float) $c['outstanding_total'] : (float) $c['fee_total'];
+            ?>
                 <tr>
                     <td class="case-num-cell"><a class="case-num-link" href="?action=view&id=<?= (int)$c['id'] ?>"><?= e($c['case_number']) ?></a></td>
                     <td class="case-title-cell">
                         <strong><?= e($c['title']) ?></strong>
-                        <span class="muted"><?= e($c['company_name'] ?: ucfirst(str_replace('_', ' ', $c['status']))) ?></span>
+                        <span class="muted"><?= e($c['case_type'] ?: ($c['company_name'] ?: '—')) ?></span>
                     </td>
                     <td><?= e($c['client_name']) ?></td>
-                    <td><?= e($c['case_type'] ?: '—') ?></td>
-                    <td class="case-fee-cell"><?= (float)$c['fee_total'] > 0 ? e(money($c['fee_total'])) : '—' ?></td>
+                    <td><?= status_badge($c['status']) ?></td>
+                    <td class="case-fee-cell"><?= $amount > 0 ? e(money($amount)) : '—' ?></td>
                     <td class="col-actions">
                         <div class="case-row-actions">
-                            <a class="btn btn-row-open btn-sm" href="?action=view&id=<?= (int)$c['id'] ?>">Open</a>
-                            <form method="post" onsubmit="return confirm('Delete this case?')">
+                            <a class="btn btn-row-open btn-sm" href="?action=view&id=<?= (int)$c['id'] ?><?= $filter === 'outstanding' ? '&tab=invoices' : '' ?>">Open</a>
+                            <form method="post" class="inline-form" onsubmit="return confirm('Delete this case?')">
                                 <?= csrf_field() ?>
                                 <input type="hidden" name="form_action" value="delete">
                                 <input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
@@ -838,11 +834,21 @@ $filterLabel = $filter === 'active' ? 'Active cases' : ($filter === 'outstanding
                 </tr>
             <?php endforeach; ?>
             <?php if (!$cases): ?>
-                <tr><td colspan="6" class="case-empty">No cases yet. Click <strong>Open case</strong> to create one.</td></tr>
+                <tr>
+                    <td colspan="6" class="case-empty">
+                        <?php if ($filter === 'active'): ?>
+                            No active cases right now.
+                        <?php elseif ($filter === 'outstanding'): ?>
+                            No cases with outstanding invoices.
+                        <?php else: ?>
+                            No cases yet. Click <strong>Open case</strong> to create one.
+                        <?php endif; ?>
+                    </td>
+                </tr>
             <?php endif; ?>
             </tbody>
         </table>
     </div>
-    <p class="case-list-footer muted">Showing <?= (int)$totalCases ?> of <?= (int)$totalCases ?> case<?= $totalCases === 1 ? '' : 's' ?></p>
+    <p class="case-list-footer muted"><?= (int) $totalCases ?> case<?= $totalCases === 1 ? '' : 's' ?></p>
 </div>
 <?php require __DIR__ . '/../includes/footer.php'; ?>
