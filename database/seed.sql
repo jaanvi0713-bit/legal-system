@@ -39,6 +39,8 @@ INSERT INTO appointments (title, description, appointment_type, case_id, client_
 INSERT INTO court_hearings (case_id, hearing_date, court_name, court_location, judge_name, hearing_type, outcome, notes, status, created_by) VALUES
 (1, '2026-07-20 09:00:00', 'Dubai Courts - Commercial Circuit', 'Dubai', 'Hon. Judge Al Rashid', 'Preliminary', NULL, 'Bring original contracts and witness list.', 'scheduled', 1),
 (2, '2026-07-25 10:30:00', 'Labour Court Dubai', 'Dubai', 'Hon. Judge Farah', 'Mediation', NULL, 'Client to attend with employment file.', 'scheduled', 3),
+(3, '2026-08-05 11:00:00', 'Supreme Court Complex', 'Port Louis', 'Hon. Judge Morel', 'Directions', NULL, 'File amended pleadings before hearing.', 'scheduled', 2),
+(4, '2026-08-12 14:15:00', 'Intermediate Court', 'Port Louis', 'Hon. Judge Seebaluck', 'Case Management', NULL, 'Bring title deed copies and survey plan.', 'scheduled', 1),
 (4, '2025-11-12 11:00:00', 'Dubai Land Department', 'Dubai', NULL, 'Transfer Hearing', 'Title transferred successfully.', 'Completed without objection.', 'completed', 4);
 
 INSERT INTO invoices (invoice_number, case_id, client_id, title, description, amount, tax, total, status, due_date, issued_at, created_by) VALUES

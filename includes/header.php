@@ -90,6 +90,7 @@ $gradInfo = "linear-gradient(135deg, {$accent} 0%, {$accentDeep} 100%)";
                 '--grad-purple': 'linear-gradient(135deg, ' + mid + ' 0%, ' + hex + ' 100%)'
             };
             Object.keys(map).forEach(function (k) { root.style.setProperty(k, map[k]); });
+            try { window.dispatchEvent(new CustomEvent('lexora-accent-changed', { detail: { hex: hex } })); } catch (e) {}
         };
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -126,7 +127,7 @@ $gradInfo = "linear-gradient(135deg, {$accent} 0%, {$accentDeep} 100%)";
         }
     </style>
 </head>
-<body class="portal-<?= e($portal) ?>">
+<body class="portal-<?= e($portal) ?><?= !empty($bodyClass) ? ' ' . e($bodyClass) : '' ?>">
 <div class="app-shell">
     <aside class="sidebar">
         <div class="sidebar-brand">

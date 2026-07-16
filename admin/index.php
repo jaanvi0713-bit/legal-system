@@ -6,263 +6,407 @@ $user = current_user();
 
 $stats = [
     'clients' => (int) $pdo->query("SELECT COUNT(*) FROM users WHERE role='client'")->fetchColumn(),
-    'lawyers' => (int) $pdo->query("SELECT COUNT(*) FROM users WHERE role='lawyer'")->fetchColumn(),
+    'lawyers' => (int) $pdo->query("SELECT COUNT(*) FROM users WHERE role='lawyer' AND is_active=1")->fetchColumn(),
     'active_cases' => (int) $pdo->query("SELECT COUNT(*) FROM cases WHERE status IN ('open','active','pending','reopened','on_hold')")->fetchColumn(),
     'closed_cases' => (int) $pdo->query("SELECT COUNT(*) FROM cases WHERE status='closed'")->fetchColumn(),
     'revenue' => (float) $pdo->query('SELECT COALESCE(SUM(amount),0) FROM payments')->fetchColumn(),
-    'messages' => (int) $pdo->query('SELECT COUNT(*) FROM messages')->fetchColumn(),
     'appointments' => (int) $pdo->query("SELECT COUNT(*) FROM appointments WHERE status NOT IN ('cancelled','rejected')")->fetchColumn(),
     'hearings' => (int) $pdo->query("SELECT COUNT(*) FROM court_hearings WHERE status='scheduled' AND hearing_date >= NOW()")->fetchColumn(),
     'invoices_open' => (int) $pdo->query("SELECT COUNT(*) FROM invoices WHERE status IN ('sent','partial','overdue')")->fetchColumn(),
+    'outstanding' => (float) $pdo->query("SELECT COALESCE(SUM(total),0) FROM invoices WHERE status IN ('sent','partial','overdue')")->fetchColumn(),
+    'month_revenue' => (float) $pdo->query("SELECT COALESCE(SUM(amount),0) FROM payments WHERE paid_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')")->fetchColumn(),
+    'prev_month_revenue' => (float) $pdo->query("SELECT COALESCE(SUM(amount),0) FROM payments WHERE paid_at >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01') AND paid_at < DATE_FORMAT(CURDATE(), '%Y-%m-01')")->fetchColumn(),
 ];
 
 $months = [];
-for ($i = 6; $i >= 0; $i--) {
+for ($i = 11; $i >= 0; $i--) {
     $months[] = date('Y-m', strtotime("-{$i} months"));
 }
 $openedByMonth = array_fill_keys($months, 0);
 $closedByMonth = array_fill_keys($months, 0);
 $revenueByMonth = array_fill_keys($months, 0);
 
-foreach ($pdo->query("SELECT DATE_FORMAT(created_at, '%Y-%m') AS ym, COUNT(*) AS c FROM cases WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH) GROUP BY ym") as $row) {
+foreach ($pdo->query("SELECT DATE_FORMAT(created_at, '%Y-%m') AS ym, COUNT(*) AS c FROM cases WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) GROUP BY ym") as $row) {
     if (isset($openedByMonth[$row['ym']])) {
         $openedByMonth[$row['ym']] = (int) $row['c'];
     }
 }
-foreach ($pdo->query("SELECT DATE_FORMAT(COALESCE(closed_at, updated_at), '%Y-%m') AS ym, COUNT(*) AS c FROM cases WHERE status='closed' AND COALESCE(closed_at, updated_at) >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH) GROUP BY ym") as $row) {
+foreach ($pdo->query("SELECT DATE_FORMAT(COALESCE(closed_at, updated_at), '%Y-%m') AS ym, COUNT(*) AS c FROM cases WHERE status='closed' AND COALESCE(closed_at, updated_at) >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) GROUP BY ym") as $row) {
     if (isset($closedByMonth[$row['ym']])) {
         $closedByMonth[$row['ym']] = (int) $row['c'];
     }
 }
-foreach ($pdo->query("SELECT DATE_FORMAT(paid_at, '%Y-%m') AS ym, COALESCE(SUM(amount),0) AS total FROM payments WHERE paid_at >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH) GROUP BY ym") as $row) {
+foreach ($pdo->query("SELECT DATE_FORMAT(paid_at, '%Y-%m') AS ym, COALESCE(SUM(amount),0) AS total FROM payments WHERE paid_at >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) GROUP BY ym") as $row) {
     if (isset($revenueByMonth[$row['ym']])) {
         $revenueByMonth[$row['ym']] = (float) $row['total'];
     }
 }
 
-$typeRows = $pdo->query("SELECT COALESCE(NULLIF(case_type,''), 'Other') AS label, COUNT(*) AS c FROM cases GROUP BY label ORDER BY c DESC")->fetchAll();
-$typeLabels = array_map('t_content', array_column($typeRows, 'label') ?: [__('chart.no_data')]);
-$typeCounts = array_map('intval', array_column($typeRows, 'c') ?: [1]);
-$typeTotal = max(array_sum($typeCounts), 1);
+$typeRows = $pdo->query("SELECT COALESCE(NULLIF(case_type,''), 'Other') AS label, COUNT(*) AS c FROM cases GROUP BY label ORDER BY c DESC LIMIT 5")->fetchAll();
+$typeTotal = max((int) array_sum(array_map(static fn($r) => (int) $r['c'], $typeRows)), 1);
 
-$weekdayCounts = array_fill(0, 7, 0);
-foreach ($pdo->query("SELECT WEEKDAY(scheduled_at) AS wd, COUNT(*) AS c FROM appointments GROUP BY wd") as $row) {
-    $weekdayCounts[(int) $row['wd']] = (int) $row['c'];
+$payments = $pdo->query('
+    SELECT p.*, u.first_name, u.last_name, i.invoice_number, i.status AS invoice_status
+    FROM payments p
+    JOIN users u ON u.id = p.client_id
+    LEFT JOIN invoices i ON i.id = p.invoice_id
+    ORDER BY p.paid_at DESC
+    LIMIT 6
+')->fetchAll();
+
+$hearings = $pdo->query("
+    SELECT h.*, c.case_number, c.title
+    FROM court_hearings h
+    JOIN cases c ON c.id = h.case_id
+    WHERE h.status = 'scheduled' AND h.hearing_date >= NOW()
+    ORDER BY h.hearing_date ASC
+    LIMIT 6
+")->fetchAll();
+
+$unread = unread_notifications($pdo, (int) $user['id']);
+
+$balanceVar = 0.0;
+if ($stats['prev_month_revenue'] > 0) {
+    $balanceVar = (($stats['month_revenue'] - $stats['prev_month_revenue']) / $stats['prev_month_revenue']) * 100;
+} elseif ($stats['month_revenue'] > 0) {
+    $balanceVar = 100.0;
 }
+$activeShare = max($stats['active_cases'] + $stats['closed_cases'], 1);
+$casesBar = min(100, (int) round(($stats['active_cases'] / $activeShare) * 100));
+$collectTarget = max($stats['month_revenue'] + $stats['outstanding'], 1);
+$collectBar = min(100, (int) round(($stats['month_revenue'] / $collectTarget) * 100));
 
-$recentCases = $pdo->query("SELECT c.*, CONCAT(u.first_name,' ',u.last_name) AS client_name, CONCAT(l.first_name,' ',l.last_name) AS lawyer_name FROM cases c JOIN users u ON u.id=c.client_id LEFT JOIN users l ON l.id=c.lawyer_id ORDER BY c.updated_at DESC LIMIT 6")->fetchAll();
-$payments = $pdo->query('SELECT p.*, u.first_name, u.last_name FROM payments p JOIN users u ON u.id = p.client_id ORDER BY p.paid_at DESC LIMIT 5')->fetchAll();
-$appointments = $pdo->query("SELECT a.*, CONCAT(c.first_name,' ',c.last_name) AS client_name FROM appointments a LEFT JOIN users c ON c.id = a.client_id WHERE a.scheduled_at >= NOW() AND a.status NOT IN ('cancelled','rejected') ORDER BY a.scheduled_at ASC LIMIT 5")->fetchAll();
-$hearings = $pdo->query("SELECT h.*, c.case_number, c.title FROM court_hearings h JOIN cases c ON c.id=h.case_id WHERE h.status='scheduled' AND h.hearing_date >= NOW() ORDER BY h.hearing_date ASC LIMIT 5")->fetchAll();
-
-$totalCases = max($stats['active_cases'] + $stats['closed_cases'], 1);
-$activePct = (int) round(($stats['active_cases'] / $totalCases) * 100);
-$closedPct = (int) round(($stats['closed_cases'] / $totalCases) * 100);
+$aiPct = abs($balanceVar) >= 0.1 ? number_format(abs($balanceVar), 1) : number_format(max($casesBar * 0.1, 2.4), 1);
+$aiCaption = abs($balanceVar) >= 0.1
+    ? ('AI analytics confirm your ' . ($balanceVar >= 0 ? 'collections rise' : 'collections dip'))
+    : 'AI analytics ready to review cases and billing';
 
 $chartData = [
-    'months' => array_map('format_month_short', $months),
+    'months' => array_map(static fn($m) => date('M', strtotime($m . '-01')), $months),
+    'monthKeys' => $months,
     'opened' => array_values($openedByMonth),
     'closed' => array_values($closedByMonth),
     'revenue' => array_values($revenueByMonth),
-    'types' => ['labels' => $typeLabels, 'values' => $typeCounts],
-    'status' => ['active' => $stats['active_cases'], 'closed' => $stats['closed_cases']],
-    'weekdays' => $weekdayCounts,
-    'weekdayLabels' => [
-        __('calendar.weekday.mon'),
-        __('calendar.weekday.tue'),
-        __('calendar.weekday.wed'),
-        __('calendar.weekday.thu'),
-        __('calendar.weekday.fri'),
-        __('calendar.weekday.sat'),
-        __('calendar.weekday.sun'),
-    ],
+    'currency' => trim(app_config('currency_symbol') ?: 'Rs'),
 ];
 
+/** Build overview SVG path from a numeric series (no JS required). */
+$buildOverviewSvg = static function (array $labels, array $values): string {
+    $w = 640;
+    $h = 220;
+    $padL = 12;
+    $padR = 12;
+    $padT = 18;
+    $padB = 34;
+    $n = max(count($values), 1);
+    $max = max(array_map('floatval', $values) ?: [0]);
+    if ($max <= 0) {
+        $max = 1;
+    }
+    $innerW = $w - $padL - $padR;
+    $innerH = $h - $padT - $padB;
+    $pts = [];
+    foreach ($values as $i => $v) {
+        $x = $padL + ($n === 1 ? $innerW / 2 : ($i / ($n - 1)) * $innerW);
+        $y = $padT + $innerH - ((float) $v / $max) * $innerH;
+        $pts[] = [$x, $y];
+    }
+    $line = '';
+    foreach ($pts as $i => [$x, $y]) {
+        $line .= ($i === 0 ? 'M' : 'L') . round($x, 1) . ',' . round($y, 1) . ' ';
+    }
+    $area = $line . 'L' . round($pts[count($pts) - 1][0], 1) . ',' . ($padT + $innerH)
+        . ' L' . round($pts[0][0], 1) . ',' . ($padT + $innerH) . ' Z';
+    $labelsHtml = '';
+    foreach ($labels as $i => $lab) {
+        $x = $padL + ($n === 1 ? $innerW / 2 : ($i / ($n - 1)) * $innerW);
+        $labelsHtml .= '<text x="' . round($x, 1) . '" y="' . ($h - 10) . '" text-anchor="middle">' . htmlspecialchars((string) $lab) . '</text>';
+    }
+    $last = $pts[count($pts) - 1];
+    return '<svg class="glass-svg-chart" viewBox="0 0 ' . $w . ' ' . $h . '" preserveAspectRatio="none" role="img" aria-label="Overview chart">'
+        . '<defs><linearGradient id="ovFill" x1="0" y1="0" x2="0" y2="1">'
+        . '<stop offset="0%" stop-color="currentColor" stop-opacity="0.28"/>'
+        . '<stop offset="100%" stop-color="currentColor" stop-opacity="0"/>'
+        . '</linearGradient></defs>'
+        . '<path class="glass-svg-area" d="' . trim($area) . '" fill="url(#ovFill)"/>'
+        . '<path class="glass-svg-line" d="' . trim($line) . '" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>'
+        . '<circle class="glass-svg-dot" cx="' . round($last[0], 1) . '" cy="' . round($last[1], 1) . '" r="5"/>'
+        . '<g class="glass-svg-labels">' . $labelsHtml . '</g>'
+        . '</svg>';
+};
+
+$overviewLabels = array_slice($chartData['months'], -7);
+$overviewValues = array_slice($chartData['revenue'], -7);
+$overviewOpened = array_slice($chartData['opened'], -7);
+if (array_sum($overviewValues) <= 0) {
+    $overviewValues = $overviewOpened;
+}
+$overviewSvg = $buildOverviewSvg($overviewLabels, $overviewValues);
+
 $pageTitle = __('page.dashboard');
-$pageSubtitle = __('dashboard.welcome_body');
+$pageSubtitle = 'Firm overview';
 $portal = 'admin';
 $activeNav = 'dashboard';
 $includeCharts = true;
+$bodyClass = 'page-glass-dash';
 require __DIR__ . '/../includes/header.php';
 ?>
-<section class="welcome-banner">
-    <div>
-        <div class="eyebrow"><?= e(format_long_date()) ?></div>
-        <h2><?= __e('dashboard.welcome', ['name' => $user['first_name']]) ?></h2>
-        <p><?= __e('dashboard.welcome_body') ?></p>
-    </div>
-    <div class="welcome-actions">
-        <a class="btn btn-accent btn-sm" href="cases.php?action=create"><?= __e('dashboard.action.new_case') ?></a>
-        <a class="btn btn-accent btn-sm" href="appointments.php?action=create"><?= __e('dashboard.action.book_appointment') ?></a>
-        <a class="btn btn-accent btn-sm" href="reports.php"><?= __e('dashboard.action.view_reports') ?></a>
-    </div>
-</section>
-
-<section class="kpi-grid">
-    <article class="kpi-card">
-        <div class="kpi-top">
-            <div class="kpi-icon primary">C</div>
-            <div class="kpi-meta">
-                <div class="kpi-label"><?= __e('dashboard.kpi.active_cases') ?></div>
-                <div class="kpi-value"><?= (int) $stats['active_cases'] ?></div>
-            </div>
-        </div>
-        <div class="kpi-foot"><span class="kpi-delta up"><?= $activePct ?>%</span> <?= __e('dashboard.kpi.of_all_matters') ?></div>
-    </article>
-    <article class="kpi-card">
-        <div class="kpi-top">
-            <div class="kpi-icon info">U</div>
-            <div class="kpi-meta">
-                <div class="kpi-label"><?= __e('dashboard.kpi.clients') ?></div>
-                <div class="kpi-value"><?= (int) $stats['clients'] ?></div>
-            </div>
-        </div>
-        <div class="kpi-foot"><span class="kpi-delta up"><?= (int) $stats['lawyers'] ?></span> <?= __e('dashboard.kpi.lawyers_available') ?></div>
-    </article>
-    <article class="kpi-card">
-        <div class="kpi-top">
-            <div class="kpi-icon success">$</div>
-            <div class="kpi-meta">
-                <div class="kpi-label"><?= __e('dashboard.kpi.total_revenue') ?></div>
-                <div class="kpi-value" style="font-size:1.25rem;"><?= e(money($stats['revenue'])) ?></div>
-            </div>
-        </div>
-        <div class="kpi-foot"><span class="kpi-delta up"><?= (int) $stats['invoices_open'] ?></span> <?= __e('dashboard.kpi.open_invoices') ?></div>
-    </article>
-    <article class="kpi-card">
-        <div class="kpi-top">
-            <div class="kpi-icon warning">H</div>
-            <div class="kpi-meta">
-                <div class="kpi-label"><?= __e('dashboard.kpi.upcoming_hearings') ?></div>
-                <div class="kpi-value"><?= (int) $stats['hearings'] ?></div>
-            </div>
-        </div>
-        <div class="kpi-foot"><span class="kpi-delta down"><?= (int) $stats['appointments'] ?></span> <?= __e('dashboard.kpi.appointments_booked') ?></div>
-    </article>
-</section>
-
-<section class="dash-main">
-    <div class="chart-card">
-        <div class="panel-header">
-            <div>
-                <h2><?= __e('dashboard.panel.case_overview') ?></h2>
-                <p class="muted" style="margin:0;"><?= __e('dashboard.panel.opened_vs_closed') ?></p>
-            </div>
-            <a href="cases.php"><?= __e('dashboard.panel.manage_cases') ?></a>
-        </div>
-        <div class="chart-wrap lg"><canvas id="chartCases"></canvas></div>
-    </div>
-    <div class="dash-side">
-        <div class="chart-card">
-            <div class="panel-header">
-                <h2><?= __e('dashboard.panel.status_mix') ?></h2>
-                <span class="muted"><?= __e('dashboard.panel.pct_closed', ['pct' => $closedPct]) ?></span>
-            </div>
-            <div class="donut-row" style="position:relative;">
-                <div class="chart-wrap sm" style="position:relative;">
-                    <canvas id="chartStatus"></canvas>
-                    <div class="donut-center-label">
-                        <div>
-                            <strong><?= (int) $totalCases ?></strong>
-                            <span><?= __e('dashboard.panel.total_cases') ?></span>
+<div class="glass-dash">
+    <div class="glass-dash-top">
+        <div class="glass-dash-left">
+            <section class="glass-card glass-balance">
+                <div class="glass-balance-head">
+                    <div>
+                        <span class="glass-kicker">Overall balance</span>
+                        <div class="glass-balance-value"><?= e(money($stats['revenue'])) ?></div>
+                        <div class="glass-balance-var <?= $balanceVar >= 0 ? 'is-up' : 'is-down' ?>">
+                            <span><?= ($balanceVar >= 0 ? '+' : '') . number_format($balanceVar, 1) ?>%</span>
+                            Balance variation
                         </div>
                     </div>
+                    <a class="glass-chip" href="reports.php">Details</a>
                 </div>
-                <div class="chart-legend">
-                    <span><i style="background:var(--primary)"></i><?= __e('status.active') ?> <?= (int) $stats['active_cases'] ?></span>
-                    <span><i style="background:var(--info)"></i><?= __e('status.closed') ?> <?= (int) $stats['closed_cases'] ?></span>
-                </div>
-            </div>
-        </div>
-        <div class="panel">
-            <div class="panel-header"><h2><?= __e('dashboard.panel.workload_by_type') ?></h2></div>
-            <div class="progress-list">
-                <?php foreach ($typeRows as $i => $type):
-                    $pct = (int) round(((int) $type['c'] / $typeTotal) * 100);
-                    $barClass = ['', 'info', 'success', 'warning'][$i % 4];
-                ?>
-                    <div class="progress-item">
-                        <div class="row"><strong><?= e(t_content($type['label'])) ?></strong><span><?= (int) $type['c'] ?> · <?= $pct ?>%</span></div>
-                        <div class="progress-bar <?= e($barClass) ?>"><span style="width:<?= $pct ?>%"></span></div>
+
+                <a class="glass-ai" href="ai.php">
+                    <div class="glass-ai-copy">
+                        <div class="glass-ai-title">
+                            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l1.2 6.2L19 9l-5.2 2.2L12 17l-1.8-5.8L5 9l5.8-.8L12 2zm7 11l.7 3.3L23 17l-3.3.7L19 21l-.7-3.3L15 17l3.3-.7L19 13zM5 14l.6 2.7L8 17.2 5.6 18 5 20.5l-.6-2.5L2 17.2l2.4-.5L5 14z"/></svg>
+                            <span>AI-assistant</span>
+                        </div>
+                        <div class="glass-ai-stat">
+                            <span class="glass-ai-chart" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M7 15l3-3 2.5 2.5L17 9" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 9h3v3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            </span>
+                            <strong><?= e($aiPct) ?>%</strong>
+                        </div>
+                        <p><?= e($aiCaption) ?></p>
                     </div>
-                <?php endforeach; ?>
-                <?php if (!$typeRows): ?><div class="empty-state"><?= __e('dashboard.empty.no_case_types') ?></div><?php endif; ?>
+                    <div class="glass-ai-visual" aria-hidden="true">
+                        <img class="glass-ai-bg-orb" src="<?= e(app_config('url')) ?>/assets/img/ai-orb.png" alt="">
+                    </div>
+                </a>
+            </section>
+
+            <section class="glass-card glass-side-list">
+                <div class="glass-panel-head">
+                    <h2><?= $hearings ? 'Upcoming hearings' : 'Case mix' ?></h2>
+                    <a class="glass-link" href="<?= $hearings ? 'court.php' : 'cases.php' ?>">View</a>
+                </div>
+                <div class="glass-list">
+                    <?php if ($hearings): ?>
+                        <?php foreach ($hearings as $h): ?>
+                            <div class="glass-list-item">
+                                <div class="glass-list-mark">H</div>
+                                <div class="glass-list-meta">
+                                    <strong><?= e($h['case_number']) ?></strong>
+                                    <span><?= e(format_datetime($h['hearing_date'])) ?></span>
+                                </div>
+                                <div class="glass-list-right">
+                                    <strong><?= e($h['court_name'] ?: 'Court') ?></strong>
+                                    <span class="is-soft"><?= (int) $stats['appointments'] ?> appts</span>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <?php foreach ($typeRows as $type):
+                            $pct = (int) round(((int) $type['c'] / $typeTotal) * 100);
+                        ?>
+                            <div class="glass-list-item">
+                                <div class="glass-list-mark"><?= e(strtoupper(substr($type['label'], 0, 1))) ?></div>
+                                <div class="glass-list-meta">
+                                    <strong><?= e($type['label']) ?></strong>
+                                    <span><?= (int) $type['c'] ?> matters</span>
+                                </div>
+                                <div class="glass-list-right">
+                                    <strong><?= $pct ?>%</strong>
+                                    <span class="is-soft">share</span>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                        <?php if (!$typeRows): ?>
+                            <div class="empty-state">No case data yet.</div>
+                        <?php endif; ?>
+                    <?php endif; ?>
+                </div>
+                <?php if ($unread > 0): ?>
+                    <a class="glass-notify-strip" href="notifications.php"><?= (int) $unread ?> new notification<?= $unread === 1 ? '' : 's' ?></a>
+                <?php endif; ?>
+            </section>
+        </div>
+
+        <div class="glass-dash-right">
+            <div class="glass-mini-row">
+                <article class="glass-card glass-mini">
+                    <div class="glass-mini-top">
+                        <span>Active cases</span>
+                        <strong>+<?= (int) $stats['active_cases'] ?></strong>
+                    </div>
+                    <div class="glass-mini-bar"><span style="width:<?= $casesBar ?>%"></span></div>
+                    <p><?= (int) $stats['clients'] ?> clients · <?= (int) $stats['lawyers'] ?> lawyers</p>
+                </article>
+                <article class="glass-card glass-mini">
+                    <div class="glass-mini-top">
+                        <span>Outstanding</span>
+                        <strong><?= e(money($stats['outstanding'])) ?></strong>
+                    </div>
+                    <div class="glass-mini-bar is-warn"><span style="width:<?= max(8, 100 - $collectBar) ?>%"></span></div>
+                    <p><?= (int) $stats['invoices_open'] ?> open invoices</p>
+                </article>
             </div>
-        </div>
-    </div>
-</section>
 
-<section class="dash-bottom">
-    <div class="panel">
-        <div class="panel-header">
-            <h2><?= __e('dashboard.panel.recent_cases') ?></h2>
-            <a href="cases.php"><?= __e('common.see_all') ?></a>
-        </div>
-        <div class="table-wrap">
-            <table>
-                <thead>
-                    <tr><th><?= __e('common.case') ?></th><th><?= __e('common.client') ?></th><th><?= __e('common.lawyer') ?></th><th><?= __e('common.status') ?></th></tr>
-                </thead>
-                <tbody>
-                <?php foreach ($recentCases as $c): ?>
-                    <tr>
-                        <td>
-                            <strong><a href="cases.php?id=<?= (int) $c['id'] ?>"><?= e($c['case_number']) ?></a></strong>
-                            <div class="muted" style="font-size:0.8rem;"><?= e(t_content($c['title'])) ?></div>
-                        </td>
-                        <td><?= e($c['client_name']) ?></td>
-                        <td><?= e($c['lawyer_name'] ?: __('common.unassigned')) ?></td>
-                        <td><?= status_badge($c['status']) ?></td>
-                    </tr>
-                <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
-    <div class="chart-card">
-        <div class="panel-header">
-            <h2><?= __e('dashboard.panel.appointments_weekday') ?></h2>
-            <a href="appointments.php"><?= __e('common.calendar') ?></a>
-        </div>
-        <div class="chart-wrap md"><canvas id="chartWeekdays"></canvas></div>
-    </div>
-</section>
+            <section class="glass-card glass-overview">
+                <div class="glass-overview-head">
+                    <h2>Overview</h2>
+                    <div class="glass-range" id="overviewRange" role="tablist" aria-label="Chart range">
+                        <button type="button" class="glass-range-btn" data-range="day">Day</button>
+                        <button type="button" class="glass-range-btn" data-range="week">Week</button>
+                        <button type="button" class="glass-range-btn is-active" data-range="month">Month</button>
+                        <button type="button" class="glass-range-btn" data-range="year">Year</button>
+                    </div>
+                </div>
+                <div class="glass-chart" id="overviewChartHost">
+                    <?= $overviewSvg ?>
+                </div>
+            </section>
 
-<section class="dash-lists">
-    <div class="panel">
-        <div class="panel-header"><h2><?= __e('dashboard.panel.revenue_collections') ?></h2><a href="finance.php"><?= __e('nav.finance') ?></a></div>
-        <div class="chart-wrap sm" style="margin-bottom:1rem;"><canvas id="chartRevenue"></canvas></div>
-        <div class="list-stack">
-            <?php foreach ($payments as $p): ?>
-                <div class="list-item">
-                    <strong><?= e(full_name($p)) ?></strong>
-                    <span class="muted"><?= e(money($p['amount'])) ?> · <?= e(format_datetime($p['paid_at'])) ?></span>
+            <section class="glass-card glass-tx">
+                <div class="glass-panel-head">
+                    <h2>Last transactions</h2>
+                    <span class="glass-soft-chip">This month · <?= e(money($stats['month_revenue'])) ?></span>
                 </div>
-            <?php endforeach; ?>
-            <?php if (!$payments): ?><div class="empty-state"><?= __e('dashboard.empty.no_payments') ?></div><?php endif; ?>
+                <div class="table-wrap glass-table-wrap">
+                    <table class="glass-table">
+                        <thead>
+                            <tr>
+                                <th>Activity</th>
+                                <th>Date</th>
+                                <th>Amount</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        <?php foreach ($payments as $p):
+                            $status = $p['invoice_status'] === 'partial' ? 'Pending' : 'Success';
+                            $isPending = $status === 'Pending';
+                        ?>
+                            <tr>
+                                <td>
+                                    <div class="glass-tx-act">
+                                        <span class="glass-tx-icon"><?= e(strtoupper(substr($p['first_name'], 0, 1))) ?></span>
+                                        <div>
+                                            <strong><?= e(full_name($p)) ?></strong>
+                                            <span><?= e($p['invoice_number'] ?: ($p['receipt_number'] ?: 'Receipt')) ?></span>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td><?= e(format_date($p['paid_at'])) ?></td>
+                                <td><?= e(money($p['amount'])) ?></td>
+                                <td>
+                                    <span class="glass-status <?= $isPending ? 'is-pending' : 'is-ok' ?>">
+                                        <i></i> <?= e($status) ?>
+                                    </span>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                        <?php if (!$payments): ?>
+                            <tr><td colspan="4" class="muted">No payments recorded yet.</td></tr>
+                        <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
         </div>
     </div>
-    <div class="panel">
-        <div class="panel-header"><h2><?= __e('dashboard.panel.upcoming_schedule') ?></h2><a href="court.php"><?= __e('nav.court') ?></a></div>
-        <div class="list-stack">
-            <?php foreach ($hearings as $h): ?>
-                <div class="list-item">
-                    <strong><?= __e('court.hearing_prefix') ?> <?= e($h['case_number']) ?></strong>
-                    <span class="muted"><?= e(format_datetime($h['hearing_date'])) ?> · <?= e(t_content($h['court_name'])) ?></span>
-                </div>
-            <?php endforeach; ?>
-            <?php foreach ($appointments as $a): ?>
-                <div class="list-item">
-                    <strong><?= e(t_content($a['title'])) ?></strong>
-                    <span class="muted"><?= e(format_datetime($a['scheduled_at'])) ?> · <?= e($a['client_name'] ?? __('common.em_dash')) ?></span>
-                </div>
-            <?php endforeach; ?>
-            <?php if (!$hearings && !$appointments): ?><div class="empty-state"><?= __e('dashboard.empty.nothing_scheduled') ?></div><?php endif; ?>
-        </div>
-    </div>
-</section>
-
+</div>
 <script>
 window.LEXORA_DASHBOARD = <?= json_encode($chartData, JSON_UNESCAPED_UNICODE) ?>;
+window.LEXORA_OVERVIEW_SVG = true;
+window.initGlassOverview = function () {
+  var host = document.getElementById('overviewChartHost');
+  var rangeRoot = document.getElementById('overviewRange');
+  var data = window.LEXORA_DASHBOARD;
+  if (!host || !rangeRoot || !data) return;
+
+  function sliceByRange(range) {
+    var len = (data.months || []).length || 1;
+    if (range === 'day') return Math.min(2, len);
+    if (range === 'week') return Math.min(4, len);
+    if (range === 'year') return len;
+    return Math.min(7, len);
+  }
+
+  function seriesFor(range) {
+    var n = sliceByRange(range);
+    var labels = (data.months || []).slice(-n);
+    var revenue = (data.revenue || []).slice(-n).map(Number);
+    var opened = (data.opened || []).slice(-n).map(Number);
+    var revenueSum = revenue.reduce(function (a, b) { return a + b; }, 0);
+    var values = revenueSum > 0 ? revenue : (opened.some(function (v) { return v > 0; }) ? opened : revenue);
+    return {
+      labels: labels.length ? labels : ['—'],
+      values: values.length ? values : [0]
+    };
+  }
+
+  function renderSvg(labels, values) {
+    var w = 640, h = 220, padL = 16, padR = 16, padT = 20, padB = 36;
+    var n = Math.max(values.length, 1);
+    var max = Math.max.apply(null, values.map(Number).concat([0]));
+    if (max <= 0) max = 1;
+    var innerW = w - padL - padR;
+    var innerH = h - padT - padB;
+    var pts = values.map(function (v, i) {
+      var x = padL + (n === 1 ? innerW / 2 : (i / (n - 1)) * innerW);
+      var y = padT + innerH - (Number(v) / max) * innerH;
+      return [x, y];
+    });
+    var line = pts.map(function (p, i) {
+      return (i ? 'L' : 'M') + p[0].toFixed(1) + ',' + p[1].toFixed(1);
+    }).join(' ');
+    var last = pts[pts.length - 1];
+    var first = pts[0];
+    var area = line + ' L' + last[0].toFixed(1) + ',' + (padT + innerH) + ' L' + first[0].toFixed(1) + ',' + (padT + innerH) + ' Z';
+    var labelText = labels.map(function (lab, i) {
+      var x = padL + (n === 1 ? innerW / 2 : (i / (n - 1)) * innerW);
+      return '<text x="' + x.toFixed(1) + '" y="' + (h - 12) + '" text-anchor="middle">' + String(lab).replace(/[<>&]/g, '') + '</text>';
+    }).join('');
+    var gid = 'ovFill_' + Date.now();
+    host.innerHTML = '<svg class="glass-svg-chart" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" role="img" aria-label="Overview chart">' +
+      '<defs><linearGradient id="' + gid + '" x1="0" y1="0" x2="0" y2="1">' +
+      '<stop offset="0%" stop-color="currentColor" stop-opacity="0.32"/>' +
+      '<stop offset="100%" stop-color="currentColor" stop-opacity="0"/>' +
+      '</linearGradient></defs>' +
+      '<path d="' + area + '" fill="url(#' + gid + ')"/>' +
+      '<path d="' + line + '" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<circle class="glass-svg-dot" cx="' + last[0].toFixed(1) + '" cy="' + last[1].toFixed(1) + '" r="5.5"/>' +
+      '<g class="glass-svg-labels">' + labelText + '</g></svg>';
+  }
+
+  if (rangeRoot.dataset.bound !== '1') {
+    rangeRoot.dataset.bound = '1';
+    rangeRoot.addEventListener('click', function (e) {
+      var btn = e.target.closest('.glass-range-btn');
+      if (!btn || !rangeRoot.contains(btn)) return;
+      rangeRoot.querySelectorAll('.glass-range-btn').forEach(function (b) { b.classList.remove('is-active'); });
+      btn.classList.add('is-active');
+      var next = seriesFor(btn.getAttribute('data-range') || 'month');
+      renderSvg(next.labels, next.values);
+    });
+  }
+
+  var active = rangeRoot.querySelector('.glass-range-btn.is-active');
+  var range = active ? (active.getAttribute('data-range') || 'month') : 'month';
+  var initial = seriesFor(range);
+  renderSvg(initial.labels, initial.values);
+};
 </script>
 <?php require __DIR__ . '/../includes/footer.php'; ?>
+<script>
+(function () {
+  function boot() {
+    if (typeof window.initGlassOverview === 'function') window.initGlassOverview();
+  }
+  boot();
+  window.addEventListener('load', boot);
+})();
+</script>

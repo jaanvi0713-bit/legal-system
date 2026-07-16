@@ -40,7 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem('lexora-theme', next);
       } catch (e) {}
       if (typeof Chart !== 'undefined' && window.LEXORA_DASHBOARD) {
-        ['chartCases', 'chartRevenue', 'chartTypes', 'chartStatus', 'chartWeekdays'].forEach((id) => {
+        ['chartOverview', 'chartCases', 'chartRevenue', 'chartTypes', 'chartStatus', 'chartWeekdays'].forEach((id) => {
           const el = document.getElementById(id);
           if (!el) return;
           const existing = Chart.getChart(el);
@@ -125,6 +125,15 @@ document.addEventListener('DOMContentLoaded', () => {
   initDashboardCharts();
   initAppointmentsCalendar();
 });
+
+window.addEventListener('load', () => {
+  if (window.LEXORA_DASHBOARD) {
+    initDashboardCharts();
+    if (typeof window.initGlassOverview === 'function') window.initGlassOverview();
+  }
+});
+
+/* Dashboard overview is initialized from admin/index.php (initGlassOverview). */
 
 function initAiAssistantUi() {
   const workspace = document.getElementById('ai-workspace');
@@ -235,11 +244,14 @@ function cssVar(name, fallback) {
 
 function initDashboardCharts() {
   const data = window.LEXORA_DASHBOARD;
-  if (!data || typeof Chart === 'undefined') return;
+  if (!data) return;
 
-  Chart.defaults.font.family = '"Montserrat", "Segoe UI", sans-serif';
-  Chart.defaults.font.size = 11;
-  Chart.defaults.color = cssVar('--ink-soft', '#718096');
+  const hasChart = typeof Chart !== 'undefined';
+  if (hasChart) {
+    Chart.defaults.font.family = '"Montserrat", "Segoe UI", sans-serif';
+    Chart.defaults.font.size = 11;
+    Chart.defaults.color = cssVar('--ink-soft', '#718096');
+  }
 
   const gridColor = () => cssVar('--chart-grid', 'rgba(26,32,44,0.06)');
   const inkSoft = () => cssVar('--ink-soft', '#718096');
@@ -272,6 +284,88 @@ function initDashboardCharts() {
       },
     },
   };
+
+  if (typeof window.initGlassOverview === 'function') {
+    window.initGlassOverview();
+  }
+
+  const overviewEl = document.getElementById('chartOverview');
+  if (hasChart && overviewEl && !window.LEXORA_OVERVIEW_SVG && !Chart.getChart(overviewEl)) {
+    const isDark = () => document.documentElement.getAttribute('data-theme') === 'dark';
+    const sliceByRange = (range) => {
+      const len = (data.months || []).length;
+      if (range === '24h') return Math.min(2, len);
+      if (range === 'week') return Math.min(3, len);
+      if (range === 'year') return Math.max(len, 1);
+      return Math.min(7, Math.max(len, 1));
+    };
+    const buildDataset = (range) => {
+      const n = sliceByRange(range);
+      const labels = (data.months || []).slice(-n);
+      const revenue = (data.revenue || []).slice(-n);
+      const opened = (data.opened || []).slice(-n);
+      const revenueSum = revenue.reduce((a, b) => a + Number(b || 0), 0);
+      const useCases = revenueSum <= 0 && opened.some((v) => Number(v) > 0);
+      return {
+        labels: labels.length ? labels : ['—'],
+        values: (useCases ? opened : revenue).length ? (useCases ? opened : revenue) : [0],
+        label: useCases ? 'Cases opened' : 'Collections',
+        isMoney: !useCases,
+      };
+    };
+    const themeColors = () => {
+      const dark = isDark();
+      return {
+        line: dark ? '#f4f7fb' : primary(),
+        fill: dark ? 'rgba(244, 247, 251, 0.12)' : rgbaPrimary(0.16),
+        tick: dark ? 'rgba(232, 238, 248, 0.65)' : inkSoft(),
+        grid: dark ? 'rgba(255, 255, 255, 0.08)' : gridColor(),
+        pointBorder: dark ? 'rgba(255, 255, 255, 0.95)' : `rgba(${primaryRgb()}, 0.95)`,
+      };
+    };
+
+    let built = buildDataset('month');
+    let colors = themeColors();
+    const overviewChart = new Chart(overviewEl, {
+      type: 'line',
+      data: {
+        labels: built.labels,
+        datasets: [{
+          label: built.label,
+          data: built.values,
+          borderColor: colors.line,
+          backgroundColor: colors.fill,
+          fill: true,
+          borderWidth: 2.5,
+          tension: 0.45,
+          pointRadius: 3,
+          pointBackgroundColor: colors.line,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: colors.tick }, grid: { display: false }, border: { display: false } },
+          y: { beginAtZero: true, ticks: { color: colors.tick }, grid: { color: colors.grid }, border: { display: false } },
+        },
+      },
+    });
+
+    document.querySelectorAll('.glass-range-btn').forEach((btn) => {
+      btn.onclick = () => {
+        document.querySelectorAll('.glass-range-btn').forEach((b) => b.classList.remove('is-active'));
+        btn.classList.add('is-active');
+        built = buildDataset(btn.dataset.range || 'month');
+        overviewChart.data.labels = built.labels;
+        overviewChart.data.datasets[0].data = built.values;
+        overviewChart.update();
+      };
+    });
+  }
+
+  if (!hasChart) return;
 
   const casesEl = document.getElementById('chartCases');
   if (casesEl) {
