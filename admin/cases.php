@@ -66,6 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('cases.php?action=view&id=' . (int) post('id') . '&tab=overview');
     }
     if ($fa === 'invoice' || $fa === 'quotation') {
+        ensure_invoice_bank_column($pdo);
         $caseId = (int) post('case_id');
         $clientId = (int) post('client_id');
         $amount = (float) post('amount');
@@ -73,10 +74,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $total = $amount + $tax;
         $number = generate_invoice_number($pdo);
         $status = $fa === 'quotation' ? 'draft' : (post('status') ?: 'sent');
-        $pdo->prepare('INSERT INTO invoices (invoice_number, case_id, client_id, title, description, amount, tax, total, status, due_date, issued_at, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
+        $bankAccountId = (int) post('bank_account_id');
+        if ($bankAccountId < 1 || $bankAccountId > 3 || !get_bank_account($pdo, $bankAccountId)) {
+            $configured = get_configured_bank_accounts($pdo);
+            $bankAccountId = $configured ? (int) array_key_first($configured) : null;
+        }
+        $pdo->prepare('INSERT INTO invoices (invoice_number, case_id, client_id, title, description, amount, tax, total, status, due_date, issued_at, created_by, bank_account_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
             ->execute([
                 $number, $caseId, $clientId, post('title'), post('description'),
-                $amount, $tax, $total, $status, post('due_date') ?: null, post('issued_at') ?: date('Y-m-d'), current_user()['id'],
+                $amount, $tax, $total, $status, post('due_date') ?: null, post('issued_at') ?: date('Y-m-d'), current_user()['id'], $bankAccountId,
             ]);
         if ($status !== 'draft') {
             create_notification($pdo, $clientId, 'New invoice', $number . ' issued for ' . money($total), 'payment', '../client/payments.php', current_user()['id']);
@@ -336,10 +342,10 @@ if ($action === 'view' && $id) {
             <div class="case-hub-actions">
                 <a class="btn btn-secondary btn-sm" href="?action=edit&id=<?= $id ?>">Edit</a>
                 <details class="case-hub-menu">
-                    <summary class="btn btn-case-new btn-sm">Quick Actions ▾</summary>
+                    <summary class="btn btn-primary btn-sm">Quick Actions ▾</summary>
                     <div class="case-hub-menu-panel">
                         <a href="<?= e($tabUrl('quotations')) ?>&compose=quotation">New quotation</a>
-                        <a href="<?= e($tabUrl('invoices')) ?>&compose=invoice">Create invoice</a>
+                        <a href="invoice.php?action=generate&case_id=<?= $id ?>&client_id=<?= (int) $case['client_id'] ?>&from=<?= e(urlencode('cases.php?action=view&id=' . $id . '&tab=invoices')) ?>">Generate invoice</a>
                         <a href="<?= e($tabUrl('receipts')) ?>&compose=payment">Record payment / receipt</a>
                         <a href="<?= e($tabUrl('documents')) ?>">Upload document</a>
                         <a href="court.php?action=create&case_id=<?= $id ?>">Add hearing</a>
@@ -483,7 +489,7 @@ if ($action === 'view' && $id) {
         <section class="panel case-hub-card">
             <div class="panel-header">
                 <h2>Quotations</h2>
-                <a class="btn btn-case-new btn-sm" href="<?= e($tabUrl('quotations')) ?>&compose=quotation">+ New quotation</a>
+                <a class="btn btn-primary btn-sm" href="<?= e($tabUrl('quotations')) ?>&compose=quotation">+ New quotation</a>
             </div>
             <p class="muted" style="margin-top:0;">Draft fee proposals before issuing a formal invoice.</p>
             <?php if ($compose === 'quotation'): ?>
@@ -519,53 +525,101 @@ if ($action === 'view' && $id) {
             </div>
         </section>
 
-        <?php elseif ($tab === 'invoices'): ?>
-        <section class="panel case-hub-card">
+        <?php elseif ($tab === 'invoices'):
+            $invQ = trim((string) get('q', ''));
+            $invStatus = (string) get('status', '');
+            $caseInvReturn = 'cases.php?action=view&id=' . $id . '&tab=invoices';
+            $filteredInvoices = array_values(array_filter($invoices, static function ($i) use ($invQ, $invStatus) {
+                if ($invStatus !== '' && $i['status'] !== $invStatus) {
+                    return false;
+                }
+                if ($invQ === '') {
+                    return true;
+                }
+                $hay = strtolower(($i['invoice_number'] ?? '') . ' ' . ($i['title'] ?? ''));
+                return str_contains($hay, strtolower($invQ));
+            }));
+        ?>
+        <section class="panel case-hub-card inv-list-panel">
             <div class="panel-header">
-                <h2>Invoices</h2>
-                <a class="btn btn-case-new btn-sm" href="<?= e($tabUrl('invoices')) ?>&compose=invoice">+ Create invoice</a>
+                <h2><?= __e('finance.invoices') ?></h2>
+                <a class="btn btn-primary btn-sm" href="invoice.php?action=generate&case_id=<?= $id ?>&client_id=<?= (int) $case['client_id'] ?>&from=<?= e(urlencode($caseInvReturn)) ?>">+ <?= __e('finance.generate_invoice') ?></a>
             </div>
-            <?php if ($compose === 'invoice'): ?>
-            <form method="post" class="form-grid entity-inline-form" style="margin:1rem 0;">
-                <?= csrf_field() ?>
-                <input type="hidden" name="form_action" value="invoice">
-                <input type="hidden" name="case_id" value="<?= $id ?>">
-                <input type="hidden" name="client_id" value="<?= (int)$case['client_id'] ?>">
-                <div class="form-group full"><label>Title <span class="req">*</span></label><input name="title" required value="Legal fees — <?= e($case['case_number']) ?>"></div>
-                <div class="form-group"><label>Amount (Rs) <span class="req">*</span></label><input type="number" step="0.01" name="amount" required></div>
-                <div class="form-group"><label>Tax (Rs)</label><input type="number" step="0.01" name="tax" value="0"></div>
-                <div class="form-group"><label>Status</label><select name="status"><?php foreach (['sent','partial','paid','overdue'] as $s): ?><option value="<?= $s ?>"><?= ucfirst($s) ?></option><?php endforeach; ?></select></div>
-                <div class="form-group"><label>Due date</label><input type="date" name="due_date"></div>
-                <div class="form-group full"><label>Description</label><textarea name="description" rows="2"></textarea></div>
-                <div class="form-actions full">
-                    <button class="btn btn-primary" type="submit">Save invoice</button>
-                    <a class="btn btn-secondary" href="<?= e($tabUrl('invoices')) ?>">Cancel</a>
-                </div>
+
+            <form method="get" class="inv-list-filters" action="cases.php">
+                <input type="hidden" name="action" value="view">
+                <input type="hidden" name="id" value="<?= $id ?>">
+                <input type="hidden" name="tab" value="invoices">
+                <label class="inv-search">
+                    <span class="inv-search-icon" aria-hidden="true">⌕</span>
+                    <input type="search" name="q" value="<?= e($invQ) ?>" placeholder="<?= __e('finance.search_invoices') ?>">
+                </label>
+                <select name="status" onchange="this.form.submit()">
+                    <option value=""><?= __e('finance.all_statuses') ?></option>
+                    <?php foreach (['sent', 'partial', 'paid', 'overdue', 'cancelled'] as $s): ?>
+                        <option value="<?= e($s) ?>" <?= $invStatus === $s ? 'selected' : '' ?>><?= e(translate_status($s)) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <?php if ($invQ !== '' || $invStatus !== ''): ?>
+                    <a class="btn btn-secondary btn-sm" href="<?= e($tabUrl('invoices')) ?>"><?= __e('common.clear') ?></a>
+                <?php endif; ?>
             </form>
-            <?php endif; ?>
+
             <div class="table-wrap">
-                <table>
-                    <thead><tr><th>Invoice</th><th>Total</th><th>Status</th><th>Due</th></tr></thead>
-                    <tbody>
-                    <?php foreach ($invoices as $i): ?>
+                <table class="inv-list-table">
+                    <thead>
                         <tr>
-                            <td><strong><?= e($i['invoice_number']) ?></strong><div class="muted"><?= e($i['title']) ?></div></td>
+                            <th><?= __e('finance.invoice_number') ?></th>
+                            <th><?= __e('common.amount') ?></th>
+                            <th><?= __e('finance.due_date') ?></th>
+                            <th><?= __e('common.status') ?></th>
+                            <th class="is-right"><?= __e('common.actions') ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($filteredInvoices as $i): ?>
+                        <tr>
+                            <td>
+                                <strong><?= e($i['invoice_number']) ?></strong>
+                                <div class="muted"><?= e($i['title']) ?></div>
+                            </td>
                             <td><?= e(money($i['total'])) ?></td>
+                            <td><?= e(format_date($i['due_date'], 'M j, Y')) ?></td>
                             <td><?= status_badge($i['status']) ?></td>
-                            <td><?= e(format_date($i['due_date'])) ?></td>
+                            <td class="is-right case-row-actions inv-row-actions">
+                                <a class="btn btn-row-open btn-sm" href="invoice.php?id=<?= (int) $i['id'] ?>&from=<?= e(urlencode($caseInvReturn)) ?>"><?= __e('common.view') ?></a>
+                                <form method="post" action="invoice.php" class="inline-form">
+                                    <?= csrf_field() ?>
+                                    <input type="hidden" name="form_action" value="email_client">
+                                    <input type="hidden" name="invoice_id" value="<?= (int) $i['id'] ?>">
+                                    <input type="hidden" name="return_to" value="<?= e($caseInvReturn) ?>">
+                                    <button class="btn btn-row-open btn-sm" type="submit"><?= __e('finance.email_client') ?></button>
+                                </form>
+                                <form method="post" action="invoice.php" class="inline-form" onsubmit="return confirm('<?= e(__('finance.delete_confirm', ['number' => $i['invoice_number']])) ?>');">
+                                    <?= csrf_field() ?>
+                                    <input type="hidden" name="form_action" value="delete_invoice">
+                                    <input type="hidden" name="invoice_id" value="<?= (int) $i['id'] ?>">
+                                    <input type="hidden" name="return_to" value="<?= e($caseInvReturn) ?>">
+                                    <button class="btn btn-row-delete btn-sm" type="submit"><?= __e('common.delete') ?></button>
+                                </form>
+                            </td>
                         </tr>
                     <?php endforeach; ?>
-                    <?php if (!$invoices): ?><tr><td colspan="4" class="muted">No invoices yet.</td></tr><?php endif; ?>
+                    <?php if (!$filteredInvoices): ?>
+                        <tr><td colspan="5" class="muted"><?= __e('finance.no_invoices') ?></td></tr>
+                    <?php endif; ?>
                     </tbody>
                 </table>
             </div>
         </section>
 
-        <?php elseif ($tab === 'receipts'): ?>
+        <?php elseif ($tab === 'receipts'):
+            $preselectPayInvoice = (int) get('invoice_id', 0);
+        ?>
         <section class="panel case-hub-card">
             <div class="panel-header">
-                <h2>Receipts &amp; payments</h2>
-                <a class="btn btn-case-new btn-sm" href="<?= e($tabUrl('receipts')) ?>&compose=payment">+ Record payment</a>
+                <h2><?= __e('finance.payments') ?> / <?= __e('finance.receipt') ?></h2>
+                <a class="btn btn-primary btn-sm" href="<?= e($tabUrl('receipts')) ?>&compose=payment">+ <?= __e('finance.record_payment') ?></a>
             </div>
             <?php if ($compose === 'payment'): ?>
             <form method="post" class="form-grid entity-inline-form" style="margin:1rem 0;">
@@ -573,39 +627,55 @@ if ($action === 'view' && $id) {
                 <input type="hidden" name="form_action" value="payment">
                 <input type="hidden" name="case_id" value="<?= $id ?>">
                 <input type="hidden" name="client_id" value="<?= (int)$case['client_id'] ?>">
-                <div class="form-group"><label>Invoice <span class="req">*</span></label>
+                <div class="form-group"><label><?= __e('finance.invoice_number') ?> <span class="req">*</span></label>
                     <select name="invoice_id" required>
-                        <option value="">Select invoice…</option>
+                        <option value=""><?= __e('common.em_dash') ?></option>
                         <?php foreach ($invoices as $i): ?>
-                            <option value="<?= (int)$i['id'] ?>"><?= e($i['invoice_number'] . ' · ' . money($i['total'])) ?></option>
+                            <option value="<?= (int)$i['id'] ?>" <?= $preselectPayInvoice === (int) $i['id'] ? 'selected' : '' ?>><?= e($i['invoice_number'] . ' · ' . money($i['total'])) ?></option>
                         <?php endforeach; ?>
                     </select>
-                    <?php if (!$invoices): ?><p class="field-hint">Create an invoice first, then record the payment receipt.</p><?php endif; ?>
+                    <?php if (!$invoices): ?><p class="field-hint">Generate an invoice first, then record the payment receipt.</p><?php endif; ?>
                 </div>
-                <div class="form-group"><label>Amount (Rs) <span class="req">*</span></label><input type="number" step="0.01" name="amount" required></div>
-                <div class="form-group"><label>Method</label><select name="payment_method"><?php foreach (['bank_transfer','card','cash','cheque','online','other'] as $m): ?><option value="<?= $m ?>"><?= ucwords(str_replace('_',' ',$m)) ?></option><?php endforeach; ?></select></div>
-                <div class="form-group"><label>Reference</label><input name="reference_number"></div>
-                <div class="form-group"><label>Paid at</label><input type="datetime-local" name="paid_at" value="<?= date('Y-m-d\TH:i') ?>"></div>
-                <div class="form-group full"><label>Notes</label><textarea name="notes" rows="2"></textarea></div>
+                <div class="form-group"><label><?= __e('common.amount') ?> <span class="req">*</span></label><input type="number" step="0.01" name="amount" required></div>
+                <div class="form-group"><label><?= __e('finance.method') ?></label><select name="payment_method"><?php foreach (['bank_transfer','card','cash','cheque','online','other'] as $m): ?><option value="<?= $m ?>"><?= e(__('payment.method.' . $m)) ?></option><?php endforeach; ?></select></div>
+                <div class="form-group"><label><?= __e('common.reference') ?></label><input name="reference_number"></div>
+                <div class="form-group"><label><?= __e('form.paid_at') ?></label><input type="datetime-local" name="paid_at" value="<?= date('Y-m-d\TH:i') ?>"></div>
+                <div class="form-group full"><label><?= __e('common.notes') ?></label><textarea name="notes" rows="2"></textarea></div>
                 <div class="form-actions full">
-                    <button class="btn btn-primary" type="submit">Record &amp; generate receipt</button>
-                    <a class="btn btn-secondary" href="<?= e($tabUrl('receipts')) ?>">Cancel</a>
+                    <button class="btn btn-primary" type="submit"><?= __e('finance.record_receipt_btn') ?></button>
+                    <a class="btn btn-secondary" href="<?= e($tabUrl('receipts')) ?>"><?= __e('common.cancel') ?></a>
                 </div>
             </form>
             <?php endif; ?>
             <div class="table-wrap">
                 <table>
-                    <thead><tr><th>Receipt</th><th>Amount</th><th>Invoice</th><th>Paid</th></tr></thead>
+                    <thead>
+                        <tr>
+                            <th><?= __e('finance.receipt') ?></th>
+                            <th><?= __e('common.amount') ?></th>
+                            <th><?= __e('finance.method') ?></th>
+                            <th><?= __e('finance.invoice_number') ?></th>
+                            <th><?= __e('common.date') ?></th>
+                        </tr>
+                    </thead>
                     <tbody>
                     <?php foreach ($payments as $p): ?>
                         <tr>
-                            <td><strong><?= e($p['receipt_number']) ?></strong></td>
+                            <td>
+                                <strong><?= e($p['receipt_number']) ?></strong>
+                                <?php if (!empty($p['reference_number'])): ?>
+                                    <div class="muted"><?= e($p['reference_number']) ?></div>
+                                <?php endif; ?>
+                            </td>
                             <td><?= e(money($p['amount'])) ?></td>
-                            <td><?= e($p['invoice_number'] ?: '—') ?></td>
+                            <td><?= e(__('payment.method.' . ($p['payment_method'] ?: 'other'))) ?></td>
+                            <td><?= e($p['invoice_number'] ?: __('common.em_dash')) ?></td>
                             <td><?= e(format_datetime($p['paid_at'])) ?></td>
                         </tr>
                     <?php endforeach; ?>
-                    <?php if (!$payments): ?><tr><td colspan="4" class="muted">No receipts yet.</td></tr><?php endif; ?>
+                    <?php if (!$payments): ?>
+                        <tr><td colspan="5" class="muted"><?= __e('dashboard.empty.no_payments') ?></td></tr>
+                    <?php endif; ?>
                     </tbody>
                 </table>
             </div>
@@ -626,7 +696,7 @@ if ($action === 'view' && $id) {
 
         <?php elseif ($tab === 'deadlines'): ?>
         <section class="panel case-hub-card">
-            <div class="panel-header"><h2>Deadlines &amp; hearings</h2><a class="btn btn-secondary btn-sm" href="court.php?action=create&case_id=<?= $id ?>">Add hearing</a></div>
+            <div class="panel-header"><h2>Deadlines &amp; hearings</h2><a class="btn btn-primary btn-sm" href="court.php?action=create&case_id=<?= $id ?>">Add hearing</a></div>
             <div class="list-item" style="margin-bottom:1rem;"><strong>Next hearing</strong><?= e(format_date($case['next_hearing_date'])) ?></div>
             <div class="table-wrap">
                 <table>
@@ -682,27 +752,55 @@ if ($action === 'view' && $id) {
     <?php require __DIR__ . '/../includes/footer.php'; exit;
 }
 
-$cases = $pdo->query("
+$filter = (string) get('filter', '');
+$activeStatuses = ['open', 'active', 'pending', 'reopened', 'on_hold'];
+$sql = "
     SELECT c.*,
         CONCAT(cl.first_name,' ',cl.last_name) AS client_name,
         cl.company_name,
         CONCAT(lw.first_name,' ',lw.last_name) AS lawyer_name,
-        COALESCE((SELECT SUM(i.total) FROM invoices i WHERE i.case_id = c.id), 0) AS fee_total
+        COALESCE((SELECT SUM(i.total) FROM invoices i WHERE i.case_id = c.id), 0) AS fee_total,
+        COALESCE((SELECT SUM(i.total) FROM invoices i WHERE i.case_id = c.id AND i.status IN ('sent','partial','overdue')), 0) AS outstanding_total
     FROM cases c
     JOIN users cl ON cl.id = c.client_id
     LEFT JOIN users lw ON lw.id = c.lawyer_id
-    ORDER BY c.updated_at DESC
-")->fetchAll();
+";
+if ($filter === 'active') {
+    $placeholders = implode(',', array_fill(0, count($activeStatuses), '?'));
+    $sql .= " WHERE c.status IN ($placeholders)";
+    $stmt = $pdo->prepare($sql . ' ORDER BY c.updated_at DESC');
+    $stmt->execute($activeStatuses);
+    $cases = $stmt->fetchAll();
+} elseif ($filter === 'outstanding') {
+    $sql .= " WHERE EXISTS (
+        SELECT 1 FROM invoices i
+        WHERE i.case_id = c.id AND i.status IN ('sent','partial','overdue')
+    )";
+    $cases = $pdo->query($sql . ' ORDER BY outstanding_total DESC, c.updated_at DESC')->fetchAll();
+} else {
+    $cases = $pdo->query($sql . ' ORDER BY c.updated_at DESC')->fetchAll();
+}
 $pageTitle = 'Cases';
-$pageSubtitle = 'View and manage all legal cases';
+$pageSubtitle = $filter === 'active'
+    ? 'Active cases'
+    : ($filter === 'outstanding' ? 'Cases with outstanding invoices' : 'View and manage all legal cases');
 require __DIR__ . '/../includes/header.php';
 $totalCases = count($cases);
+$filterLabel = $filter === 'active' ? 'Active cases' : ($filter === 'outstanding' ? 'Outstanding balance' : '');
 ?>
 <div class="panel case-list-panel">
     <div class="case-list-head">
         <h2>Case Management</h2>
-        <a class="btn btn-case-new" href="?action=create">+ Open case</a>
+        <div class="case-row-actions">
+            <?php if ($filterLabel !== ''): ?>
+                <a class="btn btn-secondary btn-sm" href="cases.php">Clear filter</a>
+            <?php endif; ?>
+            <a class="btn btn-primary" href="?action=create">+ Open case</a>
+        </div>
     </div>
+    <?php if ($filterLabel !== ''): ?>
+        <p class="muted" style="margin:0 0 0.85rem;">Showing: <strong><?= e($filterLabel) ?></strong></p>
+    <?php endif; ?>
     <div class="table-wrap case-table-wrap">
         <table class="case-table">
             <thead>

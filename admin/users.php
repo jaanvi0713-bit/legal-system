@@ -4,7 +4,7 @@ require_role(['admin']);
 $pdo = db();
 $action = get('action', 'list');
 $id = (int) get('id', 0);
-$permissionOptions = ['clients', 'lawyers', 'cases', 'appointments', 'court', 'finance', 'reports', 'notifications'];
+$permissionOptions = ['clients', 'lawyers', 'cases', 'appointments', 'court', 'reports', 'notifications'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
@@ -262,26 +262,26 @@ require __DIR__ . '/../includes/header.php';
                     </td>
                     <td><?= e(format_datetime($u['last_login'])) ?></td>
                     <td><?= status_badge($u['is_active'] ? 'active' : 'unavailable') ?></td>
-                    <td class="quick-links">
-                        <a class="chip" href="?action=edit&id=<?= (int) $u['id'] ?>">Edit</a>
-                        <form method="post" style="display:inline">
+                    <td class="case-row-actions">
+                        <a class="btn btn-row-open btn-sm" href="?action=edit&id=<?= (int) $u['id'] ?>">Edit</a>
+                        <form method="post" class="inline-form">
                             <?= csrf_field() ?>
                             <input type="hidden" name="form_action" value="toggle">
                             <input type="hidden" name="id" value="<?= (int) $u['id'] ?>">
-                            <button class="chip" type="submit"><?= $u['is_active'] ? 'Deactivate' : 'Activate' ?></button>
+                            <button class="btn btn-secondary btn-sm" type="submit"><?= $u['is_active'] ? 'Deactivate' : 'Activate' ?></button>
                         </form>
-                        <form method="post" style="display:inline" onsubmit="return confirm('Reset password to password123?')">
+                        <form method="post" class="inline-form" onsubmit="return confirm('Reset password to password123?')">
                             <?= csrf_field() ?>
                             <input type="hidden" name="form_action" value="reset">
                             <input type="hidden" name="id" value="<?= (int) $u['id'] ?>">
-                            <button class="chip" type="submit">Reset PW</button>
+                            <button class="btn btn-secondary btn-sm" type="submit">Reset PW</button>
                         </form>
                         <?php if ($u['role'] === 'staff'): ?>
-                            <form method="post" style="display:inline" onsubmit="return confirm('Remove this staff member?')">
+                            <form method="post" class="inline-form" onsubmit="return confirm('Remove this staff member?')">
                                 <?= csrf_field() ?>
                                 <input type="hidden" name="form_action" value="delete">
                                 <input type="hidden" name="id" value="<?= (int) $u['id'] ?>">
-                                <button class="chip" type="submit">Remove</button>
+                                <button class="btn btn-row-delete btn-sm" type="submit">Remove</button>
                             </form>
                         <?php endif; ?>
                     </td>

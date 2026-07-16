@@ -190,7 +190,7 @@ if ($action === 'view' && $id) {
                 <h2><?= e(full_name($lawyer)) ?></h2>
                 <p class="muted"><?= e($lawyer['specialization'] ?: 'General practice') ?> · <?= e($lawyer['bar_number'] ?: 'No bar #') ?></p>
             </div>
-            <a class="btn btn-sm btn-primary" href="?action=edit&id=<?= $id ?>">Edit profile</a>
+            <a class="btn btn-primary btn-sm" href="?action=edit&id=<?= $id ?>">Edit profile</a>
         </div>
         <div class="grid grid-2">
             <div class="list-item"><strong>Email</strong><?= e($lawyer['email']) ?></div>
@@ -248,9 +248,9 @@ require __DIR__ . '/../includes/header.php';
                     <td><?= e($l['specialization'] ?: '—') ?></td>
                     <td><?= (int)$l['open_cases'] ?> open</td>
                     <td><?= status_badge($l['availability']) ?></td>
-                    <td class="quick-links">
-                        <a class="chip" href="?action=edit&id=<?= (int)$l['id'] ?>">Edit</a>
-                        <form method="post" style="display:inline" onsubmit="return confirm('Remove this lawyer?')"><?= csrf_field() ?><input type="hidden" name="form_action" value="delete"><input type="hidden" name="id" value="<?= (int)$l['id'] ?>"><button class="chip" type="submit">Remove</button></form>
+                    <td class="case-row-actions">
+                        <a class="btn btn-row-open btn-sm" href="?action=edit&id=<?= (int)$l['id'] ?>">Edit</a>
+                        <form method="post" class="inline-form" onsubmit="return confirm('Remove this lawyer?')"><?= csrf_field() ?><input type="hidden" name="form_action" value="delete"><input type="hidden" name="id" value="<?= (int)$l['id'] ?>"><button class="btn btn-row-delete btn-sm" type="submit">Remove</button></form>
                     </td>
                 </tr>
             <?php endforeach; ?>

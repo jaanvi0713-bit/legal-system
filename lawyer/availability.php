@@ -45,7 +45,7 @@ require __DIR__ . '/../includes/header.php';
         </div>
         <div class="form-actions full">
             <button class="btn btn-primary" type="submit"><?= __e('lawyer.availability.save') ?></button>
-            <a class="btn btn-ghost" href="profile.php"><?= __e('lawyer.availability.edit_profile') ?></a>
+            <a class="btn btn-secondary" href="profile.php"><?= __e('lawyer.availability.edit_profile') ?></a>
         </div>
     </form>
 </div>

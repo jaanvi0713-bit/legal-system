@@ -236,22 +236,22 @@ require __DIR__ . '/../includes/header.php';
 
         <div class="glass-dash-right">
             <div class="glass-mini-row">
-                <article class="glass-card glass-mini">
+                <a class="glass-card glass-mini glass-mini-link" href="cases.php?filter=active">
                     <div class="glass-mini-top">
                         <span>Active cases</span>
                         <strong>+<?= (int) $stats['active_cases'] ?></strong>
                     </div>
                     <div class="glass-mini-bar"><span style="width:<?= $casesBar ?>%"></span></div>
-                    <p><?= (int) $stats['clients'] ?> clients Â· <?= (int) $stats['lawyers'] ?> lawyers</p>
-                </article>
-                <article class="glass-card glass-mini">
+                    <p><?= (int) $stats['clients'] ?> clients · <?= (int) $stats['lawyers'] ?> lawyers</p>
+                </a>
+                <a class="glass-card glass-mini glass-mini-link" href="cases.php?filter=outstanding">
                     <div class="glass-mini-top">
                         <span>Outstanding</span>
                         <strong><?= e(money($stats['outstanding'])) ?></strong>
                     </div>
                     <div class="glass-mini-bar is-warn"><span style="width:<?= max(8, 100 - $collectBar) ?>%"></span></div>
                     <p><?= (int) $stats['invoices_open'] ?> open invoices</p>
-                </article>
+                </a>
             </div>
 
             <section class="glass-card glass-overview">

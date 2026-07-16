@@ -37,6 +37,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash('success', 'Appointment cancelled.');
         redirect('appointments.php');
     }
+    if ($fa === 'delete') {
+        $delId = (int) post('id');
+        $pdo->prepare('DELETE FROM appointments WHERE id=?')->execute([$delId]);
+        flash('success', 'Appointment deleted.');
+        redirect('appointments.php');
+    }
 }
 
 $clients = $pdo->query("SELECT id, first_name, last_name FROM users WHERE role='client' ORDER BY first_name")->fetchAll();
@@ -167,11 +173,17 @@ require __DIR__ . '/../includes/header.php';
                     <td><?= e($r['lawyer_name'] ?: '—') ?></td>
                     <td><?= e($r['client_name'] ?: '—') ?></td>
                     <td><?= status_badge($r['status']) ?></td>
-                    <td class="quick-links">
-                        <a class="chip" href="?action=edit&id=<?= (int)$r['id'] ?>">Edit</a>
+                    <td class="case-row-actions">
+                        <a class="btn btn-row-open btn-sm" href="?action=edit&id=<?= (int)$r['id'] ?>">Edit</a>
                         <?php if ($r['status'] !== 'cancelled'): ?>
-                        <form method="post" style="display:inline"><?= csrf_field() ?><input type="hidden" name="form_action" value="cancel"><input type="hidden" name="id" value="<?= (int)$r['id'] ?>"><button class="chip" type="submit">Cancel</button></form>
+                        <form method="post" class="inline-form"><?= csrf_field() ?><input type="hidden" name="form_action" value="cancel"><input type="hidden" name="id" value="<?= (int)$r['id'] ?>"><button class="btn btn-secondary btn-sm" type="submit">Cancel</button></form>
                         <?php endif; ?>
+                        <form method="post" class="inline-form" onsubmit="return confirm('Delete this appointment?');">
+                            <?= csrf_field() ?>
+                            <input type="hidden" name="form_action" value="delete">
+                            <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
+                            <button class="btn btn-row-delete btn-sm" type="submit">Delete</button>
+                        </form>
                     </td>
                 </tr>
             <?php endforeach; ?>

@@ -192,8 +192,8 @@ if ($action === 'view' && $id) {
                 <p class="muted"><?= e($client['company_name'] ?: 'Individual client') ?> · Lawyer: <?= e($client['lawyer_name'] ?: 'Unassigned') ?></p>
             </div>
             <div class="quick-links">
-                <a class="btn btn-sm btn-primary" href="?action=edit&id=<?= $id ?>">Edit</a>
-                <a class="btn btn-sm btn-ghost" href="clients.php">Back</a>
+                <a class="btn btn-primary btn-sm" href="?action=edit&id=<?= $id ?>">Edit</a>
+                <a class="btn btn-secondary btn-sm" href="clients.php">Back</a>
             </div>
         </div>
         <div class="grid grid-2">
@@ -242,12 +242,12 @@ require __DIR__ . '/../includes/header.php';
                     <td><?= e($c['company_name'] ?: '—') ?></td>
                     <td><?= e($c['lawyer_name'] ?: 'Unassigned') ?></td>
                     <td><?= status_badge($c['is_active'] ? 'active' : 'pending') ?></td>
-                    <td class="quick-links">
-                        <a class="chip" href="?action=edit&id=<?= (int)$c['id'] ?>">Edit</a>
+                    <td class="case-row-actions">
+                        <a class="btn btn-row-open btn-sm" href="?action=edit&id=<?= (int)$c['id'] ?>">Edit</a>
                         <?php if (!$c['is_active']): ?>
-                        <form method="post" style="display:inline"><?= csrf_field() ?><input type="hidden" name="form_action" value="approve"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>"><button class="chip" type="submit">Approve</button></form>
+                        <form method="post" class="inline-form"><?= csrf_field() ?><input type="hidden" name="form_action" value="approve"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>"><button class="btn btn-secondary btn-sm" type="submit">Approve</button></form>
                         <?php endif; ?>
-                        <form method="post" style="display:inline" onsubmit="return confirm('Delete this client?')"><?= csrf_field() ?><input type="hidden" name="form_action" value="delete"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>"><button class="chip" type="submit">Delete</button></form>
+                        <form method="post" class="inline-form" onsubmit="return confirm('Delete this client?')"><?= csrf_field() ?><input type="hidden" name="form_action" value="delete"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>"><button class="btn btn-row-delete btn-sm" type="submit">Delete</button></form>
                     </td>
                 </tr>
             <?php endforeach; ?>

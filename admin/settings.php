@@ -40,7 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($section === 'branding') {
         foreach ([
             'company_name', 'company_email', 'company_phone', 'company_address',
-            'company_website', 'company_registration', 'branding_font',
+            'company_website', 'company_registration', 'company_vat', 'branding_font',
             'branding_accent', 'theme',
             'ai_enabled', 'ai_welcome_admin', 'ai_welcome_lawyer', 'ai_welcome_client',
         ] as $key) {
@@ -65,6 +65,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         foreach (['payment_currency', 'payment_methods', 'payment_instructions'] as $key) {
             set_setting($pdo, $key, post($key));
         }
+        $banks = [];
+        for ($i = 1; $i <= 3; $i++) {
+            $banks[$i] = [
+                'label' => post('bank_' . $i . '_label'),
+                'bank' => post('bank_' . $i . '_bank'),
+                'account_name' => post('bank_' . $i . '_account_name'),
+                'account_number' => post('bank_' . $i . '_account_number'),
+                'iban' => post('bank_' . $i . '_iban'),
+                'swift' => post('bank_' . $i . '_swift'),
+            ];
+        }
+        save_bank_accounts($pdo, $banks);
         flash('success', __('settings.payments.saved'));
     } elseif ($section === 'language') {
         $lang = strtolower((string) post('app_language', 'en'));
@@ -283,6 +295,7 @@ require __DIR__ . '/../includes/header.php';
                     <div class="form-grid">
                         <div class="form-group"><label><?= __e('settings.branding.website') ?></label><input name="company_website" value="<?= e($get('company_website')) ?>" placeholder="https://"></div>
                         <div class="form-group"><label><?= __e('settings.branding.registration') ?></label><input name="company_registration" value="<?= e($get('company_registration')) ?>"></div>
+                        <div class="form-group"><label><?= __e('settings.branding.vat_number') ?></label><input name="company_vat" value="<?= e($get('company_vat')) ?>" placeholder="e.g. 290 4002 07"></div>
                         <div class="form-group"><label><?= __e('common.email') ?></label><input name="company_email" value="<?= e($get('company_email')) ?>"></div>
                         <div class="form-group"><label><?= __e('common.phone') ?></label><input name="company_phone" value="<?= e($get('company_phone')) ?>"></div>
                         <div class="form-group full"><label><?= __e('common.address') ?></label><textarea name="company_address"><?= e($get('company_address')) ?></textarea></div>
@@ -351,6 +364,28 @@ require __DIR__ . '/../includes/header.php';
                         </div>
                         <div class="form-group"><label><?= __e('settings.payments.methods') ?></label><input name="payment_methods" value="<?= e($get('payment_methods', __('content.settings.payment_methods'))) ?>"></div>
                         <div class="form-group full"><label><?= __e('settings.payments.instructions') ?></label><textarea name="payment_instructions"><?= e($get('payment_instructions', __('content.settings.payment_instructions'))) ?></textarea></div>
+                    </div>
+                </div>
+                <?php $bankAccounts = get_bank_accounts($pdo); ?>
+                <div class="settings-block">
+                    <div class="settings-block-head">
+                        <h3><?= __e('settings.payments.bank_accounts') ?></h3>
+                        <p><?= __e('settings.payments.bank_accounts_help') ?></p>
+                    </div>
+                    <div class="bank-accounts-grid">
+                        <?php foreach ($bankAccounts as $n => $ba): ?>
+                            <div class="bank-account-card">
+                                <h4><?= __e('settings.payments.bank_account_n', ['n' => (string) $n]) ?></h4>
+                                <div class="form-grid">
+                                    <div class="form-group"><label><?= __e('settings.payments.bank_label') ?></label><input name="bank_<?= (int) $n ?>_label" value="<?= e($ba['label']) ?>" placeholder="e.g. Main AED account"></div>
+                                    <div class="form-group"><label><?= __e('settings.payments.bank_name') ?></label><input name="bank_<?= (int) $n ?>_bank" value="<?= e($ba['bank']) ?>" placeholder="e.g. Emirates NBD"></div>
+                                    <div class="form-group"><label><?= __e('settings.payments.account_name') ?></label><input name="bank_<?= (int) $n ?>_account_name" value="<?= e($ba['account_name']) ?>"></div>
+                                    <div class="form-group"><label><?= __e('settings.payments.account_number') ?></label><input name="bank_<?= (int) $n ?>_account_number" value="<?= e($ba['account_number']) ?>"></div>
+                                    <div class="form-group"><label><?= __e('settings.payments.iban') ?></label><input name="bank_<?= (int) $n ?>_iban" value="<?= e($ba['iban']) ?>"></div>
+                                    <div class="form-group"><label><?= __e('settings.payments.swift') ?></label><input name="bank_<?= (int) $n ?>_swift" value="<?= e($ba['swift']) ?>"></div>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
                     </div>
                 </div>
                 <div class="form-actions"><button class="btn btn-primary" type="submit"><?= __e('settings.save_payments') ?></button></div>

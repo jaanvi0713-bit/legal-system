@@ -51,14 +51,28 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  const accountMenu = document.querySelector('.topbar-account');
-  if (accountMenu) {
+  const popMenus = document.querySelectorAll('.topbar-account, .topbar-notify-menu');
+  if (popMenus.length) {
     document.addEventListener('click', (e) => {
-      if (!accountMenu.open) return;
-      if (!accountMenu.contains(e.target)) accountMenu.open = false;
+      popMenus.forEach((menu) => {
+        if (!menu.open) return;
+        if (!menu.contains(e.target)) menu.open = false;
+      });
     });
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && accountMenu.open) accountMenu.open = false;
+      if (e.key !== 'Escape') return;
+      popMenus.forEach((menu) => {
+        if (menu.open) menu.open = false;
+      });
+    });
+    // Only one header popover open at a time
+    popMenus.forEach((menu) => {
+      menu.addEventListener('toggle', () => {
+        if (!menu.open) return;
+        popMenus.forEach((other) => {
+          if (other !== menu && other.open) other.open = false;
+        });
+      });
     });
   }
 

@@ -88,10 +88,10 @@ require __DIR__ . '/../includes/header.php';
                     <td><strong><?= e(t_content($a['title'])) ?></strong><div class="muted"><?= e($a['location'] ? t_content($a['location']) : '') ?></div></td>
                     <td><?= e($a['client_name'] ?: __('common.em_dash')) ?></td>
                     <td><?= status_badge($a['status']) ?></td>
-                    <td class="quick-links">
+                    <td class="case-row-actions">
                         <?php if ($a['status'] === 'pending'): ?>
-                        <form method="post" style="display:inline"><?= csrf_field() ?><input type="hidden" name="form_action" value="respond"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="status" value="accepted"><button class="chip" type="submit"><?= __e('common.accept') ?></button></form>
-                        <form method="post" style="display:inline"><?= csrf_field() ?><input type="hidden" name="form_action" value="respond"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="status" value="rejected"><button class="chip" type="submit"><?= __e('common.reject') ?></button></form>
+                        <form method="post" class="inline-form"><?= csrf_field() ?><input type="hidden" name="form_action" value="respond"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="status" value="accepted"><button class="btn btn-row-open btn-sm" type="submit"><?= __e('common.accept') ?></button></form>
+                        <form method="post" class="inline-form"><?= csrf_field() ?><input type="hidden" name="form_action" value="respond"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="status" value="rejected"><button class="btn btn-row-delete btn-sm" type="submit"><?= __e('common.reject') ?></button></form>
                         <?php endif; ?>
                     </td>
                 </tr>

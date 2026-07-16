@@ -32,7 +32,7 @@ if ($id) {
     <div class="panel">
         <div class="panel-header">
             <div><h2><?= e(full_name($client)) ?></h2><p class="muted"><?= e($client['company_name'] ?: '') ?></p></div>
-            <a class="btn btn-sm btn-primary" href="mailto:<?= e($client['email']) ?>"><?= __e('lawyer.clients.contact') ?></a>
+            <a class="btn btn-primary btn-sm" href="mailto:<?= e($client['email']) ?>"><?= __e('lawyer.clients.contact') ?></a>
         </div>
         <div class="grid grid-2">
             <div class="list-item"><strong><?= __e('common.email') ?></strong><?= e($client['email']) ?></div>
@@ -61,7 +61,7 @@ require __DIR__ . '/../includes/header.php';
                     <td><a href="?id=<?= (int)$c['id'] ?>"><strong><?= e(full_name($c)) ?></strong></a></td>
                     <td><?= e($c['company_name'] ?: __('common.em_dash')) ?></td>
                     <td><?= (int)$c['case_count'] ?></td>
-                    <td><a class="chip" href="mailto:<?= e($c['email']) ?>"><?= e($c['email']) ?></a></td>
+                    <td><a href="mailto:<?= e($c['email']) ?>"><?= e($c['email']) ?></a></td>
                 </tr>
             <?php endforeach; ?>
             </tbody>

@@ -151,7 +151,7 @@ require __DIR__ . '/../includes/header.php';
                     <td><?= e($r['hearing_type'] ?: '—') ?></td>
                     <td><?= status_badge($r['status']) ?></td>
                     <td><?= e($r['outcome'] ?: '—') ?></td>
-                    <td><a class="chip" href="?action=edit&id=<?= (int)$r['id'] ?>">Edit</a></td>
+                    <td class="case-row-actions"><a class="btn btn-row-open btn-sm" href="?action=edit&id=<?= (int)$r['id'] ?>">Edit</a></td>
                 </tr>
             <?php endforeach; ?>
             </tbody>

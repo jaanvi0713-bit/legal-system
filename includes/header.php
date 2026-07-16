@@ -7,10 +7,18 @@ require_once __DIR__ . '/nav-icons.php';
 $user = current_user();
 $appName = get_setting(db(), 'company_name', app_config('name'));
 $brandName = app_config('brand', 'LEGAL PRO');
-$unread = unread_notifications(db(), (int) $user['id']);
+$pdoHeader = db();
+$unread = unread_notifications($pdoHeader, (int) $user['id']);
 $flash = get_flash();
 $base = app_config('url');
 $portalBase = $base . '/' . $portal;
+$topbarNotifsStmt = $pdoHeader->prepare('SELECT id, title, message, type, link, is_read, created_at FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 12');
+$topbarNotifsStmt->execute([(int) $user['id']]);
+$topbarNotifs = $topbarNotifsStmt->fetchAll();
+$topbarNotifyIcons = [
+    'info' => 'i', 'success' => 'OK', 'case' => 'C', 'appointment' => 'A',
+    'payment' => 'P', 'document' => 'D', 'reminder' => 'R',
+];
 $themeSetting = get_setting(db(), 'theme', 'light');
 $theme = in_array($themeSetting, ['light', 'dark'], true) ? $themeSetting : 'light';
 $accent = get_setting(db(), 'branding_accent', '#023e8a') ?: '#023e8a';
@@ -175,10 +183,61 @@ $gradInfo = "linear-gradient(135deg, {$accent} 0%, {$accentDeep} 100%)";
                             </svg>
                         </span>
                     </button>
-                    <a class="icon-btn topbar-notify" href="<?= e($portalBase) ?>/notifications.php" title="<?= __e('common.notifications') ?>" aria-label="<?= __e('common.notifications') ?>">
-                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 9a5 5 0 0 1 10 0c0 5 2 6.5 2 6.5H5S7 14 7 9"/><path d="M10.5 19a1.5 1.5 0 0 0 3 0"/></svg>
-                        <?php if ($unread > 0): ?><span class="dot"><?= $unread > 9 ? '9+' : (int) $unread ?></span><?php endif; ?>
-                    </a>
+                    <details class="topbar-notify-menu">
+                        <summary class="icon-btn topbar-notify" title="<?= __e('common.notifications') ?>" aria-label="<?= __e('common.notifications') ?>">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 9a5 5 0 0 1 10 0c0 5 2 6.5 2 6.5H5S7 14 7 9"/><path d="M10.5 19a1.5 1.5 0 0 0 3 0"/></svg>
+                            <?php if ($unread > 0): ?><span class="dot"><?= $unread > 9 ? '9+' : (int) $unread ?></span><?php endif; ?>
+                        </summary>
+                        <div class="topbar-notify-panel" role="dialog" aria-label="<?= __e('common.notifications') ?>">
+                            <div class="topbar-notify-head">
+                                <div class="topbar-notify-title">
+                                    <strong><?= __e('common.notifications') ?></strong>
+                                    <?php if ($unread > 0): ?>
+                                        <span class="topbar-notify-count"><?= (int) $unread ?> <?= __e('notifications.new_short') ?></span>
+                                    <?php endif; ?>
+                                </div>
+                                <?php if ($unread > 0): ?>
+                                <form method="post" action="<?= e($portalBase) ?>/notifications.php" class="topbar-notify-markall">
+                                    <?= csrf_field() ?>
+                                    <input type="hidden" name="form_action" value="read_all">
+                                    <button type="submit"><?= __e('common.mark_all_read') ?></button>
+                                </form>
+                                <?php endif; ?>
+                            </div>
+                            <div class="topbar-notify-list">
+                                <?php foreach ($topbarNotifs as $tn):
+                                    $tnType = $tn['type'] ?: 'info';
+                                    $tnIcon = $topbarNotifyIcons[$tnType] ?? 'i';
+                                    $tnUnread = !(int) $tn['is_read'];
+                                    $tnLink = trim((string) ($tn['link'] ?? ''));
+                                    if ($tnLink === '') {
+                                        $tnHref = $portalBase . '/notifications.php';
+                                    } elseif (preg_match('#^https?://#i', $tnLink) || str_starts_with($tnLink, '/')) {
+                                        $tnHref = $tnLink;
+                                    } elseif (str_starts_with($tnLink, '../')) {
+                                        $tnHref = rtrim($base, '/') . '/' . ltrim(preg_replace('#^(\.\./)+#', '', $tnLink), '/');
+                                    } else {
+                                        $tnHref = $portalBase . '/' . ltrim($tnLink, './');
+                                    }
+                                ?>
+                                    <a class="topbar-notify-item <?= $tnUnread ? 'is-unread' : '' ?>" href="<?= e($tnHref) ?>">
+                                        <span class="topbar-notify-icon tone-<?= e($tnType) ?>" aria-hidden="true"><?= e($tnIcon) ?></span>
+                                        <span class="topbar-notify-body">
+                                            <strong><?= e(t_stored($tn['title'])) ?></strong>
+                                            <span class="topbar-notify-msg"><?= e(t_stored($tn['message'])) ?></span>
+                                            <span class="topbar-notify-time"><?= e(format_date($tn['created_at'], 'M j, Y')) ?></span>
+                                        </span>
+                                    </a>
+                                <?php endforeach; ?>
+                                <?php if (!$topbarNotifs): ?>
+                                    <div class="topbar-notify-empty"><?= __e('common.no_notifications') ?></div>
+                                <?php endif; ?>
+                            </div>
+                            <div class="topbar-notify-foot">
+                                <a href="<?= e($portalBase) ?>/notifications.php"><?= __e('notifications.view_all') ?></a>
+                            </div>
+                        </div>
+                    </details>
                 </div>
                 <details class="topbar-account">
                     <summary class="topbar-user" aria-label="<?= __e('common.account_menu') ?>">

@@ -163,9 +163,136 @@ function generate_case_number(PDO $pdo): string
 function generate_invoice_number(PDO $pdo): string
 {
     $year = date('Y');
-    $stmt = $pdo->query("SELECT COUNT(*) FROM invoices WHERE YEAR(created_at) = YEAR(CURDATE())");
-    $count = (int) $stmt->fetchColumn() + 1;
-    return sprintf('INV-%s-%03d', $year, $count);
+    $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    $max = strlen($alphabet) - 1;
+    for ($attempt = 0; $attempt < 24; $attempt++) {
+        $code = '';
+        for ($i = 0; $i < 5; $i++) {
+            $code .= $alphabet[random_int(0, $max)];
+        }
+        $number = sprintf('INV-%s-%s', $year, $code);
+        $check = $pdo->prepare('SELECT 1 FROM invoices WHERE invoice_number = ? LIMIT 1');
+        $check->execute([$number]);
+        if (!$check->fetchColumn()) {
+            return $number;
+        }
+    }
+    return sprintf('INV-%s-%05d', $year, random_int(10000, 99999));
+}
+
+function ensure_invoice_items_table(PDO $pdo): void
+{
+    static $ready = false;
+    if ($ready) {
+        return;
+    }
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS invoice_items (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            invoice_id INT UNSIGNED NOT NULL,
+            description VARCHAR(255) NOT NULL,
+            quantity DECIMAL(12,2) NOT NULL DEFAULT 1,
+            unit_price DECIMAL(12,2) NOT NULL DEFAULT 0,
+            vat_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+            line_total DECIMAL(12,2) NOT NULL DEFAULT 0,
+            sort_order INT UNSIGNED NOT NULL DEFAULT 0,
+            INDEX idx_invoice_items_invoice (invoice_id),
+            CONSTRAINT fk_invoice_items_invoice
+                FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+    );
+    $ready = true;
+}
+
+function invoice_paid_total(PDO $pdo, int $invoiceId): float
+{
+    $stmt = $pdo->prepare('SELECT COALESCE(SUM(amount),0) FROM payments WHERE invoice_id = ?');
+    $stmt->execute([$invoiceId]);
+    return (float) $stmt->fetchColumn();
+}
+
+function invoice_line_items(PDO $pdo, int $invoiceId): array
+{
+    ensure_invoice_items_table($pdo);
+    $stmt = $pdo->prepare('SELECT * FROM invoice_items WHERE invoice_id = ? ORDER BY sort_order ASC, id ASC');
+    $stmt->execute([$invoiceId]);
+    return $stmt->fetchAll();
+}
+
+function ensure_invoice_bank_column(PDO $pdo): void
+{
+    static $ready = false;
+    if ($ready) {
+        return;
+    }
+    $col = $pdo->query("SHOW COLUMNS FROM invoices LIKE 'bank_account_id'")->fetch();
+    if (!$col) {
+        $pdo->exec('ALTER TABLE invoices ADD COLUMN bank_account_id TINYINT UNSIGNED DEFAULT NULL AFTER created_by');
+    }
+    $ready = true;
+}
+
+/** @return array<int, array{id:int,label:string,bank:string,account_name:string,account_number:string,iban:string,swift:string}> */
+function get_bank_accounts(PDO $pdo): array
+{
+    $raw = (string) get_setting($pdo, 'bank_accounts_json', '');
+    $decoded = $raw !== '' ? json_decode($raw, true) : null;
+    $accounts = [];
+    for ($i = 1; $i <= 3; $i++) {
+        $row = is_array($decoded) ? ($decoded[(string) $i] ?? $decoded[$i - 1] ?? $decoded[$i] ?? []) : [];
+        if (!is_array($row)) {
+            $row = [];
+        }
+        $accounts[$i] = [
+            'id' => $i,
+            'label' => trim((string) ($row['label'] ?? ('Bank account ' . $i))),
+            'bank' => trim((string) ($row['bank'] ?? '')),
+            'account_name' => trim((string) ($row['account_name'] ?? '')),
+            'account_number' => trim((string) ($row['account_number'] ?? '')),
+            'iban' => trim((string) ($row['iban'] ?? '')),
+            'swift' => trim((string) ($row['swift'] ?? '')),
+        ];
+    }
+    return $accounts;
+}
+
+function get_configured_bank_accounts(PDO $pdo): array
+{
+    return array_filter(get_bank_accounts($pdo), static function (array $a): bool {
+        return $a['bank'] !== '' || $a['account_number'] !== '' || $a['iban'] !== '';
+    });
+}
+
+function get_bank_account(PDO $pdo, ?int $id): ?array
+{
+    if ($id === null || $id < 1 || $id > 3) {
+        return null;
+    }
+    $all = get_bank_accounts($pdo);
+    $account = $all[$id] ?? null;
+    if (!$account) {
+        return null;
+    }
+    if ($account['bank'] === '' && $account['account_number'] === '' && $account['iban'] === '') {
+        return null;
+    }
+    return $account;
+}
+
+function save_bank_accounts(PDO $pdo, array $posted): void
+{
+    $out = [];
+    for ($i = 1; $i <= 3; $i++) {
+        $out[(string) $i] = [
+            'label' => trim((string) ($posted[$i]['label'] ?? ('Bank account ' . $i))),
+            'bank' => trim((string) ($posted[$i]['bank'] ?? '')),
+            'account_name' => trim((string) ($posted[$i]['account_name'] ?? '')),
+            'account_number' => trim((string) ($posted[$i]['account_number'] ?? '')),
+            'iban' => trim((string) ($posted[$i]['iban'] ?? '')),
+            'swift' => trim((string) ($posted[$i]['swift'] ?? '')),
+        ];
+    }
+    set_setting($pdo, 'bank_accounts_json', json_encode($out, JSON_UNESCAPED_UNICODE));
 }
 
 function generate_receipt_number(PDO $pdo): string

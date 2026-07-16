@@ -45,7 +45,7 @@ require __DIR__ . '/../includes/header.php';
         <div class="form-group"><label><?= __e('common.title') ?></label><input name="title"></div>
         <div class="form-group"><label><?= __e('common.file') ?></label><input type="file" name="document" required></div>
         <div class="form-group full"><label><?= __e('lawyer.documents.notes_ph') ?></label><textarea name="description" placeholder="<?= __e('lawyer.documents.notes_ph') ?>"></textarea></div>
-        <div class="form-actions full"><button class="btn btn-primary" type="submit"><?= __e('common.upload') ?></button><a class="btn btn-ghost" href="ai.php"><?= __e('lawyer.documents.generate_ai') ?></a></div>
+        <div class="form-actions full"><button class="btn btn-primary" type="submit"><?= __e('common.upload') ?></button><a class="btn btn-secondary" href="ai.php"><?= __e('lawyer.documents.generate_ai') ?></a></div>
     </form>
 </div>
 <div class="panel">
@@ -60,7 +60,7 @@ require __DIR__ . '/../includes/header.php';
                     <td><?= e($d['case_number'] ?: __('common.em_dash')) ?></td>
                     <td><?= e(__('doc.category.' . $d['category'])) ?></td>
                     <td><?= e(format_datetime($d['created_at'])) ?></td>
-                    <td><a class="chip" href="../<?= e($d['file_path']) ?>" target="_blank"><?= __e('common.download') ?></a></td>
+                    <td class="case-row-actions"><a class="btn btn-row-open btn-sm" href="../<?= e($d['file_path']) ?>" target="_blank"><?= __e('common.download') ?></a></td>
                 </tr>
             <?php endforeach; ?>
             </tbody>

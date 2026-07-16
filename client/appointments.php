@@ -62,9 +62,9 @@ require __DIR__ . '/../includes/header.php';
                     <td><?= e(t_content($a['title'])) ?></td>
                     <td><?= e($a['lawyer_name'] ?: __('common.em_dash')) ?></td>
                     <td><?= status_badge($a['status']) ?></td>
-                    <td>
+                    <td class="case-row-actions">
                         <?php if (in_array($a['status'], ['pending','accepted'], true)): ?>
-                        <form method="post"><?= csrf_field() ?><input type="hidden" name="form_action" value="cancel"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><button class="chip" type="submit"><?= __e('common.cancel') ?></button></form>
+                        <form method="post" class="inline-form"><?= csrf_field() ?><input type="hidden" name="form_action" value="cancel"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><button class="btn btn-secondary btn-sm" type="submit"><?= __e('common.cancel') ?></button></form>
                         <?php endif; ?>
                     </td>
                 </tr>
