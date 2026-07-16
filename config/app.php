@@ -3,7 +3,8 @@
  * Application configuration
  */
 return [
-    'name'       => 'Lexora Legal',
+    'name'       => 'LEGAL PRO',
+    'brand'      => 'LEGAL PRO',
     'tagline'    => 'Legal Case Management System',
     'url'        => 'http://localhost/legal-system',
     'timezone'   => 'Indian/Mauritius',

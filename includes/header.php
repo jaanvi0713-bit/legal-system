@@ -6,6 +6,7 @@
 require_once __DIR__ . '/nav-icons.php';
 $user = current_user();
 $appName = get_setting(db(), 'company_name', app_config('name'));
+$brandName = app_config('brand', 'LEGAL PRO');
 $unread = unread_notifications(db(), (int) $user['id']);
 $flash = get_flash();
 $base = app_config('url');
@@ -132,7 +133,7 @@ $gradInfo = "linear-gradient(135deg, {$accent} 0%, {$accentDeep} 100%)";
             <div class="brand-left">
                 <div class="brand-mark" aria-hidden="true"><?= nav_icon('logo') ?></div>
                 <div class="brand-text">
-                    <div class="brand-name"><?= e($appName) ?></div>
+                    <div class="brand-name"><?= e($brandName) ?></div>
                     <div class="brand-portal"><?= e(__('portal.' . $portal)) ?></div>
                 </div>
             </div>
@@ -155,50 +156,50 @@ $gradInfo = "linear-gradient(135deg, {$accent} 0%, {$accentDeep} 100%)";
             <button class="nav-toggle" type="button" aria-label="<?= __e('common.toggle_menu') ?>">☰</button>
             <div class="topbar-title">
                 <h1><?= e($pageTitle ?? __('page.dashboard')) ?></h1>
-                <p class="muted"><?= __e('common.welcome_back', ['name' => full_name($user)]) ?></p>
+                <p class="muted page-subtitle"><?= e($pageSubtitle ?? __('common.welcome_back', ['name' => full_name($user)])) ?></p>
             </div>
             <div class="topbar-actions">
-                <div class="lang-switch" role="group" aria-label="<?= __e('common.language') ?>">
-                    <a class="lang-btn <?= $uiLang === 'en' ? 'is-active' : '' ?>" href="<?= e(lang_switch_url('en')) ?>" hreflang="en" title="<?= __e('common.english') ?>">EN</a>
-                    <a class="lang-btn <?= $uiLang === 'fr' ? 'is-active' : '' ?>" href="<?= e(lang_switch_url('fr')) ?>" hreflang="fr" title="<?= __e('common.french') ?>">FR</a>
-                </div>
-                <button class="icon-btn theme-toggle" type="button" title="<?= __e('common.toggle_theme') ?>" aria-label="<?= __e('common.toggle_theme') ?>">
-                    <span class="theme-icon theme-icon-dark" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 3v1.5M12 19.5V21M4.9 4.9l1.1 1.1M18 18l1.1 1.1M3 12h1.5M19.5 12H21M4.9 19.1l1.1-1.1M18 6l1.1-1.1"/></svg>
-                    </span>
-                    <span class="theme-icon theme-icon-light" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M14.5 4A7.5 7.5 0 1 0 20 15.5 7.5 7.5 0 0 1 14.5 4z"/>
-                            <path d="M17 3.5v3M15.5 5h3"/>
-                            <path d="M20 7.5v2M19 8.5h2"/>
-                        </svg>
-                    </span>
-                </button>
-                <a class="icon-btn" href="<?= e($portalBase) ?>/notifications.php" title="<?= __e('common.notifications') ?>" aria-label="<?= __e('common.notifications') ?>">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 9a5 5 0 0 1 10 0c0 5 2 6.5 2 6.5H5S7 14 7 9"/><path d="M10.5 19a1.5 1.5 0 0 0 3 0"/></svg>
-                    <?php if ($unread > 0): ?><span class="dot"><?= $unread > 9 ? '9+' : (int) $unread ?></span><?php endif; ?>
-                </a>
-                <div class="topbar-user">
-                    <div class="topbar-avatar"><?= e(strtoupper(substr($user['first_name'], 0, 1) . substr($user['last_name'], 0, 1))) ?></div>
-                    <div class="topbar-user-meta">
-                        <strong><?= e(full_name($user)) ?></strong>
-                        <span><?= e(translate_role($user['role'])) ?></span>
+                <div class="topbar-tools">
+                    <div class="lang-switch" role="group" aria-label="<?= __e('common.language') ?>">
+                        <a class="lang-btn <?= $uiLang === 'en' ? 'is-active' : '' ?>" href="<?= e(lang_switch_url('en')) ?>" hreflang="en" title="<?= __e('common.english') ?>"<?= $uiLang === 'en' ? ' aria-current="true"' : '' ?>>EN</a>
+                        <a class="lang-btn <?= $uiLang === 'fr' ? 'is-active' : '' ?>" href="<?= e(lang_switch_url('fr')) ?>" hreflang="fr" title="<?= __e('common.french') ?>"<?= $uiLang === 'fr' ? ' aria-current="true"' : '' ?>>FR</a>
                     </div>
-                    <details class="topbar-menu">
-                        <summary aria-label="<?= __e('common.account_menu') ?>">
-                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
-                        </summary>
-                        <div class="topbar-menu-panel">
-                            <?php if ($portal === 'admin'): ?>
-                                <a href="<?= e($portalBase) ?>/settings.php"><?= __e('common.settings') ?></a>
-                                <a href="<?= e($portalBase) ?>/users.php"><?= __e('common.users') ?></a>
-                            <?php elseif ($portal === 'lawyer'): ?>
-                                <a href="<?= e($portalBase) ?>/profile.php"><?= __e('common.profile') ?></a>
-                            <?php endif; ?>
-                            <a href="<?= e($base) ?>/logout.php"><?= __e('common.sign_out') ?></a>
-                        </div>
-                    </details>
+                    <button class="icon-btn theme-toggle" type="button" title="<?= __e('common.toggle_theme') ?>" aria-label="<?= __e('common.toggle_theme') ?>">
+                        <span class="theme-icon theme-icon-dark" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 3v1.5M12 19.5V21M4.9 4.9l1.1 1.1M18 18l1.1 1.1M3 12h1.5M19.5 12H21M4.9 19.1l1.1-1.1M18 6l1.1-1.1"/></svg>
+                        </span>
+                        <span class="theme-icon theme-icon-light" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M14.5 4A7.5 7.5 0 1 0 20 15.5 7.5 7.5 0 0 1 14.5 4z"/>
+                            </svg>
+                        </span>
+                    </button>
+                    <a class="icon-btn topbar-notify" href="<?= e($portalBase) ?>/notifications.php" title="<?= __e('common.notifications') ?>" aria-label="<?= __e('common.notifications') ?>">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 9a5 5 0 0 1 10 0c0 5 2 6.5 2 6.5H5S7 14 7 9"/><path d="M10.5 19a1.5 1.5 0 0 0 3 0"/></svg>
+                        <?php if ($unread > 0): ?><span class="dot"><?= $unread > 9 ? '9+' : (int) $unread ?></span><?php endif; ?>
+                    </a>
                 </div>
+                <details class="topbar-account">
+                    <summary class="topbar-user" aria-label="<?= __e('common.account_menu') ?>">
+                        <div class="topbar-avatar" aria-hidden="true"><?= e(strtoupper(substr($user['first_name'], 0, 1) . substr($user['last_name'], 0, 1))) ?></div>
+                        <div class="topbar-user-meta">
+                            <strong><?= e(full_name($user)) ?></strong>
+                            <span><?= e(translate_role($user['role'])) ?></span>
+                        </div>
+                        <span class="topbar-chevron" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+                        </span>
+                    </summary>
+                    <div class="topbar-menu-panel">
+                        <?php if ($portal === 'admin'): ?>
+                            <a href="<?= e($portalBase) ?>/settings.php"><?= __e('common.settings') ?></a>
+                            <a href="<?= e($portalBase) ?>/users.php"><?= __e('common.users') ?></a>
+                        <?php elseif ($portal === 'lawyer'): ?>
+                            <a href="<?= e($portalBase) ?>/profile.php"><?= __e('common.profile') ?></a>
+                        <?php endif; ?>
+                        <a class="is-danger" href="<?= e($base) ?>/logout.php"><?= __e('common.sign_out') ?></a>
+                    </div>
+                </details>
             </div>
         </header>
         <main class="content">

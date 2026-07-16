@@ -91,11 +91,27 @@ function money($amount): string
 
 function format_date(?string $date, string $format = 'd M Y'): string
 {
+    $empty = function_exists('__') ? __('common.em_dash') : '—';
     if (!$date) {
-        return '—';
+        return $empty;
     }
     $ts = strtotime($date);
-    return $ts ? date($format, $ts) : '—';
+    if (!$ts) {
+        return $empty;
+    }
+    if (function_exists('locale_tag') && class_exists('IntlDateFormatter') && ($format === 'd M Y' || $format === 'd M Y, H:i')) {
+        $withTime = str_contains($format, 'H:i');
+        $fmt = new IntlDateFormatter(
+            locale_tag(),
+            IntlDateFormatter::MEDIUM,
+            $withTime ? IntlDateFormatter::SHORT : IntlDateFormatter::NONE
+        );
+        $out = $fmt->format($ts);
+        if ($out !== false) {
+            return $out;
+        }
+    }
+    return date($format, $ts);
 }
 
 function format_datetime(?string $date): string
@@ -206,12 +222,12 @@ function handle_upload(array $file, string $subdir = 'documents'): ?array
         return null;
     }
     if (($file['size'] ?? 0) > app_config('upload_max', 10485760)) {
-        throw new RuntimeException('File exceeds maximum upload size.');
+        throw new RuntimeException(__('error.upload.too_large'));
     }
     $allowed = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'txt', 'xls', 'xlsx'];
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
     if (!in_array($ext, $allowed, true)) {
-        throw new RuntimeException('File type not allowed.');
+        throw new RuntimeException(__('error.upload.type_not_allowed'));
     }
     $dir = __DIR__ . '/../uploads/' . $subdir;
     if (!is_dir($dir)) {
@@ -220,7 +236,7 @@ function handle_upload(array $file, string $subdir = 'documents'): ?array
     $stored = uniqid('doc_', true) . '.' . $ext;
     $dest = $dir . '/' . $stored;
     if (!move_uploaded_file($file['tmp_name'], $dest)) {
-        throw new RuntimeException('Failed to store uploaded file.');
+        throw new RuntimeException(__('error.upload.store_failed'));
     }
     return [
         'file_name' => $file['name'],
@@ -248,7 +264,7 @@ function verify_csrf(): void
     $token = $_POST['csrf_token'] ?? '';
     if (!hash_equals($_SESSION['csrf_token'] ?? '', $token)) {
         http_response_code(403);
-        exit('Invalid CSRF token.');
+        exit(function_exists('__') ? __('error.csrf') : 'Invalid CSRF token.');
     }
 }
 
@@ -260,4 +276,31 @@ function post(string $key, $default = null)
 function get(string $key, $default = null)
 {
     return isset($_GET[$key]) ? trim((string) $_GET[$key]) : $default;
+}
+
+/** Calendar tone for appointment status (scheduled, confirmed, rescheduled, past, completed, cancelled). */
+function appointment_calendar_tone(array $appt): string
+{
+    $status = $appt['status'] ?? 'pending';
+    $scheduledAt = strtotime((string) ($appt['scheduled_at'] ?? ''));
+    $now = time();
+
+    if (in_array($status, ['cancelled', 'rejected'], true)) {
+        return 'cancelled';
+    }
+    if ($status === 'completed') {
+        return 'completed';
+    }
+    if ($scheduledAt && $scheduledAt < $now && in_array($status, ['pending', 'accepted'], true)) {
+        return 'past';
+    }
+    if ($status === 'accepted') {
+        return 'confirmed';
+    }
+    $created = strtotime((string) ($appt['created_at'] ?? ''));
+    $updated = strtotime((string) ($appt['updated_at'] ?? ''));
+    if ($status === 'pending' && $updated && $created && $updated > $created + 60) {
+        return 'rescheduled';
+    }
+    return 'scheduled';
 }

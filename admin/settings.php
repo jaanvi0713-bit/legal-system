@@ -118,20 +118,20 @@ require __DIR__ . '/../includes/header.php';
                 <input type="hidden" name="settings_tab" value="profile">
                 <div class="settings-block">
                     <div class="settings-block-head">
-                        <h3>My profile</h3>
-                        <p>Personal details for your admin account.</p>
+                        <h3><?= __e('settings.profile.title') ?></h3>
+                        <p><?= __e('settings.profile.help') ?></p>
                     </div>
                     <div class="form-grid">
-                        <div class="form-group"><label>First name</label><input name="first_name" required value="<?= e($user['first_name']) ?>"></div>
-                        <div class="form-group"><label>Last name</label><input name="last_name" required value="<?= e($user['last_name']) ?>"></div>
-                        <div class="form-group"><label>Email</label><input value="<?= e($user['email']) ?>" disabled></div>
-                        <div class="form-group"><label>Username</label><input value="<?= e($user['username']) ?>" disabled></div>
-                        <div class="form-group"><label>Phone</label><input name="phone" value="<?= e($user['phone'] ?? '') ?>"></div>
-                        <div class="form-group"><label>New password</label><input type="password" name="password" placeholder="Leave blank to keep current"></div>
-                        <div class="form-group full"><label>Address</label><textarea name="address"><?= e($user['address'] ?? '') ?></textarea></div>
+                        <div class="form-group"><label><?= __e('form.first_name') ?></label><input name="first_name" required value="<?= e($user['first_name']) ?>"></div>
+                        <div class="form-group"><label><?= __e('form.last_name') ?></label><input name="last_name" required value="<?= e($user['last_name']) ?>"></div>
+                        <div class="form-group"><label><?= __e('common.email') ?></label><input value="<?= e($user['email']) ?>" disabled></div>
+                        <div class="form-group"><label><?= __e('form.username') ?></label><input value="<?= e($user['username']) ?>" disabled></div>
+                        <div class="form-group"><label><?= __e('common.phone') ?></label><input name="phone" value="<?= e($user['phone'] ?? '') ?>"></div>
+                        <div class="form-group"><label><?= __e('form.new_password') ?></label><input type="password" name="password" placeholder="<?= __e('form.password_keep') ?>"></div>
+                        <div class="form-group full"><label><?= __e('common.address') ?></label><textarea name="address"><?= e($user['address'] ?? '') ?></textarea></div>
                     </div>
                 </div>
-                <div class="form-actions"><button class="btn btn-primary" type="submit">Save profile</button></div>
+                <div class="form-actions"><button class="btn btn-primary" type="submit"><?= __e('common.save_profile') ?></button></div>
             </form>
 
         <?php elseif ($tab === 'notifications'): ?>
@@ -140,28 +140,28 @@ require __DIR__ . '/../includes/header.php';
                 <input type="hidden" name="settings_tab" value="notifications">
                 <div class="settings-block">
                     <div class="settings-block-head">
-                        <h3>Notification preferences</h3>
-                        <p>Choose which firm events generate alerts for administrators.</p>
+                        <h3><?= __e('settings.notifications.title') ?></h3>
+                        <p><?= __e('settings.notifications.help') ?></p>
                     </div>
                     <div class="settings-checks">
                         <?php
                         $prefs = [
-                            'notify_appointments' => 'Appointment requests and schedule changes',
-                            'notify_payments' => 'Payment received and overdue invoices',
-                            'notify_cases' => 'New cases and status updates',
-                            'notify_email_digest' => 'Daily email digest summary',
+                            'notify_appointments' => 'settings.notifications.appointments',
+                            'notify_payments' => 'settings.notifications.payments',
+                            'notify_cases' => 'settings.notifications.cases',
+                            'notify_email_digest' => 'settings.notifications.email_digest',
                         ];
-                        foreach ($prefs as $key => $label):
+                        foreach ($prefs as $key => $labelKey):
                             $on = $get($key, '1') === '1';
                         ?>
                             <label class="settings-check">
                                 <input type="checkbox" name="<?= e($key) ?>" value="1" <?= $on ? 'checked' : '' ?>>
-                                <span><?= e($label) ?></span>
+                                <span><?= __e($labelKey) ?></span>
                             </label>
                         <?php endforeach; ?>
                     </div>
                 </div>
-                <div class="form-actions"><button class="btn btn-primary" type="submit">Save preferences</button></div>
+                <div class="form-actions"><button class="btn btn-primary" type="submit"><?= __e('settings.notifications.save') ?></button></div>
             </form>
 
         <?php elseif ($tab === 'branding'): ?>
@@ -171,13 +171,13 @@ require __DIR__ . '/../includes/header.php';
 
                 <div class="settings-block">
                     <div class="settings-block-head">
-                        <h3>Brand &amp; appearance</h3>
-                        <p>Name, typography, and colors used across the admin, lawyer, and client portals.</p>
+                        <h3><?= __e('settings.branding.title') ?></h3>
+                        <p><?= __e('settings.branding.company_info') ?></p>
                     </div>
                     <div class="form-grid">
-                        <div class="form-group"><label>Company name</label><input name="company_name" value="<?= e($get('company_name', 'Lexora Legal Partners')) ?>"></div>
+                        <div class="form-group"><label><?= __e('settings.branding.company_name') ?></label><input name="company_name" value="<?= e($get('company_name', 'LEGAL PRO')) ?>"></div>
                         <div class="form-group">
-                            <label>Font family</label>
+                            <label><?= __e('settings.branding.font') ?></label>
                             <select name="branding_font">
                                 <?php
                                 $fonts = [
@@ -193,21 +193,21 @@ require __DIR__ . '/../includes/header.php';
                             </select>
                         </div>
                         <div class="form-group">
-                            <label>Default theme</label>
+                            <label><?= __e('settings.branding.theme') ?></label>
                             <select name="theme">
-                                <option value="light" <?= $get('theme', 'light') === 'light' ? 'selected' : '' ?>>Light</option>
-                                <option value="dark" <?= $get('theme') === 'dark' ? 'selected' : '' ?>>Dark</option>
+                                <option value="light" <?= $get('theme', 'light') === 'light' ? 'selected' : '' ?>><?= __e('theme.light') ?></option>
+                                <option value="dark" <?= $get('theme') === 'dark' ? 'selected' : '' ?>><?= __e('theme.dark') ?></option>
                             </select>
                         </div>
                         <div class="form-group">
-                            <label>AI assistant</label>
+                            <label><?= __e('settings.branding.ai_assistant') ?></label>
                             <select name="ai_enabled">
-                                <option value="1" <?= $get('ai_enabled', '1') === '1' ? 'selected' : '' ?>>Enabled</option>
-                                <option value="0" <?= $get('ai_enabled') === '0' ? 'selected' : '' ?>>Disabled</option>
+                                <option value="1" <?= $get('ai_enabled', '1') === '1' ? 'selected' : '' ?>><?= __e('common.enabled') ?></option>
+                                <option value="0" <?= $get('ai_enabled') === '0' ? 'selected' : '' ?>><?= __e('common.disabled') ?></option>
                             </select>
                         </div>
                         <div class="form-group full">
-                            <label>Workspace URL</label>
+                            <label><?= __e('settings.branding.workspace_url') ?></label>
                             <input value="<?= e($base) ?>" disabled>
                             <span class="field-hint">Portals: <code><?= e($base) ?>/admin</code>, <code><?= e($base) ?>/lawyer</code>, <code><?= e($base) ?>/client</code></span>
                         </div>
@@ -215,8 +215,8 @@ require __DIR__ . '/../includes/header.php';
 
                     <div class="accent-palette-block">
                         <div class="settings-block-head" style="margin-bottom:0.85rem;">
-                            <h3>Accent colour</h3>
-                            <p>Choose a professional palette that fits your firm, or set your own brand colour below.</p>
+                            <h3><?= __e('settings.branding.accent') ?></h3>
+                            <p><?= __e('settings.branding.pick_colour') ?></p>
                         </div>
                         <?php
                         $accentPalettes = [
@@ -258,16 +258,16 @@ require __DIR__ . '/../includes/header.php';
                                 <input type="radio" name="branding_accent_choice" value="custom" <?= $isCustom ? 'checked' : '' ?>>
                                 <span class="accent-swatch-tone accent-swatch-tone-custom" id="accent-custom-stripe" style="background:linear-gradient(135deg, <?= e($customHex) ?> 0%, <?= e($darken($customHex)) ?> 100%)"></span>
                                 <span class="accent-swatch-meta">
-                                    <strong>Your brand colour</strong>
-                                    <small>Set any hex colour</small>
+                                    <strong><?= __e('settings.branding.your_colour') ?></strong>
+                                    <small><?= __e('settings.branding.custom_colour') ?></small>
                                 </span>
                                 <span class="accent-swatch-check" aria-hidden="true">✓</span>
                             </label>
                         </div>
                         <div class="accent-custom-panel" id="accent-custom-panel" <?= $isCustom ? '' : 'hidden' ?>>
-                            <label for="branding_accent_custom">Custom brand colour</label>
+                            <label for="branding_accent_custom"><?= __e('settings.branding.custom_colour') ?></label>
                             <div class="accent-custom-controls">
-                                <input type="color" id="branding_accent_custom" value="<?= e($customHex) ?>" title="Pick brand colour">
+                                <input type="color" id="branding_accent_custom" value="<?= e($customHex) ?>" title="<?= __e('settings.branding.pick_colour') ?>">
                                 <input type="text" id="branding_accent_hex" value="<?= e(strtoupper($customHex)) ?>" maxlength="7" spellcheck="false" autocomplete="off" placeholder="#023E8A">
                                 <span class="field-hint">Use any hex colour for buttons, dashboards, and login.</span>
                             </div>
@@ -278,31 +278,29 @@ require __DIR__ . '/../includes/header.php';
 
                 <div class="settings-block">
                     <div class="settings-block-head">
-                        <h3>Company information</h3>
-                        <p>Legal identifiers and primary contact details for your firm.</p>
+                        <h3><?= __e('settings.branding.company_info') ?></h3>
                     </div>
                     <div class="form-grid">
-                        <div class="form-group"><label>Company website</label><input name="company_website" value="<?= e($get('company_website')) ?>" placeholder="https://"></div>
-                        <div class="form-group"><label>Company registration number</label><input name="company_registration" value="<?= e($get('company_registration')) ?>"></div>
-                        <div class="form-group"><label>Company email</label><input name="company_email" value="<?= e($get('company_email')) ?>"></div>
-                        <div class="form-group"><label>Company phone</label><input name="company_phone" value="<?= e($get('company_phone')) ?>"></div>
-                        <div class="form-group full"><label>Company address</label><textarea name="company_address"><?= e($get('company_address')) ?></textarea></div>
+                        <div class="form-group"><label><?= __e('settings.branding.website') ?></label><input name="company_website" value="<?= e($get('company_website')) ?>" placeholder="https://"></div>
+                        <div class="form-group"><label><?= __e('settings.branding.registration') ?></label><input name="company_registration" value="<?= e($get('company_registration')) ?>"></div>
+                        <div class="form-group"><label><?= __e('common.email') ?></label><input name="company_email" value="<?= e($get('company_email')) ?>"></div>
+                        <div class="form-group"><label><?= __e('common.phone') ?></label><input name="company_phone" value="<?= e($get('company_phone')) ?>"></div>
+                        <div class="form-group full"><label><?= __e('common.address') ?></label><textarea name="company_address"><?= e($get('company_address')) ?></textarea></div>
                     </div>
                 </div>
 
                 <div class="settings-block">
                     <div class="settings-block-head">
-                        <h3>AI prompts</h3>
-                        <p>System prompts used by the admin, lawyer, and client assistants.</p>
+                        <h3><?= __e('settings.branding.ai_prompts') ?></h3>
                     </div>
                     <div class="form-grid">
-                        <div class="form-group full"><label>Admin AI system prompt</label><textarea name="ai_welcome_admin"><?= e($get('ai_welcome_admin')) ?></textarea></div>
-                        <div class="form-group full"><label>Lawyer AI system prompt</label><textarea name="ai_welcome_lawyer"><?= e($get('ai_welcome_lawyer')) ?></textarea></div>
-                        <div class="form-group full"><label>Client AI system prompt</label><textarea name="ai_welcome_client"><?= e($get('ai_welcome_client')) ?></textarea></div>
+                        <div class="form-group full"><label><?= __e('settings.branding.ai_prompt_admin') ?></label><textarea name="ai_welcome_admin"><?= e($get('ai_welcome_admin')) ?></textarea></div>
+                        <div class="form-group full"><label><?= __e('settings.branding.ai_prompt_lawyer') ?></label><textarea name="ai_welcome_lawyer"><?= e($get('ai_welcome_lawyer')) ?></textarea></div>
+                        <div class="form-group full"><label><?= __e('settings.branding.ai_prompt_client') ?></label><textarea name="ai_welcome_client"><?= e($get('ai_welcome_client')) ?></textarea></div>
                     </div>
                 </div>
 
-                <div class="form-actions"><button class="btn btn-primary" type="submit">Save branding</button></div>
+                <div class="form-actions"><button class="btn btn-primary" type="submit"><?= __e('settings.branding.save') ?></button></div>
             </form>
 
         <?php elseif ($tab === 'email'): ?>
@@ -311,26 +309,26 @@ require __DIR__ . '/../includes/header.php';
                 <input type="hidden" name="settings_tab" value="email">
                 <div class="settings-block">
                     <div class="settings-block-head">
-                        <h3>Email / SMTP</h3>
-                        <p>Outgoing mail server used for notifications and digests.</p>
+                        <h3><?= __e('settings.email.title') ?></h3>
+                        <p><?= __e('settings.email.help') ?></p>
                     </div>
                     <div class="form-grid">
-                        <div class="form-group"><label>SMTP host</label><input name="smtp_host" value="<?= e($get('smtp_host')) ?>" placeholder="smtp.example.com"></div>
-                        <div class="form-group"><label>SMTP port</label><input name="smtp_port" value="<?= e($get('smtp_port', '587')) ?>"></div>
-                        <div class="form-group"><label>SMTP username</label><input name="smtp_user" value="<?= e($get('smtp_user')) ?>"></div>
-                        <div class="form-group"><label>SMTP password</label><input type="password" name="smtp_pass" value="<?= e($get('smtp_pass')) ?>"></div>
-                        <div class="form-group"><label>From address</label><input name="smtp_from" value="<?= e($get('smtp_from', $get('company_email'))) ?>"></div>
+                        <div class="form-group"><label><?= __e('settings.email.host') ?></label><input name="smtp_host" value="<?= e($get('smtp_host')) ?>" placeholder="smtp.example.com"></div>
+                        <div class="form-group"><label><?= __e('settings.email.port') ?></label><input name="smtp_port" value="<?= e($get('smtp_port', '587')) ?>"></div>
+                        <div class="form-group"><label><?= __e('settings.email.user') ?></label><input name="smtp_user" value="<?= e($get('smtp_user')) ?>"></div>
+                        <div class="form-group"><label><?= __e('settings.email.pass') ?></label><input type="password" name="smtp_pass" value="<?= e($get('smtp_pass')) ?>"></div>
+                        <div class="form-group"><label><?= __e('settings.email.from') ?></label><input name="smtp_from" value="<?= e($get('smtp_from', $get('company_email'))) ?>"></div>
                         <div class="form-group">
-                            <label>Encryption</label>
+                            <label><?= __e('settings.email.encryption') ?></label>
                             <select name="smtp_encryption">
-                                <?php foreach (['tls' => 'TLS', 'ssl' => 'SSL', 'none' => 'None'] as $value => $label): ?>
+                                <?php foreach (['tls' => 'TLS', 'ssl' => 'SSL', 'none' => __('content.none')] as $value => $label): ?>
                                     <option value="<?= e($value) ?>" <?= $get('smtp_encryption', 'tls') === $value ? 'selected' : '' ?>><?= e($label) ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
                     </div>
                 </div>
-                <div class="form-actions"><button class="btn btn-primary" type="submit">Save SMTP</button></div>
+                <div class="form-actions"><button class="btn btn-primary" type="submit"><?= __e('settings.email.save') ?></button></div>
             </form>
 
         <?php elseif ($tab === 'payments'): ?>
@@ -346,13 +344,13 @@ require __DIR__ . '/../includes/header.php';
                         <div class="form-group">
                             <label><?= __e('common.currency') ?></label>
                             <select name="payment_currency">
-                                <?php foreach (['MUR' => 'MUR (Rs) — Mauritius', 'INR' => 'INR (₹)', 'AED' => 'AED', 'USD' => 'USD ($)', 'EUR' => 'EUR (€)', 'GBP' => 'GBP (£)'] as $currency => $label): ?>
-                                    <option value="<?= e($currency) ?>" <?= $get('payment_currency', 'MUR') === $currency ? 'selected' : '' ?>><?= e($label) ?></option>
+                                <?php foreach (['MUR' => 'content.currency.mur', 'INR' => 'content.currency.inr', 'AED' => 'content.currency.aed', 'USD' => 'content.currency.usd', 'EUR' => 'content.currency.eur', 'GBP' => 'content.currency.gbp'] as $currency => $labelKey): ?>
+                                    <option value="<?= e($currency) ?>" <?= $get('payment_currency', 'MUR') === $currency ? 'selected' : '' ?>><?= e(__($labelKey)) ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                        <div class="form-group"><label><?= __e('settings.payments.methods') ?></label><input name="payment_methods" value="<?= e($get('payment_methods', 'Bank transfer, Card, Cheque')) ?>"></div>
-                        <div class="form-group full"><label><?= __e('settings.payments.instructions') ?></label><textarea name="payment_instructions"><?= e($get('payment_instructions', 'Please include the invoice number in the transfer reference.')) ?></textarea></div>
+                        <div class="form-group"><label><?= __e('settings.payments.methods') ?></label><input name="payment_methods" value="<?= e($get('payment_methods', __('content.settings.payment_methods'))) ?>"></div>
+                        <div class="form-group full"><label><?= __e('settings.payments.instructions') ?></label><textarea name="payment_instructions"><?= e($get('payment_instructions', __('content.settings.payment_instructions'))) ?></textarea></div>
                     </div>
                 </div>
                 <div class="form-actions"><button class="btn btn-primary" type="submit"><?= __e('settings.save_payments') ?></button></div>
@@ -384,17 +382,17 @@ require __DIR__ . '/../includes/header.php';
         <?php elseif ($tab === 'roles'): ?>
             <div class="settings-block">
                 <div class="settings-block-head">
-                    <h3>Role access</h3>
-                    <p>Portal permissions are role-based. Manage accounts under User Management.</p>
+                    <h3><?= __e('settings.roles.title') ?></h3>
+                    <p><?= __e('settings.roles.help') ?></p>
                 </div>
                 <div class="role-cards">
-                    <div class="role-card"><strong>Admin</strong><span>Full firm settings, users, finance, and cases.</span></div>
-                    <div class="role-card"><strong>Staff</strong><span>Operational access to admin tools without settings ownership.</span></div>
-                    <div class="role-card"><strong>Lawyer</strong><span>Assigned cases, clients, court tracking, and availability.</span></div>
-                    <div class="role-card"><strong>Client</strong><span>Own cases, documents, appointments, and payments.</span></div>
+                    <div class="role-card"><strong><?= __e('role.admin') ?></strong><span><?= __e('settings.roles.admin') ?></span></div>
+                    <div class="role-card"><strong><?= __e('role.staff') ?></strong><span><?= __e('settings.roles.staff') ?></span></div>
+                    <div class="role-card"><strong><?= __e('role.lawyer') ?></strong><span><?= __e('settings.roles.lawyer') ?></span></div>
+                    <div class="role-card"><strong><?= __e('role.client') ?></strong><span><?= __e('settings.roles.client') ?></span></div>
                 </div>
                 <div class="form-actions" style="margin-top:1rem;">
-                    <a class="btn btn-primary" href="users.php">Open user management</a>
+                    <a class="btn btn-primary" href="users.php"><?= __e('settings.roles.open_users') ?></a>
                 </div>
             </div>
 
@@ -404,16 +402,16 @@ require __DIR__ . '/../includes/header.php';
                 <input type="hidden" name="settings_tab" value="backup">
                 <div class="settings-block">
                     <div class="settings-block-head">
-                        <h3>Backup</h3>
-                        <p>Protect firm data by exporting the MySQL database regularly.</p>
+                        <h3><?= __e('settings.backup.title') ?></h3>
+                        <p><?= __e('settings.backup.help') ?></p>
                     </div>
                     <div class="list-stack">
-                        <div class="list-item"><strong>Database</strong><span class="muted">Export <code>legal_system</code> from phpMyAdmin or mysqldump.</span></div>
-                        <div class="list-item"><strong>Schema &amp; seed</strong><span class="muted">Source files live in <code>database/schema.sql</code> and <code>database/seed.sql</code>.</span></div>
-                        <div class="list-item"><strong>Uploads</strong><span class="muted">Back up the <code>uploads/</code> folder for documents and avatars.</span></div>
+                        <div class="list-item"><strong><?= __e('settings.backup.database') ?></strong><span class="muted"><?= __e('settings.backup.database_help') ?></span></div>
+                        <div class="list-item"><strong><?= __e('settings.backup.schema') ?></strong><span class="muted"><?= __e('settings.backup.schema_help') ?></span></div>
+                        <div class="list-item"><strong><?= __e('settings.backup.uploads') ?></strong><span class="muted"><?= __e('settings.backup.uploads_help') ?></span></div>
                     </div>
                 </div>
-                <div class="form-actions"><button class="btn btn-primary" type="submit">Acknowledge backup checklist</button></div>
+                <div class="form-actions"><button class="btn btn-primary" type="submit"><?= __e('settings.backup.acknowledge') ?></button></div>
             </form>
         <?php endif; ?>
     </div>

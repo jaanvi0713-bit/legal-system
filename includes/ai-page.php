@@ -35,39 +35,39 @@ function render_ai_page(string $portal): void
 
     $prompts = match ($portal) {
         'admin' => [
-            ['Client count', 'How many clients do we have?', 'user'],
-            ['Active cases', 'How many active cases are there?', 'briefcase'],
-            ['Total revenue', __('ai.prompt.total_revenue'), 'money'],
-            ['Appointments', 'Show upcoming appointments', 'calendar'],
-            ['Recent payments', 'Summarize recent payments', 'doc'],
-            ['Overdue invoices', 'Which invoices are overdue or outstanding?', 'alert'],
-            ['Notifications', 'Summarize my latest notifications', 'bell'],
-            ['Revenue by month', 'Break down revenue by month', 'chart'],
-            ['Dashboard overview', 'Give me a firm dashboard overview', 'grid'],
-            ['New case draft', 'Help me draft a new case summary', 'edit'],
-            ['Lawyer workload', 'Summarize lawyer workload and availability', 'users'],
-            ['Court schedule', 'What hearings are coming up?', 'court'],
+            [__('ai.prompt.client_count'), __('ai.prompt.client_count_body'), 'user'],
+            [__('ai.prompt.active_cases'), __('ai.prompt.active_cases_body'), 'briefcase'],
+            [__('ai.prompt.total_revenue'), __('ai.prompt.total_revenue_body'), 'money'],
+            [__('ai.prompt.appointments'), __('ai.prompt.appointments_body'), 'calendar'],
+            [__('ai.prompt.recent_payments'), __('ai.prompt.recent_payments_body'), 'doc'],
+            [__('ai.prompt.overdue_invoices'), __('ai.prompt.overdue_invoices_body'), 'alert'],
+            [__('ai.prompt.notifications'), __('ai.prompt.notifications_body'), 'bell'],
+            [__('ai.prompt.revenue_by_month'), __('ai.prompt.revenue_by_month_body'), 'chart'],
+            [__('ai.prompt.dashboard_overview'), __('ai.prompt.dashboard_overview_body'), 'grid'],
+            [__('ai.prompt.new_case_draft'), __('ai.prompt.new_case_draft_body'), 'edit'],
+            [__('ai.prompt.lawyer_workload'), __('ai.prompt.lawyer_workload_body'), 'users'],
+            [__('ai.prompt.court_schedule'), __('ai.prompt.court_schedule_body'), 'court'],
         ],
         'lawyer' => [
-            ['My cases', 'Summarize my assigned cases', 'briefcase'],
-            ["Today's appointments", 'What appointments do I have today?', 'calendar'],
-            ['Upcoming hearings', 'List my upcoming court hearings', 'court'],
-            ['Pending tasks', 'What tasks or pending appointments need my response?', 'tasks'],
-            ['My clients', 'List clients I am working with', 'user'],
-            ['Notifications', 'Summarize my latest notifications', 'bell'],
-            ['Draft letter', 'Help me draft a legal letter for an assigned case', 'edit'],
-            ['Case timeline', 'Build a timeline for my most recent case', 'chart'],
-            ['Document Q&A', 'How can I ask questions about an uploaded document?', 'doc'],
+            [__('ai.prompt.my_cases'), __('ai.prompt.my_cases_body'), 'briefcase'],
+            [__('ai.prompt.todays_appointments'), __('ai.prompt.todays_appointments_body'), 'calendar'],
+            [__('ai.prompt.upcoming_hearings'), __('ai.prompt.upcoming_hearings_body'), 'court'],
+            [__('ai.prompt.pending_tasks'), __('ai.prompt.pending_tasks_body'), 'tasks'],
+            [__('ai.prompt.my_clients'), __('ai.prompt.my_clients_body'), 'user'],
+            [__('ai.prompt.notifications'), __('ai.prompt.notifications_body'), 'bell'],
+            [__('ai.prompt.draft_letter'), __('ai.prompt.draft_letter_body'), 'edit'],
+            [__('ai.prompt.case_timeline'), __('ai.prompt.case_timeline_body'), 'chart'],
+            [__('ai.prompt.document_qa'), __('ai.prompt.document_qa_body'), 'doc'],
         ],
         default => [
-            ['My cases', 'Summarize my cases in plain language', 'briefcase'],
-            ['Documents', 'Explain my recent documents simply', 'doc'],
-            ['Appointments', 'What appointments do I have coming up?', 'calendar'],
-            ['Outstanding balance', __('ai.prompt.outstanding_balance'), 'money'],
-            ['Notifications', 'Summarize my latest notifications', 'bell'],
-            ['Invoice help', 'Explain my latest invoice simply', 'doc'],
-            ['Court dates', 'What court dates are scheduled for my cases?', 'court'],
-            ['Checklist', 'Give me a document checklist for my open case', 'tasks'],
+            [__('ai.prompt.my_cases'), __('ai.prompt.my_cases_client_body'), 'briefcase'],
+            [__('ai.prompt.documents'), __('ai.prompt.documents_body'), 'doc'],
+            [__('ai.prompt.appointments'), __('ai.prompt.appointments_client_body'), 'calendar'],
+            [__('ai.prompt.outstanding_balance'), __('ai.prompt.outstanding_balance_body'), 'money'],
+            [__('ai.prompt.notifications'), __('ai.prompt.notifications_body'), 'bell'],
+            [__('ai.prompt.invoice_help'), __('ai.prompt.invoice_help_body'), 'doc'],
+            [__('ai.prompt.court_dates'), __('ai.prompt.court_dates_body'), 'court'],
+            [__('ai.prompt.checklist'), __('ai.prompt.checklist_body'), 'tasks'],
         ],
     };
 
@@ -78,15 +78,15 @@ function render_ai_page(string $portal): void
     };
 
     $subtitle = match ($portal) {
-        'admin' => 'Operations, search, intake & compliance.',
-        'lawyer' => 'Casework, drafting & hearing prep.',
-        default => 'Your matters explained simply.',
+        'admin' => __('ai.subtitle.admin'),
+        'lawyer' => __('ai.subtitle.lawyer'),
+        default => __('ai.subtitle.client'),
     };
 
     $placeholder = match ($portal) {
-        'admin' => "Ask about clients, cases, fees, or say 'create a case for…'",
-        'lawyer' => 'Ask about your cases, hearings, or drafting help…',
-        default => 'Ask about your cases, documents, or invoices…',
+        'admin' => __('ai.placeholder.admin'),
+        'lawyer' => __('ai.placeholder.lawyer'),
+        default => __('ai.placeholder.client'),
     };
 
     $pageTitle = __('page.ai');
@@ -116,22 +116,22 @@ function render_ai_page(string $portal): void
     <div class="ai-workspace" id="ai-workspace" data-prompts='<?= e(json_encode(array_map(static fn($p) => ['label' => $p[0], 'prompt' => $p[1], 'icon' => $p[2]], $prompts), JSON_UNESCAPED_UNICODE)) ?>'>
         <section class="ai-main">
             <div class="ai-toolbar">
-                <h2>AI Assistant</h2>
+                <h2><?= __e('ai.toolbar_title') ?></h2>
                 <div class="ai-toolbar-actions">
                     <button class="btn btn-outline-brand btn-sm" type="button" id="ai-library-toggle">
                         <span class="ai-btn-icon" aria-hidden="true">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 5h7v14H4zM13 5h7v14h-7z"/></svg>
                         </span>
-                        Library
+                        <?= __e('ai.library') ?>
                     </button>
-                    <a class="btn btn-outline-brand btn-sm" href="?new=1">+ New chat</a>
+                    <a class="btn btn-outline-brand btn-sm" href="?new=1"><?= __e('ai.new_chat_btn') ?></a>
                 </div>
             </div>
 
             <div class="ai-library" id="ai-library" hidden>
                 <div class="ai-library-head">
-                    <strong>Chat library</strong>
-                    <button type="button" class="ai-library-close" id="ai-library-close" aria-label="Close library">×</button>
+                    <strong><?= __e('ai.chat_library') ?></strong>
+                    <button type="button" class="ai-library-close" id="ai-library-close" aria-label="<?= __e('ai.close_library') ?>">×</button>
                 </div>
                 <div class="ai-library-list">
                     <?php foreach ($sessions as $s): ?>
@@ -179,23 +179,23 @@ function render_ai_page(string $portal): void
 
                 <form id="ai-compose-form" class="ai-compose-wrap" data-session-id="<?= (int) $sessionId ?>">
                     <div class="ai-compose-bar">
-                        <button type="button" class="ai-attach" title="Attach files" aria-label="Attach files">
+                        <button type="button" class="ai-attach" title="<?= __e('ai.attach_files') ?>" aria-label="<?= __e('ai.attach_files') ?>">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 12.5V8a5 5 0 0 0-10 0v9a3 3 0 0 0 6 0V9"/></svg>
                         </button>
                         <input type="text" id="ai-message" placeholder="<?= e($placeholder) ?>" required autocomplete="off">
-                        <button class="ai-send" type="submit" aria-label="Send">
+                        <button class="ai-send" type="submit" aria-label="<?= __e('ai.send') ?>">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12l15-7-4 15-4-5-7-3z"/></svg>
                         </button>
                     </div>
-                    <p class="ai-tip muted">Tip: Attach one or more PDFs, screenshots, or photos.</p>
+                    <p class="ai-tip muted"><?= __e('ai.attach_tip') ?></p>
                 </form>
             </div>
         </section>
 
         <aside class="ai-prompts">
             <div class="ai-prompts-head">
-                <h3>Quick prompts</h3>
-                <p class="muted">One-click starters.</p>
+                <h3><?= __e('ai.quick_prompts') ?></h3>
+                <p class="muted"><?= __e('ai.quick_prompts_help') ?></p>
             </div>
             <div class="ai-prompt-list" id="ai-prompt-list">
                 <?php foreach (array_slice($prompts, 0, 9) as $p): ?>
@@ -207,9 +207,9 @@ function render_ai_page(string $portal): void
                 <?php endforeach; ?>
             </div>
             <div class="ai-prompt-pager" id="ai-prompt-pager">
-                <button type="button" class="ai-pager-btn" id="ai-prompt-prev" aria-label="Previous">‹</button>
+                <button type="button" class="ai-pager-btn" id="ai-prompt-prev" aria-label="<?= __e('ai.prev') ?>">‹</button>
                 <span id="ai-prompt-page-label">1 / 1</span>
-                <button type="button" class="ai-pager-btn" id="ai-prompt-next" aria-label="Next">›</button>
+                <button type="button" class="ai-pager-btn" id="ai-prompt-next" aria-label="<?= __e('ai.next') ?>">›</button>
             </div>
         </aside>
     </div>

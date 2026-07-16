@@ -17,8 +17,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $number, post('case_id') ?: null, (int) post('client_id'), post('title'), post('description'),
                 $amount, $tax, $total, post('status'), post('due_date') ?: null, post('issued_at') ?: date('Y-m-d'), current_user()['id'],
             ]);
-        create_notification($pdo, (int) post('client_id'), 'New invoice', $number . ' issued for ' . money($total), 'payment', '../client/payments.php', current_user()['id']);
-        flash('success', 'Invoice ' . $number . ' created.');
+        create_notification($pdo, (int) post('client_id'), 'notify.invoice_new', notify_payload('notify.msg.invoice_new', ['number' => $number, 'amount' => money($total)]), 'payment', '../client/payments.php', current_user()['id']);
+        flash('success', __('flash.invoice.created', ['number' => $number]));
         redirect('finance.php');
     }
     if ($fa === 'payment') {
@@ -40,7 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $status = $paid >= $total ? 'paid' : ($paid > 0 ? 'partial' : 'sent');
             $pdo->prepare('UPDATE invoices SET status=? WHERE id=?')->execute([$status, $invId]);
         }
-        flash('success', 'Payment recorded. Receipt ' . $receipt);
+        flash('success', __('flash.payment.recorded', ['receipt' => $receipt]));
         redirect('finance.php');
     }
 }
@@ -55,7 +55,7 @@ $paidSum = (float) $pdo->query("SELECT COALESCE(SUM(p.amount),0) FROM payments p
 $outstandingBal = max(0, (float)$pdo->query("SELECT COALESCE(SUM(i.total - IFNULL((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id=i.id),0)),0) FROM invoices i WHERE i.status IN ('sent','partial','overdue','draft')")->fetchColumn());
 
 $pageTitle = __('page.finance');
-$pageSubtitle = 'Billing, invoices, payments, and revenue';
+$pageSubtitle = __('page.finance');
 $portal = 'admin';
 $activeNav = 'finance';
 require __DIR__ . '/../includes/header.php';
@@ -68,43 +68,43 @@ require __DIR__ . '/../includes/header.php';
 
 <?php if ($action === 'invoice'): ?>
 <div class="panel">
-    <h2>Create invoice</h2>
+    <h2><?= __e('finance.create_invoice') ?></h2>
     <form method="post" class="form-grid">
         <?= csrf_field() ?><input type="hidden" name="form_action" value="invoice">
         <div class="form-group"><label><?= __e('finance.client') ?></label><select name="client_id" required><?php foreach ($clients as $c): ?><option value="<?= (int)$c['id'] ?>"><?= e(full_name($c)) ?></option><?php endforeach; ?></select></div>
-        <div class="form-group"><label><?= __e('nav.cases') ?></label><select name="case_id"><option value="">—</option><?php foreach ($cases as $c): ?><option value="<?= (int)$c['id'] ?>"><?= e($c['case_number']) ?></option><?php endforeach; ?></select></div>
+        <div class="form-group"><label><?= __e('nav.cases') ?></label><select name="case_id"><option value=""><?= __e('common.em_dash') ?></option><?php foreach ($cases as $c): ?><option value="<?= (int)$c['id'] ?>"><?= e($c['case_number']) ?></option><?php endforeach; ?></select></div>
         <div class="form-group full"><label><?= __e('common.name') ?></label><input name="title" required></div>
         <div class="form-group"><label><?= __e('common.amount') ?></label><input type="number" step="0.01" name="amount" required></div>
-        <div class="form-group"><label>Tax</label><input type="number" step="0.01" name="tax" value="0"></div>
+        <div class="form-group"><label><?= __e('form.tax') ?></label><input type="number" step="0.01" name="tax" value="0"></div>
         <div class="form-group"><label><?= __e('common.status') ?></label><select name="status"><?php foreach (['draft','sent','partial','paid','overdue'] as $s): ?><option value="<?= $s ?>"><?= e(translate_status($s)) ?></option><?php endforeach; ?></select></div>
         <div class="form-group"><label><?= __e('finance.due_date') ?></label><input type="date" name="due_date"></div>
-        <div class="form-group"><label>Issued</label><input type="date" name="issued_at" value="<?= date('Y-m-d') ?>"></div>
-        <div class="form-group full"><label>Description</label><textarea name="description"></textarea></div>
-        <div class="form-actions full"><button class="btn btn-primary" type="submit">Save invoice</button><a class="btn btn-ghost" href="finance.php">Cancel</a></div>
+        <div class="form-group"><label><?= __e('form.issued') ?></label><input type="date" name="issued_at" value="<?= date('Y-m-d') ?>"></div>
+        <div class="form-group full"><label><?= __e('common.description') ?></label><textarea name="description"></textarea></div>
+        <div class="form-actions full"><button class="btn btn-primary" type="submit"><?= __e('finance.save_invoice') ?></button><a class="btn btn-ghost" href="finance.php"><?= __e('common.cancel') ?></a></div>
     </form>
 </div>
 <?php elseif ($action === 'payment'): ?>
 <div class="panel">
-    <h2>Record payment</h2>
+    <h2><?= __e('finance.record_payment') ?></h2>
     <form method="post" class="form-grid">
         <?= csrf_field() ?><input type="hidden" name="form_action" value="payment">
         <div class="form-group"><label><?= __e('finance.client') ?></label><select name="client_id" required><?php foreach ($clients as $c): ?><option value="<?= (int)$c['id'] ?>"><?= e(full_name($c)) ?></option><?php endforeach; ?></select></div>
-        <div class="form-group"><label><?= __e('finance.invoice_number') ?></label><select name="invoice_id"><option value="">—</option><?php foreach ($invoices as $i): ?><option value="<?= (int)$i['id'] ?>"><?= e($i['invoice_number'].' · '.money($i['total'])) ?></option><?php endforeach; ?></select></div>
+        <div class="form-group"><label><?= __e('finance.invoice_number') ?></label><select name="invoice_id"><option value=""><?= __e('common.em_dash') ?></option><?php foreach ($invoices as $i): ?><option value="<?= (int)$i['id'] ?>"><?= e($i['invoice_number'].' · '.money($i['total'])) ?></option><?php endforeach; ?></select></div>
         <div class="form-group"><label><?= __e('common.amount') ?></label><input type="number" step="0.01" name="amount" required></div>
-        <div class="form-group"><label><?= __e('finance.method') ?></label><select name="payment_method"><?php foreach (['bank_transfer','card','cash','cheque','online','other'] as $m): ?><option value="<?= $m ?>"><?= ucwords(str_replace('_',' ',$m)) ?></option><?php endforeach; ?></select></div>
-        <div class="form-group"><label>Reference</label><input name="reference_number"></div>
-        <div class="form-group"><label>Paid at</label><input type="datetime-local" name="paid_at" value="<?= date('Y-m-d\TH:i') ?>"></div>
-        <div class="form-group full"><label>Notes</label><textarea name="notes"></textarea></div>
-        <div class="form-actions full"><button class="btn btn-accent" type="submit">Record &amp; generate receipt</button><a class="btn btn-ghost" href="finance.php">Cancel</a></div>
+        <div class="form-group"><label><?= __e('finance.method') ?></label><select name="payment_method"><?php foreach (['bank_transfer','card','cash','cheque','online','other'] as $m): ?><option value="<?= $m ?>"><?= e(__('payment.method.' . $m)) ?></option><?php endforeach; ?></select></div>
+        <div class="form-group"><label><?= __e('common.reference') ?></label><input name="reference_number"></div>
+        <div class="form-group"><label><?= __e('form.paid_at') ?></label><input type="datetime-local" name="paid_at" value="<?= date('Y-m-d\TH:i') ?>"></div>
+        <div class="form-group full"><label><?= __e('common.notes') ?></label><textarea name="notes"></textarea></div>
+        <div class="form-actions full"><button class="btn btn-accent" type="submit"><?= __e('finance.record_receipt_btn') ?></button><a class="btn btn-ghost" href="finance.php"><?= __e('common.cancel') ?></a></div>
     </form>
 </div>
 <?php else: ?>
 <div class="panel">
     <div class="panel-header">
-        <h2>Billing overview</h2>
+        <h2><?= __e('finance.billing_overview') ?></h2>
         <div class="quick-links">
-            <a class="btn btn-sm btn-primary" href="?action=invoice">Create invoice</a>
-            <a class="btn btn-sm btn-accent" href="?action=payment">Record payment</a>
+            <a class="btn btn-sm btn-primary" href="?action=invoice"><?= __e('finance.create_invoice') ?></a>
+            <a class="btn btn-sm btn-accent" href="?action=payment"><?= __e('finance.record_payment') ?></a>
         </div>
     </div>
 </div>
@@ -117,7 +117,7 @@ require __DIR__ . '/../includes/header.php';
                 <tbody>
                 <?php foreach ($invoices as $i): ?>
                     <tr>
-                        <td><strong><?= e($i['invoice_number']) ?></strong><div class="muted"><?= e($i['title']) ?></div></td>
+                        <td><strong><?= e($i['invoice_number']) ?></strong><div class="muted"><?= e(t_content($i['title'])) ?></div></td>
                         <td><?= e($i['client_name']) ?></td>
                         <td><?= e(money($i['total'])) ?></td>
                         <td><?= status_badge($i['status']) ?></td>
@@ -139,7 +139,7 @@ require __DIR__ . '/../includes/header.php';
                         <td><strong><?= e($p['receipt_number']) ?></strong><div class="muted"><?= e(format_datetime($p['paid_at'])) ?></div></td>
                         <td><?= e($p['client_name']) ?></td>
                         <td><?= e(money($p['amount'])) ?></td>
-                        <td><?= e($p['invoice_number'] ?: '—') ?></td>
+                        <td><?= e($p['invoice_number'] ?: __('common.em_dash')) ?></td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>

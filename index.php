@@ -45,11 +45,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $selectedRole = $role;
 }
 
-$appName = 'Lexora Legal';
+$appName = app_config('name', 'LEGAL PRO');
+$brandName = app_config('brand', 'LEGAL PRO');
 try {
     $appName = get_setting(db(), 'company_name', app_config('name'));
 } catch (Throwable $e) {
-    $appName = app_config('name');
+    $appName = app_config('name', 'LEGAL PRO');
 }
 $accent = '#023e8a';
 try {
@@ -101,7 +102,7 @@ $uiLang = current_lang();
                 <div class="glass-card">
                     <div class="card-head">
                         <div class="brand-badge" aria-hidden="true">L</div>
-                        <div class="company-name"><?= e(strtoupper($appName)) ?></div>
+                        <div class="company-name"><?= e(strtoupper($brandName)) ?></div>
                     </div>
 
                     <h2><?= __e('login.welcome') ?></h2>

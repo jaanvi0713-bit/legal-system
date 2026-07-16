@@ -5,6 +5,29 @@
         </footer>
     </div>
 </div>
+<script>
+window.LEXORA_I18N = <?= json_encode([
+    'confirm' => __('common.confirm'),
+    'thinking' => __('ai.thinking'),
+    'no_response' => __('ai.no_response'),
+    'service_error' => __('ai.service_error'),
+    'attach_disabled' => __('ai.attach_disabled'),
+    'chart_cases_opened' => __('chart.cases_opened'),
+    'chart_cases_closed' => __('chart.cases_closed'),
+    'finance_revenue' => __('finance.revenue'),
+    'status_active' => __('status.active'),
+    'status_closed' => __('status.closed'),
+    'weekdays' => [
+        __('calendar.weekday.mon'),
+        __('calendar.weekday.tue'),
+        __('calendar.weekday.wed'),
+        __('calendar.weekday.thu'),
+        __('calendar.weekday.fri'),
+        __('calendar.weekday.sat'),
+        __('calendar.weekday.sun'),
+    ],
+], JSON_UNESCAPED_UNICODE) ?>;
+</script>
 <?php if (!empty($includeCharts)): ?>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <?php endif; ?>

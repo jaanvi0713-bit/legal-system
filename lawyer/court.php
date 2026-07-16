@@ -11,7 +11,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $caseId = (int) post('case_id');
         $check = $pdo->prepare('SELECT id FROM cases WHERE id=? AND lawyer_id=?');
         $check->execute([$caseId, $uid]);
-        if (!$check->fetch()) { flash('error', 'Invalid case.'); redirect('court.php'); }
+        if (!$check->fetch()) { flash('error', __('error.case.invalid')); redirect('court.php'); }
         $editId = (int) post('id');
         if ($editId) {
             $pdo->prepare('UPDATE court_hearings SET hearing_date=?, court_name=?, court_location=?, outcome=?, notes=?, status=? WHERE id=? AND case_id=?')
@@ -34,7 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 flash('error', $e->getMessage());
             }
         }
-        flash('success', 'Court record saved.');
+        flash('success', __('flash.hearing.recorded'));
         redirect('court.php');
     }
 }
@@ -47,40 +47,40 @@ $cases->execute([$uid]);
 $cases = $cases->fetchAll();
 
 $pageTitle = __('page.court');
-$pageSubtitle = 'Hearing schedules, outcomes, notes, and court documents';
+$pageSubtitle = __('ai.subtitle.lawyer');
 $portal = 'lawyer';
 $activeNav = 'court';
 require __DIR__ . '/../includes/header.php';
 ?>
 <div class="panel">
-    <h2>Record / update hearing</h2>
+    <h2><?= __e('court.record') ?></h2>
     <form method="post" enctype="multipart/form-data" class="form-grid">
         <?= csrf_field() ?><input type="hidden" name="form_action" value="save">
-        <div class="form-group"><label>Case</label><select name="case_id" required><?php foreach ($cases as $c): ?><option value="<?= (int)$c['id'] ?>"><?= e($c['case_number'].' — '.$c['title']) ?></option><?php endforeach; ?></select></div>
-        <div class="form-group"><label>Hearing date</label><input type="datetime-local" name="hearing_date" required></div>
-        <div class="form-group"><label>Court</label><input name="court_name" required></div>
-        <div class="form-group"><label>Location</label><input name="court_location"></div>
-        <div class="form-group"><label>Type</label><input name="hearing_type"></div>
-        <div class="form-group"><label>Status</label><select name="status"><?php foreach (['scheduled','completed','adjourned','cancelled'] as $s): ?><option value="<?= $s ?>"><?= ucfirst($s) ?></option><?php endforeach; ?></select></div>
-        <div class="form-group full"><label>Outcome</label><textarea name="outcome"></textarea></div>
-        <div class="form-group full"><label>Court notes</label><textarea name="notes"></textarea></div>
-        <div class="form-group full"><label>Upload court document</label><input type="file" name="document"></div>
-        <div class="form-actions full"><button class="btn btn-primary" type="submit">Save</button></div>
+        <div class="form-group"><label><?= __e('common.case') ?></label><select name="case_id" required><?php foreach ($cases as $c): ?><option value="<?= (int)$c['id'] ?>"><?= e($c['case_number'].' — '.$c['title']) ?></option><?php endforeach; ?></select></div>
+        <div class="form-group"><label><?= __e('form.hearing_date') ?></label><input type="datetime-local" name="hearing_date" required></div>
+        <div class="form-group"><label><?= __e('common.court') ?></label><input name="court_name" required></div>
+        <div class="form-group"><label><?= __e('common.location') ?></label><input name="court_location"></div>
+        <div class="form-group"><label><?= __e('common.type') ?></label><input name="hearing_type"></div>
+        <div class="form-group"><label><?= __e('common.status') ?></label><select name="status"><?php foreach (['scheduled','completed','adjourned','cancelled'] as $s): ?><option value="<?= $s ?>"><?= e(translate_status($s)) ?></option><?php endforeach; ?></select></div>
+        <div class="form-group full"><label><?= __e('common.outcome') ?></label><textarea name="outcome"></textarea></div>
+        <div class="form-group full"><label><?= __e('form.court_notes') ?></label><textarea name="notes"></textarea></div>
+        <div class="form-group full"><label><?= __e('court.upload_doc') ?></label><input type="file" name="document"></div>
+        <div class="form-actions full"><button class="btn btn-primary" type="submit"><?= __e('common.save') ?></button></div>
     </form>
 </div>
 <div class="panel">
-    <h2>Hearing schedule</h2>
+    <h2><?= __e('court.schedule') ?></h2>
     <div class="table-wrap">
         <table>
-            <thead><tr><th>Date</th><th>Case</th><th>Court</th><th>Status</th><th>Outcome / notes</th></tr></thead>
+            <thead><tr><th><?= __e('common.date') ?></th><th><?= __e('common.case') ?></th><th><?= __e('common.court') ?></th><th><?= __e('common.status') ?></th><th><?= __e('common.outcome') ?> / <?= __e('common.notes') ?></th></tr></thead>
             <tbody>
             <?php foreach ($hearings as $h): ?>
                 <tr>
                     <td><?= e(format_datetime($h['hearing_date'])) ?></td>
                     <td><?= e($h['case_number']) ?></td>
-                    <td><?= e($h['court_name']) ?><div class="muted"><?= e($h['court_location']) ?></div></td>
+                    <td><?= e(t_content($h['court_name'])) ?><div class="muted"><?= e(t_content($h['court_location'])) ?></div></td>
                     <td><?= status_badge($h['status']) ?></td>
-                    <td><?= e($h['outcome'] ?: $h['notes'] ?: '—') ?></td>
+                    <td><?= e(t_content($h['outcome'] ?: $h['notes'] ?: '') ?: __('common.em_dash')) ?></td>
                 </tr>
             <?php endforeach; ?>
             </tbody>

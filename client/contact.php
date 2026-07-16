@@ -14,13 +14,13 @@ if (!$lawyerId) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     if (!$lawyerId) {
-        flash('error', 'No lawyer assigned yet.');
+        flash('error', __('flash.lawyer.not_assigned'));
         redirect('contact.php');
     }
     $pdo->prepare('INSERT INTO messages (sender_id, receiver_id, case_id, subject, body) VALUES (?,?,?,?,?)')
         ->execute([$uid, $lawyerId, post('case_id') ?: null, post('subject'), post('body')]);
-    create_notification($pdo, (int)$lawyerId, 'Client message', post('subject'), 'info', '../lawyer/clients.php', $uid);
-    flash('success', 'Message sent to your lawyer.');
+    create_notification($pdo, (int)$lawyerId, 'notify.client_message', post('subject'), 'info', '../lawyer/clients.php', $uid);
+    flash('success', __('flash.message.sent'));
     redirect('contact.php');
 }
 
@@ -41,39 +41,39 @@ $cases->execute([$uid]);
 $cases = $cases->fetchAll();
 
 $pageTitle = __('page.contact');
-$pageSubtitle = 'Send messages, submit requests, and ask case questions';
+$pageSubtitle = __('ai.subtitle.client');
 $portal = 'client';
 $activeNav = 'contact';
 require __DIR__ . '/../includes/header.php';
 ?>
 <div class="grid grid-2">
     <div class="panel">
-        <h2>Your lawyer</h2>
+        <h2><?= __e('client.contact.your_lawyer') ?></h2>
         <?php if ($lawyer): ?>
             <div class="list-item"><strong><?= e(full_name($lawyer)) ?></strong><div class="muted"><?= e($lawyer['specialization'] ?: '') ?></div><div><?= e($lawyer['email']) ?> · <?= e($lawyer['phone'] ?: '') ?></div></div>
         <?php else: ?>
-            <div class="empty-state">A lawyer has not been assigned yet.</div>
+            <div class="empty-state"><?= __e('client.contact.no_lawyer') ?></div>
         <?php endif; ?>
-        <h3 style="margin-top:1.2rem;">New message / request</h3>
+        <h3 style="margin-top:1.2rem;"><?= __e('client.contact.new_message') ?></h3>
         <form method="post" class="form-grid">
             <?= csrf_field() ?>
-            <div class="form-group full"><label>Subject</label><input name="subject" required></div>
-            <div class="form-group full"><label>Related case</label><select name="case_id"><option value="">—</option><?php foreach ($cases as $c): ?><option value="<?= (int)$c['id'] ?>"><?= e($c['case_number']) ?></option><?php endforeach; ?></select></div>
-            <div class="form-group full"><label>Message</label><textarea name="body" required placeholder="Ask a question or submit a request…"></textarea></div>
-            <div class="form-actions full"><button class="btn btn-primary" type="submit" <?= $lawyer ? '' : 'disabled' ?>>Send</button></div>
+            <div class="form-group full"><label><?= __e('common.subject') ?></label><input name="subject" required></div>
+            <div class="form-group full"><label><?= __e('form.related_case') ?></label><select name="case_id"><option value=""><?= __e('common.em_dash') ?></option><?php foreach ($cases as $c): ?><option value="<?= (int)$c['id'] ?>"><?= e($c['case_number']) ?></option><?php endforeach; ?></select></div>
+            <div class="form-group full"><label><?= __e('common.message') ?></label><textarea name="body" required placeholder="<?= __e('form.details') ?>"></textarea></div>
+            <div class="form-actions full"><button class="btn btn-primary" type="submit" <?= $lawyer ? '' : 'disabled' ?>><?= __e('client.contact.send') ?></button></div>
         </form>
     </div>
     <div class="panel">
-        <h2>Conversation</h2>
+        <h2><?= __e('client.contact.conversation') ?></h2>
         <div class="list-stack">
             <?php foreach ($messages as $m): ?>
                 <div class="list-item">
-                    <strong><?= e($m['sender_name']) ?> · <?= e($m['subject'] ?: 'Message') ?></strong>
+                    <strong><?= e($m['sender_name']) ?> · <?= e($m['subject'] ? t_content($m['subject']) : __('common.message')) ?></strong>
                     <span class="muted"><?= e(format_datetime($m['created_at'])) ?></span>
-                    <div><?= nl2br(e($m['body'])) ?></div>
+                    <div><?= nl2br(e(t_content($m['body']))) ?></div>
                 </div>
             <?php endforeach; ?>
-            <?php if (!$messages): ?><div class="empty-state">No messages yet.</div><?php endif; ?>
+            <?php if (!$messages): ?><div class="empty-state"><?= __e('client.contact.no_messages') ?></div><?php endif; ?>
         </div>
     </div>
 </div>

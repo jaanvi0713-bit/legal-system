@@ -51,9 +51,21 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  const accountMenu = document.querySelector('.topbar-account');
+  if (accountMenu) {
+    document.addEventListener('click', (e) => {
+      if (!accountMenu.open) return;
+      if (!accountMenu.contains(e.target)) accountMenu.open = false;
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && accountMenu.open) accountMenu.open = false;
+    });
+  }
+
   document.querySelectorAll('[data-confirm]').forEach((el) => {
     el.addEventListener('click', (e) => {
-      if (!confirm(el.getAttribute('data-confirm') || 'Are you sure?')) {
+      const i18n = window.LEXORA_I18N || {};
+      if (!confirm(el.getAttribute('data-confirm') || i18n.confirm || 'Are you sure?')) {
         e.preventDefault();
       }
     });
@@ -80,7 +92,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const thinking = document.createElement('div');
       thinking.className = 'msg msg-assistant ai-bubble';
-      thinking.innerHTML = '<div class="ai-bot-mark sm" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="7" width="14" height="11" rx="3"/><circle cx="9.5" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="14.5" cy="12" r="1.2" fill="currentColor" stroke="none"/><path d="M9 18v2M15 18v2M12 4v3"/></svg></div><div>Thinking…</div>';
+      const i18n = window.LEXORA_I18N || {};
+      thinking.innerHTML = '<div class="ai-bot-mark sm" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="7" width="14" height="11" rx="3"/><circle cx="9.5" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="14.5" cy="12" r="1.2" fill="currentColor" stroke="none"/><path d="M9 18v2M15 18v2M12 4v3"/></svg></div><div></div>';
+      thinking.querySelector('div:last-child').textContent = i18n.thinking || 'Thinking…';
       messages.appendChild(thinking);
       const thinkingText = thinking.querySelector('div:last-child');
 
@@ -91,9 +105,9 @@ document.addEventListener('DOMContentLoaded', () => {
           body: JSON.stringify({ session_id: Number(sessionId), message: value }),
         });
         const data = await res.json();
-        thinkingText.textContent = data.reply || data.error || 'No response.';
+        thinkingText.textContent = data.reply || data.error || i18n.no_response || 'No response.';
       } catch (err) {
-        thinkingText.textContent = 'Unable to reach the AI service. Please try again.';
+        thinkingText.textContent = i18n.service_error || 'Unable to reach the AI service. Please try again.';
       }
       messages.scrollTop = messages.scrollHeight;
     };
@@ -109,6 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   initAiAssistantUi();
   initDashboardCharts();
+  initAppointmentsCalendar();
 });
 
 function initAiAssistantUi() {
@@ -132,7 +147,8 @@ function initAiAssistantUi() {
   const attachBtn = document.querySelector('.ai-attach');
   if (attachBtn) {
     attachBtn.addEventListener('click', () => {
-      alert('File attachments will be available when document AI is enabled. For now, describe the file in your question.');
+      const i18n = window.LEXORA_I18N || {};
+      alert(i18n.attach_disabled || 'File attachments will be available when document AI is enabled. For now, describe the file in your question.');
     });
   }
 
@@ -265,7 +281,7 @@ function initDashboardCharts() {
         labels: data.months,
         datasets: [
           {
-            label: 'Cases opened',
+            label: (window.LEXORA_I18N && window.LEXORA_I18N.chart_cases_opened) || 'Cases opened',
             data: data.opened,
             borderColor: blue(),
             backgroundColor: rgbaPrimary(0.16),
@@ -276,7 +292,7 @@ function initDashboardCharts() {
             pointBackgroundColor: blue(),
           },
           {
-            label: 'Cases closed',
+            label: (window.LEXORA_I18N && window.LEXORA_I18N.chart_cases_closed) || 'Cases closed',
             data: data.closed,
             borderColor: purple(),
             backgroundColor: rgbaPurple(0.14),
@@ -305,7 +321,7 @@ function initDashboardCharts() {
       data: {
         labels: data.months,
         datasets: [{
-          label: 'Revenue',
+          label: (window.LEXORA_I18N && window.LEXORA_I18N.finance_revenue) || 'Revenue',
           data: data.revenue,
           backgroundColor: data.revenue.map((_, i) => (i % 2 === 0 ? blue() : purple())),
           borderRadius: 8,
@@ -354,7 +370,10 @@ function initDashboardCharts() {
     new Chart(statusEl, {
       type: 'doughnut',
       data: {
-        labels: ['Active', 'Closed'],
+        labels: [
+          (window.LEXORA_I18N && window.LEXORA_I18N.status_active) || 'Active',
+          (window.LEXORA_I18N && window.LEXORA_I18N.status_closed) || 'Closed',
+        ],
         datasets: [{
           data: [data.status.active, data.status.closed],
           backgroundColor: [blue(), purple()],
@@ -373,7 +392,7 @@ function initDashboardCharts() {
     new Chart(weekEl, {
       type: 'bar',
       data: {
-        labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+        labels: (window.LEXORA_I18N && window.LEXORA_I18N.weekdays) || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
         datasets: [{
           data: data.weekdays,
           backgroundColor: data.weekdays.map((_, i) => (i % 2 === 0 ? blue() : purple())),
@@ -391,4 +410,238 @@ function initDashboardCharts() {
       },
     });
   }
+}
+
+function initAppointmentsCalendar() {
+  const root = document.getElementById('apptCalendar');
+  const data = window.LEXORA_APPT_CAL;
+  if (!root || !data) return;
+
+  const daysEl = document.getElementById('apptCalDays');
+  const agendaEl = document.getElementById('apptCalAgenda');
+  const yearLabel = document.getElementById('apptCalYear');
+  const monthTitle = document.getElementById('apptCalMonthTitle');
+  const monthButtons = root.querySelectorAll('.appt-cal-month-btn');
+  const monthCounts = root.querySelectorAll('[data-month-count]');
+
+  let year = parseInt(root.dataset.year, 10) || new Date().getFullYear();
+  let month = parseInt(root.dataset.month, 10) || new Date().getMonth();
+  let selectedDay = parseInt(root.dataset.day, 10) || new Date().getDate();
+
+  const esc = (value) =>
+    String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+
+  const tonePriority = {
+    cancelled: 6,
+    completed: 5,
+    past: 4,
+    confirmed: 3,
+    rescheduled: 2,
+    scheduled: 1,
+  };
+
+  const dateKey = (y, m, d) =>
+    `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+
+  const apptDateKey = (iso) => {
+    const dt = new Date(iso.replace(' ', 'T'));
+    if (Number.isNaN(dt.getTime())) return '';
+    return dateKey(dt.getFullYear(), dt.getMonth(), dt.getDate());
+  };
+
+  const byDate = {};
+  (data.items || []).forEach((item) => {
+    const key = apptDateKey(item.scheduledAt);
+    if (!key) return;
+    if (!byDate[key]) byDate[key] = [];
+    byDate[key].push(item);
+  });
+
+  Object.keys(byDate).forEach((key) => {
+    byDate[key].sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
+  });
+
+  const monthCountForYear = (y) => {
+    const counts = Array(12).fill(0);
+    (data.items || []).forEach((item) => {
+      const dt = new Date(item.scheduledAt.replace(' ', 'T'));
+      if (Number.isNaN(dt.getTime()) || dt.getFullYear() !== y) return;
+      counts[dt.getMonth()] += 1;
+    });
+    return counts;
+  };
+
+  const formatAgendaWhen = (iso) => {
+    const dt = new Date(iso.replace(' ', 'T'));
+    if (Number.isNaN(dt.getTime())) return iso;
+    return new Intl.DateTimeFormat(data.locale || undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(dt);
+  };
+
+  const pickDayTone = (items) => {
+    let best = null;
+    let score = 0;
+    items.forEach((item) => {
+      const s = tonePriority[item.tone] || 0;
+      if (s >= score) {
+        score = s;
+        best = item.tone;
+      }
+    });
+    return best;
+  };
+
+  const badgeClass = (tone) => {
+    return `appt-cal-status tone-${tone || 'scheduled'}`;
+  };
+
+  const monthItems = () => {
+    const prefix = `${year}-${String(month + 1).padStart(2, '0')}-`;
+    return (data.items || [])
+      .filter((item) => apptDateKey(item.scheduledAt).startsWith(prefix))
+      .sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
+  };
+
+  const renderAgenda = () => {
+    if (!agendaEl) return;
+    // Match mock: agenda lists the month's appointments (not only the selected day)
+    const items = monthItems();
+    if (!items.length) {
+      agendaEl.innerHTML = `<div class="appt-cal-empty">${esc(data.emptyMonth || data.emptyDay || 'No appointments this month.')}</div>`;
+      return;
+    }
+    agendaEl.innerHTML = items
+      .map(
+        (item) => `
+      <article class="appt-cal-agenda-card tone-${esc(item.tone)}${apptDateKey(item.scheduledAt) === dateKey(year, month, selectedDay) ? ' is-active-day' : ''}">
+        <a href="${esc(item.editUrl)}">
+          <div class="appt-cal-agenda-when">
+            <span class="appt-cal-agenda-when-text">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+              ${esc(formatAgendaWhen(item.scheduledAt))}
+            </span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>
+          </div>
+          <strong>${esc(item.caseLabel || item.title)}</strong>
+          <div class="appt-cal-person">${esc(item.client || item.lawyer || '')}</div>
+          <span class="${badgeClass(item.tone)}">${esc(item.statusLabel)}</span>
+        </a>
+      </article>`
+      )
+      .join('');
+  };
+
+  const renderMonthCounts = () => {
+    const counts = monthCountForYear(year);
+    monthCounts.forEach((el) => {
+      const idx = parseInt(el.dataset.monthCount, 10);
+      el.textContent = String(counts[idx] || 0);
+    });
+  };
+
+  const renderCalendar = () => {
+    if (!daysEl) return;
+    const today = new Date();
+    const firstDow = (new Date(year, month, 1).getDay() + 6) % 7;
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    selectedDay = Math.min(selectedDay, daysInMonth);
+
+    if (yearLabel) yearLabel.textContent = String(year);
+    if (monthTitle) monthTitle.textContent = (data.months[month] || '').toUpperCase();
+    monthButtons.forEach((btn) => {
+      btn.classList.toggle('is-active', parseInt(btn.dataset.month, 10) === month);
+    });
+    renderMonthCounts();
+
+    let html = '';
+    for (let i = 0; i < firstDow; i += 1) {
+      html += '<span class="appt-cal-day is-empty" aria-hidden="true"></span>';
+    }
+    for (let d = 1; d <= daysInMonth; d += 1) {
+      const key = dateKey(year, month, d);
+      const items = byDate[key] || [];
+      const tone = items.length ? pickDayTone(items) : '';
+      const isToday =
+        today.getFullYear() === year && today.getMonth() === month && today.getDate() === d;
+      const isSelected = d === selectedDay;
+      const colIndex = (firstDow + d - 1) % 7;
+      const classes = [
+        'appt-cal-day',
+        items.length ? 'has-appt' : '',
+        tone ? `tone-${tone}` : '',
+        isToday ? 'is-today' : '',
+        isSelected ? 'is-selected' : '',
+      ]
+        .filter(Boolean)
+        .join(' ');
+      html += `<button type="button" class="${classes}" data-day="${d}" data-col="${colIndex}" aria-label="${d}"><span class="appt-cal-day-num">${d}</span></button>`;
+    }
+    daysEl.innerHTML = html;
+
+    // Column highlight follows today when viewing current month, else selected day
+    let highlightDay = selectedDay;
+    if (today.getFullYear() === year && today.getMonth() === month) {
+      highlightDay = today.getDate();
+    }
+    const highlightBtn = daysEl.querySelector(`[data-day="${highlightDay}"]`);
+    const colIndex = highlightBtn ? parseInt(highlightBtn.dataset.col, 10) : 0;
+    daysEl.classList.toggle('has-col-highlight', !!highlightBtn);
+    daysEl.style.setProperty('--col-index', String(colIndex));
+
+    daysEl.querySelectorAll('.appt-cal-day:not(.is-empty)').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        selectedDay = parseInt(btn.dataset.day, 10);
+        renderCalendar();
+        renderAgenda();
+      });
+    });
+
+    renderAgenda();
+  };
+
+  root.querySelectorAll('[data-cal-nav]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      year += parseInt(btn.dataset.dir, 10);
+      renderCalendar();
+    });
+  });
+
+  monthButtons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      month = parseInt(btn.dataset.month, 10);
+      renderCalendar();
+    });
+  });
+
+  const upcoming = (data.items || [])
+    .filter((item) => {
+      const dt = new Date(item.scheduledAt.replace(' ', 'T'));
+      return dt >= new Date() && ['pending', 'accepted'].includes(item.status);
+    })
+    .sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt))[0];
+
+  // Open the month that has upcoming work, but keep "today" selected when possible
+  // (matches mock: today highlighted, agenda still lists month appointments)
+  if (upcoming) {
+    const dt = new Date(upcoming.scheduledAt.replace(' ', 'T'));
+    const now = new Date();
+    year = dt.getFullYear();
+    month = dt.getMonth();
+    if (now.getFullYear() === year && now.getMonth() === month) {
+      selectedDay = now.getDate();
+    } else {
+      selectedDay = dt.getDate();
+    }
+  }
+
+  renderCalendar();
 }

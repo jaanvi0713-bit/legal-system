@@ -11,7 +11,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && post('form_action') === 'record') {
     $inv->execute([$invoiceId, $uid]);
     $invoice = $inv->fetch();
     if (!$invoice) {
-        flash('error', 'Invoice not found.');
+        flash('error', __('flash.invoice.not_found'));
         redirect('payments.php');
     }
     $amount = (float) post('amount');
@@ -23,8 +23,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && post('form_action') === 'record') {
     $paid = (float) $sumStmt->fetchColumn();
     $status = $paid >= (float)$invoice['total'] ? 'paid' : 'partial';
     $pdo->prepare('UPDATE invoices SET status=? WHERE id=?')->execute([$status, $invoiceId]);
-    create_notification($pdo, 1, 'Client payment recorded', $receipt . ' · ' . money($amount), 'payment', '../admin/finance.php', $uid);
-    flash('success', 'Payment recorded. Receipt ' . $receipt);
+    create_notification($pdo, 1, 'notify.payment_recorded', notify_payload('notify.msg.payment_recorded', ['receipt' => $receipt, 'amount' => money($amount)]), 'payment', '../admin/finance.php', $uid);
+    flash('success', __('flash.payment.recorded', ['receipt' => $receipt]));
     redirect('payments.php');
 }
 
@@ -42,7 +42,7 @@ foreach ($invoices as $i) {
 }
 
 $pageTitle = __('page.payments');
-$pageSubtitle = 'Invoices, balances, history, receipts, and payment recording';
+$pageSubtitle = __('ai.subtitle.client');
 $portal = 'client';
 $activeNav = 'payments';
 require __DIR__ . '/../includes/header.php';
@@ -57,7 +57,7 @@ require __DIR__ . '/../includes/header.php';
                 <tbody>
                 <?php foreach ($invoices as $i): ?>
                     <tr>
-                        <td><strong><?= e($i['invoice_number']) ?></strong><div class="muted"><?= e($i['title']) ?></div></td>
+                        <td><strong><?= e($i['invoice_number']) ?></strong><div class="muted"><?= e(t_content($i['title'])) ?></div></td>
                         <td><?= e(money($i['total'])) ?></td>
                         <td><?= e(money($i['paid_amount'])) ?></td>
                         <td><?= status_badge($i['status']) ?></td>
@@ -68,20 +68,20 @@ require __DIR__ . '/../includes/header.php';
         </div>
     </div>
     <div class="panel">
-        <h2>Record a payment</h2>
+        <h2><?= __e('payments.record') ?></h2>
         <form method="post" class="form-grid">
             <?= csrf_field() ?><input type="hidden" name="form_action" value="record">
-            <div class="form-group full"><label>Invoice</label>
+            <div class="form-group full"><label><?= __e('finance.invoices') ?></label>
                 <select name="invoice_id" required>
                     <?php foreach ($invoices as $i): if (in_array($i['status'], ['paid','cancelled'], true)) continue; ?>
-                        <option value="<?= (int)$i['id'] ?>"><?= e($i['invoice_number'].' · due '.money(max(0,$i['total']-$i['paid_amount']))) ?></option>
+                        <option value="<?= (int)$i['id'] ?>"><?= e($i['invoice_number'].' · '.__('common.due').' '.money(max(0,$i['total']-$i['paid_amount']))) ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
             <div class="form-group"><label><?= __e('common.amount') ?></label><input type="number" step="0.01" name="amount" required></div>
-            <div class="form-group"><label><?= __e('finance.method') ?></label><select name="payment_method"><option value="bank_transfer">Bank transfer</option><option value="card">Card</option><option value="online">Online</option><option value="cash">Cash</option></select></div>
-            <div class="form-group full"><label>Reference number</label><input name="reference_number"></div>
-            <div class="form-actions full"><button class="btn btn-accent" type="submit">Submit payment</button></div>
+            <div class="form-group"><label><?= __e('finance.method') ?></label><select name="payment_method"><?php foreach (['bank_transfer','card','online','cash'] as $m): ?><option value="<?= $m ?>"><?= e(__('payment.method.' . $m)) ?></option><?php endforeach; ?></select></div>
+            <div class="form-group full"><label><?= __e('common.reference') ?></label><input name="reference_number"></div>
+            <div class="form-actions full"><button class="btn btn-accent" type="submit"><?= __e('payments.submit') ?></button></div>
         </form>
     </div>
 </div>
@@ -95,7 +95,7 @@ require __DIR__ . '/../includes/header.php';
                 <tr>
                     <td><strong><?= e($p['receipt_number']) ?></strong><div class="muted"><?= e($p['reference_number'] ?: '') ?></div></td>
                     <td><?= e(money($p['amount'])) ?></td>
-                    <td><?= e(ucwords(str_replace('_',' ',$p['payment_method']))) ?></td>
+                    <td><?= e(__('payment.method.' . $p['payment_method'])) ?></td>
                     <td><?= e(format_datetime($p['paid_at'])) ?></td>
                 </tr>
             <?php endforeach; ?>

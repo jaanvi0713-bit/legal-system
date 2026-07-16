@@ -13,13 +13,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $pdo->prepare('UPDATE users SET availability=?, notes=? WHERE id=?')
         ->execute([$availability, post('notes'), $uid]);
     refresh_session_user();
-    flash('success', 'Availability updated.');
+    flash('success', __('flash.availability.updated'));
     redirect('availability.php');
 }
 
 $u = current_user();
 $pageTitle = __('page.availability');
-$pageSubtitle = 'Set your current availability for clients and the firm';
+$pageSubtitle = __('ai.subtitle.lawyer');
 $portal = 'lawyer';
 $activeNav = 'availability';
 require __DIR__ . '/../includes/header.php';
@@ -28,24 +28,24 @@ require __DIR__ . '/../includes/header.php';
     <form method="post" class="form-grid">
         <?= csrf_field() ?>
         <div class="form-group">
-            <label>Current status</label>
+            <label><?= __e('lawyer.availability.current') ?></label>
             <select name="availability">
-                <?php foreach (['available' => 'Available', 'busy' => 'Busy', 'unavailable' => 'Unavailable'] as $value => $label): ?>
-                    <option value="<?= e($value) ?>" <?= ($u['availability'] ?? '') === $value ? 'selected' : '' ?>><?= e($label) ?></option>
+                <?php foreach (['available', 'busy', 'unavailable'] as $value): ?>
+                    <option value="<?= e($value) ?>" <?= ($u['availability'] ?? '') === $value ? 'selected' : '' ?>><?= e(translate_status($value)) ?></option>
                 <?php endforeach; ?>
             </select>
         </div>
         <div class="form-group">
-            <label>Shown as</label>
-            <input value="<?= e(ucfirst($u['availability'] ?? 'available')) ?>" disabled>
+            <label><?= __e('lawyer.availability.shown_as') ?></label>
+            <input value="<?= e(translate_status($u['availability'] ?? 'available')) ?>" disabled>
         </div>
         <div class="form-group full">
-            <label>Notes for the team</label>
-            <textarea name="notes" placeholder="Court mornings, consultation windows, leave dates…"><?= e($u['notes'] ?? '') ?></textarea>
+            <label><?= __e('lawyer.availability.team_notes') ?></label>
+            <textarea name="notes" placeholder="<?= __e('common.notes') ?>"><?= e($u['notes'] ?? '') ?></textarea>
         </div>
         <div class="form-actions full">
-            <button class="btn btn-primary" type="submit">Save availability</button>
-            <a class="btn btn-ghost" href="profile.php">Edit profile</a>
+            <button class="btn btn-primary" type="submit"><?= __e('lawyer.availability.save') ?></button>
+            <a class="btn btn-ghost" href="profile.php"><?= __e('lawyer.availability.edit_profile') ?></a>
         </div>
     </form>
 </div>

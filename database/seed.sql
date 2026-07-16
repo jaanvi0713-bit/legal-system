@@ -53,14 +53,14 @@ INSERT INTO payments (invoice_id, client_id, amount, payment_method, reference_n
 (4, 6, 12600.00, 'bank_transfer', 'TRX-88301', 'RCP-2026-003', 'Final settlement', '2026-01-10 15:00:00', 1);
 
 INSERT INTO notifications (user_id, title, message, type, link, is_read, created_by) VALUES
-(1, 'New client registered', 'Raj Sharma has been added as a client.', 'info', 'clients.php', 0, 1),
-(1, 'Payment received', 'Rs 4,725.00 received from Sharma Logistics.', 'success', 'finance.php', 1, 1),
-(2, 'New case assigned', 'You have been assigned to LEX-2026-001.', 'case', 'cases.php?id=1', 0, 1),
-(2, 'Hearing reminder', 'Commercial hearing scheduled for 20 Jul 2026.', 'reminder', 'court.php', 0, 1),
-(3, 'Appointment pending', 'Labour Hearing Prep awaits your response.', 'appointment', 'appointments.php', 0, 1),
-(6, 'Document requested', 'Please upload the original supply contract.', 'document', 'documents.php', 0, 2),
-(6, 'Payment reminder', 'Outstanding balance of Rs 5,750.00 on INV-2026-001.', 'payment', 'payments.php', 0, 1),
-(7, 'Case update', 'Mediation date confirmed for 25 Jul 2026.', 'case', 'cases.php?id=2', 0, 3);
+(1, 'notify.new_client', 'notify.msg.new_client::{"name":"Raj Sharma"}', 'info', 'clients.php', 0, 1),
+(1, 'notify.payment_received', 'notify.msg.payment_received::{"amount":"Rs 4,725.00","from":"Sharma Logistics"}', 'success', 'finance.php', 1, 1),
+(2, 'notify.case_assigned', 'notify.msg.case_assigned::{"number":"LEX-2026-001"}', 'case', 'cases.php?id=1', 0, 1),
+(2, 'notify.hearing_reminder', 'notify.msg.hearing_reminder::{"date":"20 Jul 2026","title":"Commercial hearing"}', 'reminder', 'court.php', 0, 1),
+(3, 'notify.appointment_pending', 'notify.msg.appointment_pending::{"title":"Labour Hearing Prep"}', 'appointment', 'appointments.php', 0, 1),
+(6, 'notify.document_requested', 'notify.msg.document_requested_named::{"doc":"the original supply contract"}', 'document', 'documents.php', 0, 2),
+(6, 'notify.payment_reminder', 'notify.msg.payment_reminder::{"amount":"Rs 5,750.00","invoice":"INV-2026-001"}', 'payment', 'payments.php', 0, 1),
+(7, 'notify.case_update', 'Mediation date confirmed for 25 Jul 2026.', 'case', 'cases.php?id=2', 0, 3);
 
 INSERT INTO messages (sender_id, receiver_id, case_id, subject, body, is_read) VALUES
 (6, 2, 1, 'Evidence package', 'I have scanned the remaining invoices. When can I upload them?', 0),
@@ -75,7 +75,7 @@ INSERT INTO activity_logs (user_id, action, entity_type, entity_id, description,
 (3, 'create', 'appointment', 2, 'Created Labour Hearing Prep appointment', '127.0.0.1');
 
 INSERT INTO settings (setting_key, setting_value) VALUES
-('company_name', 'Lexora Legal Partners'),
+('company_name', 'LEGAL PRO'),
 ('company_email', 'contact@lexora.law'),
 ('company_phone', '+971-4-555-0100'),
 ('company_address', 'Gate Village Building 4, DIFC, Dubai, UAE'),
@@ -85,6 +85,6 @@ INSERT INTO settings (setting_key, setting_value) VALUES
 ('payment_currency', 'MUR'),
 ('app_language', 'en'),
 ('ai_enabled', '1'),
-('ai_welcome_admin', 'You are the Lexora admin AI assistant. Help with firm operations, case summaries, and legal drafting guidance.'),
-('ai_welcome_lawyer', 'You are a lawyer AI assistant for Lexora. Help with case analysis, document drafting, and hearing preparation.'),
-('ai_welcome_client', 'You are a client AI assistant for Lexora. Explain the client''s own documents and case status in plain language. Never reveal other clients'' information.');
+('ai_welcome_admin', 'You are the LEGAL PRO admin AI assistant. Help with firm operations, case summaries, and legal drafting guidance. Amounts are in Mauritian rupees (MUR). Respond in the user''s language (English or French).'),
+('ai_welcome_lawyer', 'You are the LEGAL PRO lawyer AI assistant. Help with case analysis, document drafting, and hearing preparation. Respond in the user''s language (English or French).'),
+('ai_welcome_client', 'You are the LEGAL PRO client AI assistant. Explain the client''s own documents and case status in plain language. Never reveal other clients'' information. Respond in the user''s language (English or French).');

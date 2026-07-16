@@ -11,49 +11,59 @@ $revenueReport = $pdo->query("SELECT DATE_FORMAT(paid_at,'%Y-%m') AS month, SUM(
 $appointmentReport = $pdo->query("SELECT status, COUNT(*) AS total FROM appointments GROUP BY status")->fetchAll();
 $paymentReport = $pdo->query("SELECT payment_method, COUNT(*) AS cnt, SUM(amount) AS total FROM payments GROUP BY payment_method")->fetchAll();
 
+$reportTabs = [
+    'overview' => 'reports.tab.overview',
+    'clients' => 'reports.tab.clients',
+    'lawyers' => 'reports.tab.lawyers',
+    'cases' => 'reports.tab.cases',
+    'revenue' => 'reports.tab.revenue',
+    'appointments' => 'reports.tab.appointments',
+    'payments' => 'reports.tab.payments',
+];
+
 $pageTitle = __('page.reports');
-$pageSubtitle = 'Client, lawyer, case, revenue, appointment, and payment reports';
+$pageSubtitle = __('page.reports');
 $portal = 'admin';
 $activeNav = 'reports';
 require __DIR__ . '/../includes/header.php';
 ?>
 <div class="panel">
     <div class="quick-links">
-        <?php foreach (['overview'=>'Overview','clients'=>'Clients','lawyers'=>'Lawyers','cases'=>'Cases','revenue'=>'Revenue','appointments'=>'Appointments','payments'=>'Payments'] as $k=>$label): ?>
-            <a class="chip" href="?type=<?= $k ?>"><?= e($label) ?></a>
+        <?php foreach ($reportTabs as $k => $labelKey): ?>
+            <a class="chip" href="?type=<?= $k ?>"><?= __e($labelKey) ?></a>
         <?php endforeach; ?>
     </div>
 </div>
 <?php if ($type === 'clients'): ?>
-<div class="panel"><h2>Client report</h2>
-<table><thead><tr><th>Client</th><th>Company</th><th>Cases</th><th>Billed</th></tr></thead><tbody>
-<?php foreach ($clientReport as $r): ?><tr><td><?= e(full_name($r)) ?></td><td><?= e($r['company_name']?:'—') ?></td><td><?= (int)$r['case_count'] ?></td><td><?= e(money($r['billed'])) ?></td></tr><?php endforeach; ?>
+<div class="panel"><h2><?= __e('reports.heading.clients') ?></h2>
+<table><thead><tr><th><?= __e('common.client') ?></th><th><?= __e('common.company') ?></th><th><?= __e('nav.cases') ?></th><th><?= __e('common.billed') ?></th></tr></thead><tbody>
+<?php foreach ($clientReport as $r): ?><tr><td><?= e(full_name($r)) ?></td><td><?= e($r['company_name']?:__('common.em_dash')) ?></td><td><?= (int)$r['case_count'] ?></td><td><?= e(money($r['billed'])) ?></td></tr><?php endforeach; ?>
 </tbody></table></div>
 <?php elseif ($type === 'lawyers'): ?>
-<div class="panel"><h2>Lawyer report</h2>
-<table><thead><tr><th>Lawyer</th><th>Specialization</th><th>Open</th><th>Total</th></tr></thead><tbody>
-<?php foreach ($lawyerReport as $r): ?><tr><td><?= e(full_name($r)) ?></td><td><?= e($r['specialization']?:'—') ?></td><td><?= (int)$r['open_cases'] ?></td><td><?= (int)$r['total_cases'] ?></td></tr><?php endforeach; ?>
+<div class="panel"><h2><?= __e('reports.heading.lawyers') ?></h2>
+<table><thead><tr><th><?= __e('common.lawyer') ?></th><th><?= __e('common.specialization') ?></th><th><?= __e('common.open_count') ?></th><th><?= __e('common.total') ?></th></tr></thead><tbody>
+<?php foreach ($lawyerReport as $r): ?><tr><td><?= e(full_name($r)) ?></td><td><?= e($r['specialization']?t_content($r['specialization']):__('common.em_dash')) ?></td><td><?= (int)$r['open_cases'] ?></td><td><?= (int)$r['total_cases'] ?></td></tr><?php endforeach; ?>
 </tbody></table></div>
 <?php elseif ($type === 'cases'): ?>
-<div class="panel"><h2>Case report</h2>
-<div class="grid grid-3"><?php foreach ($caseReport as $r): ?><div class="stat-card"><div class="stat-label"><?= e(ucwords(str_replace('_',' ',$r['status']))) ?></div><div class="stat-value"><?= (int)$r['total'] ?></div></div><?php endforeach; ?></div></div>
+<div class="panel"><h2><?= __e('reports.heading.cases') ?></h2>
+<div class="grid grid-3"><?php foreach ($caseReport as $r): ?><div class="stat-card"><div class="stat-label"><?= e(translate_status($r['status'])) ?></div><div class="stat-value"><?= (int)$r['total'] ?></div></div><?php endforeach; ?></div></div>
 <?php elseif ($type === 'revenue'): ?>
-<div class="panel"><h2>Revenue report</h2>
-<table><thead><tr><th>Month</th><th>Revenue</th></tr></thead><tbody>
+<div class="panel"><h2><?= __e('reports.heading.revenue') ?></h2>
+<table><thead><tr><th><?= __e('common.month') ?></th><th><?= __e('finance.revenue') ?></th></tr></thead><tbody>
 <?php foreach ($revenueReport as $r): ?><tr><td><?= e($r['month']) ?></td><td><?= e(money($r['total'])) ?></td></tr><?php endforeach; ?>
 </tbody></table></div>
 <?php elseif ($type === 'appointments'): ?>
-<div class="panel"><h2>Appointment report</h2>
-<div class="grid grid-3"><?php foreach ($appointmentReport as $r): ?><div class="stat-card"><div class="stat-label"><?= e(ucfirst($r['status'])) ?></div><div class="stat-value"><?= (int)$r['total'] ?></div></div><?php endforeach; ?></div></div>
+<div class="panel"><h2><?= __e('reports.heading.appointments') ?></h2>
+<div class="grid grid-3"><?php foreach ($appointmentReport as $r): ?><div class="stat-card"><div class="stat-label"><?= e(translate_status($r['status'])) ?></div><div class="stat-value"><?= (int)$r['total'] ?></div></div><?php endforeach; ?></div></div>
 <?php elseif ($type === 'payments'): ?>
-<div class="panel"><h2>Payment report</h2>
-<table><thead><tr><th>Method</th><th>Count</th><th>Total</th></tr></thead><tbody>
-<?php foreach ($paymentReport as $r): ?><tr><td><?= e(ucwords(str_replace('_',' ',$r['payment_method']))) ?></td><td><?= (int)$r['cnt'] ?></td><td><?= e(money($r['total'])) ?></td></tr><?php endforeach; ?>
+<div class="panel"><h2><?= __e('reports.heading.payments') ?></h2>
+<table><thead><tr><th><?= __e('finance.method') ?></th><th><?= __e('common.count') ?></th><th><?= __e('common.total') ?></th></tr></thead><tbody>
+<?php foreach ($paymentReport as $r): ?><tr><td><?= e(__('payment.method.' . $r['payment_method'])) ?></td><td><?= (int)$r['cnt'] ?></td><td><?= e(money($r['total'])) ?></td></tr><?php endforeach; ?>
 </tbody></table></div>
 <?php else: ?>
 <div class="grid grid-2">
-    <div class="panel"><h2>Cases by status</h2><div class="list-stack"><?php foreach ($caseReport as $r): ?><div class="list-item"><strong><?= e(ucwords(str_replace('_',' ',$r['status']))) ?></strong><?= (int)$r['total'] ?></div><?php endforeach; ?></div></div>
-    <div class="panel"><h2>Revenue by month</h2><div class="list-stack"><?php foreach ($revenueReport as $r): ?><div class="list-item"><strong><?= e($r['month']) ?></strong><?= e(money($r['total'])) ?></div><?php endforeach; ?></div></div>
+    <div class="panel"><h2><?= __e('reports.cases_by_status') ?></h2><div class="list-stack"><?php foreach ($caseReport as $r): ?><div class="list-item"><strong><?= e(translate_status($r['status'])) ?></strong><?= (int)$r['total'] ?></div><?php endforeach; ?></div></div>
+    <div class="panel"><h2><?= __e('reports.revenue_by_month') ?></h2><div class="list-stack"><?php foreach ($revenueReport as $r): ?><div class="list-item"><strong><?= e($r['month']) ?></strong><?= e(money($r['total'])) ?></div><?php endforeach; ?></div></div>
 </div>
 <?php endif; ?>
 <?php require __DIR__ . '/../includes/footer.php'; ?>

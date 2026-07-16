@@ -33,7 +33,7 @@ $notes->execute([$uid]);
 $notes = $notes->fetchAll();
 
 $pageTitle = __('page.dashboard');
-$pageSubtitle = 'Your matters at a glance';
+$pageSubtitle = __('ai.subtitle.client');
 $portal = 'client';
 $activeNav = 'dashboard';
 require __DIR__ . '/../includes/header.php';
@@ -43,78 +43,78 @@ require __DIR__ . '/../includes/header.php';
         <div class="kpi-top">
             <div class="kpi-icon primary">C</div>
             <div class="kpi-meta">
-                <div class="kpi-label">Active cases</div>
+                <div class="kpi-label"><?= __e('client.kpi.active_cases') ?></div>
                 <div class="kpi-value"><?= count($active) ?></div>
             </div>
         </div>
-        <div class="kpi-foot"><span class="kpi-delta up">Open</span> matters in progress</div>
+        <div class="kpi-foot"><span class="kpi-delta up"><?= __e('status.open') ?></span> <?= __e('common.progress') ?></div>
     </article>
     <article class="kpi-card">
         <div class="kpi-top">
             <div class="kpi-icon info">L</div>
             <div class="kpi-meta">
-                <div class="kpi-label">Assigned lawyer</div>
-                <div class="kpi-value" style="font-size:1.05rem;"><?= e($lawyer ? full_name($lawyer) : 'Pending') ?></div>
+                <div class="kpi-label"><?= __e('client.kpi.assigned_lawyer') ?></div>
+                <div class="kpi-value" style="font-size:1.05rem;"><?= e($lawyer ? full_name($lawyer) : __('common.pending')) ?></div>
             </div>
         </div>
-        <div class="kpi-foot"><span class="kpi-delta up">Counsel</span> your contact point</div>
+        <div class="kpi-foot"><span class="kpi-delta up"><?= __e('role.lawyer') ?></span> <?= __e('common.contact') ?></div>
     </article>
     <article class="kpi-card">
         <div class="kpi-top">
             <div class="kpi-icon warning">A</div>
             <div class="kpi-meta">
-                <div class="kpi-label">Upcoming appointments</div>
+                <div class="kpi-label"><?= __e('client.kpi.upcoming_appointments') ?></div>
                 <div class="kpi-value"><?= count($appointments) ?></div>
             </div>
         </div>
-        <div class="kpi-foot"><span class="kpi-delta up">Soon</span> meetings on calendar</div>
+        <div class="kpi-foot"><span class="kpi-delta up"><?= __e('common.pending') ?></span> <?= __e('common.calendar') ?></div>
     </article>
     <article class="kpi-card">
         <div class="kpi-top">
             <div class="kpi-icon success">$</div>
             <div class="kpi-meta">
-                <div class="kpi-label">Outstanding</div>
+                <div class="kpi-label"><?= __e('client.kpi.outstanding') ?></div>
                 <div class="kpi-value" style="font-size:1.15rem;"><?= e(money($outstanding)) ?></div>
             </div>
         </div>
-        <div class="kpi-foot"><span class="kpi-delta down">Due</span> balance on invoices</div>
+        <div class="kpi-foot"><span class="kpi-delta down"><?= __e('status.overdue') ?></span> <?= __e('finance.invoices') ?></div>
     </article>
 </section>
 <div class="grid grid-2">
     <div class="panel">
-        <div class="panel-header"><h2>My cases</h2><a href="cases.php">Open</a></div>
+        <div class="panel-header"><h2><?= __e('client.panel.my_cases') ?></h2><a href="cases.php"><?= __e('common.open') ?></a></div>
         <div class="list-stack">
             <?php foreach ($active as $c): ?>
-                <div class="list-item"><strong><?= e($c['case_number']) ?></strong><span class="muted"><?= e($c['title']) ?> · Lawyer: <?= e($c['lawyer_name'] ?: 'TBA') ?></span> <?= status_badge($c['status']) ?></div>
+                <div class="list-item"><strong><?= e($c['case_number']) ?></strong><span class="muted"><?= e(t_content($c['title'])) ?> · <?= __e('cases.lawyer_label') ?> <?= e($c['lawyer_name'] ?: __('lawyer.tba')) ?></span> <?= status_badge($c['status']) ?></div>
             <?php endforeach; ?>
-            <?php if (!$active): ?><div class="empty-state">No active cases.</div><?php endif; ?>
+            <?php if (!$active): ?><div class="empty-state"><?= __e('common.no_records') ?></div><?php endif; ?>
         </div>
     </div>
     <div class="panel">
-        <div class="panel-header"><h2>Recent documents</h2><a href="documents.php">All files</a></div>
+        <div class="panel-header"><h2><?= __e('client.panel.recent_documents') ?></h2><a href="documents.php"><?= __e('client.panel.all_files') ?></a></div>
         <div class="list-stack">
             <?php foreach ($docs as $d): ?>
-                <div class="list-item"><strong><?= e($d['title']) ?></strong><a href="../<?= e($d['file_path']) ?>" target="_blank">Download</a></div>
+                <div class="list-item"><strong><?= e(t_content($d['title'])) ?></strong><a href="../<?= e($d['file_path']) ?>" target="_blank"><?= __e('common.download') ?></a></div>
             <?php endforeach; ?>
-            <?php if (!$docs): ?><div class="empty-state">No documents yet.</div><?php endif; ?>
+            <?php if (!$docs): ?><div class="empty-state"><?= __e('cases.no_documents') ?></div><?php endif; ?>
         </div>
     </div>
 </div>
 <div class="grid grid-2">
     <div class="panel">
-        <h2>Upcoming appointments</h2>
+        <h2><?= __e('client.panel.upcoming_appointments') ?></h2>
         <div class="list-stack">
             <?php foreach ($appointments as $a): ?>
-                <div class="list-item"><strong><?= e($a['title']) ?></strong><span class="muted"><?= e(format_datetime($a['scheduled_at'])) ?></span></div>
+                <div class="list-item"><strong><?= e(t_content($a['title'])) ?></strong><span class="muted"><?= e(format_datetime($a['scheduled_at'])) ?></span></div>
             <?php endforeach; ?>
-            <?php if (!$appointments): ?><div class="empty-state">None scheduled.</div><?php endif; ?>
+            <?php if (!$appointments): ?><div class="empty-state"><?= __e('dashboard.empty.nothing_scheduled') ?></div><?php endif; ?>
         </div>
     </div>
     <div class="panel">
-        <h2>Notifications</h2>
+        <h2><?= __e('common.notifications') ?></h2>
         <div class="list-stack">
             <?php foreach ($notes as $n): ?>
-                <div class="list-item"><strong><?= e($n['title']) ?></strong><span class="muted"><?= e($n['message']) ?></span></div>
+                <div class="list-item"><strong><?= e(t_stored($n['title'])) ?></strong><span class="muted"><?= e(t_stored($n['message'])) ?></span></div>
             <?php endforeach; ?>
         </div>
     </div>

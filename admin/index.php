@@ -41,7 +41,7 @@ foreach ($pdo->query("SELECT DATE_FORMAT(paid_at, '%Y-%m') AS ym, COALESCE(SUM(a
 }
 
 $typeRows = $pdo->query("SELECT COALESCE(NULLIF(case_type,''), 'Other') AS label, COUNT(*) AS c FROM cases GROUP BY label ORDER BY c DESC")->fetchAll();
-$typeLabels = array_column($typeRows, 'label') ?: ['No data'];
+$typeLabels = array_map('t_content', array_column($typeRows, 'label') ?: [__('chart.no_data')]);
 $typeCounts = array_map('intval', array_column($typeRows, 'c') ?: [1]);
 $typeTotal = max(array_sum($typeCounts), 1);
 
@@ -60,17 +60,26 @@ $activePct = (int) round(($stats['active_cases'] / $totalCases) * 100);
 $closedPct = (int) round(($stats['closed_cases'] / $totalCases) * 100);
 
 $chartData = [
-    'months' => array_map(fn($m) => date('M', strtotime($m . '-01')), $months),
+    'months' => array_map('format_month_short', $months),
     'opened' => array_values($openedByMonth),
     'closed' => array_values($closedByMonth),
     'revenue' => array_values($revenueByMonth),
     'types' => ['labels' => $typeLabels, 'values' => $typeCounts],
     'status' => ['active' => $stats['active_cases'], 'closed' => $stats['closed_cases']],
     'weekdays' => $weekdayCounts,
+    'weekdayLabels' => [
+        __('calendar.weekday.mon'),
+        __('calendar.weekday.tue'),
+        __('calendar.weekday.wed'),
+        __('calendar.weekday.thu'),
+        __('calendar.weekday.fri'),
+        __('calendar.weekday.sat'),
+        __('calendar.weekday.sun'),
+    ],
 ];
 
 $pageTitle = __('page.dashboard');
-$pageSubtitle = 'Overview of cases, clients, and firm performance';
+$pageSubtitle = __('dashboard.welcome_body');
 $portal = 'admin';
 $activeNav = 'dashboard';
 $includeCharts = true;
@@ -78,14 +87,14 @@ require __DIR__ . '/../includes/header.php';
 ?>
 <section class="welcome-banner">
     <div>
-        <div class="eyebrow"><?= e(date('l, F j, Y')) ?></div>
-        <h2>Welcome back, <?= e($user['first_name']) ?></h2>
-        <p>Track active matters, hearings, billing, and team workload in one place.</p>
+        <div class="eyebrow"><?= e(format_long_date()) ?></div>
+        <h2><?= __e('dashboard.welcome', ['name' => $user['first_name']]) ?></h2>
+        <p><?= __e('dashboard.welcome_body') ?></p>
     </div>
     <div class="welcome-actions">
-        <a class="btn btn-accent btn-sm" href="cases.php?action=create">New case</a>
-        <a class="btn btn-accent btn-sm" href="appointments.php?action=create">Book appointment</a>
-        <a class="btn btn-accent btn-sm" href="reports.php">View reports</a>
+        <a class="btn btn-accent btn-sm" href="cases.php?action=create"><?= __e('dashboard.action.new_case') ?></a>
+        <a class="btn btn-accent btn-sm" href="appointments.php?action=create"><?= __e('dashboard.action.book_appointment') ?></a>
+        <a class="btn btn-accent btn-sm" href="reports.php"><?= __e('dashboard.action.view_reports') ?></a>
     </div>
 </section>
 
@@ -94,41 +103,41 @@ require __DIR__ . '/../includes/header.php';
         <div class="kpi-top">
             <div class="kpi-icon primary">C</div>
             <div class="kpi-meta">
-                <div class="kpi-label">Active cases</div>
+                <div class="kpi-label"><?= __e('dashboard.kpi.active_cases') ?></div>
                 <div class="kpi-value"><?= (int) $stats['active_cases'] ?></div>
             </div>
         </div>
-        <div class="kpi-foot"><span class="kpi-delta up"><?= $activePct ?>%</span> of all firm matters</div>
+        <div class="kpi-foot"><span class="kpi-delta up"><?= $activePct ?>%</span> <?= __e('dashboard.kpi.of_all_matters') ?></div>
     </article>
     <article class="kpi-card">
         <div class="kpi-top">
             <div class="kpi-icon info">U</div>
             <div class="kpi-meta">
-                <div class="kpi-label">Clients</div>
+                <div class="kpi-label"><?= __e('dashboard.kpi.clients') ?></div>
                 <div class="kpi-value"><?= (int) $stats['clients'] ?></div>
             </div>
         </div>
-        <div class="kpi-foot"><span class="kpi-delta up"><?= (int) $stats['lawyers'] ?></span> lawyers available</div>
+        <div class="kpi-foot"><span class="kpi-delta up"><?= (int) $stats['lawyers'] ?></span> <?= __e('dashboard.kpi.lawyers_available') ?></div>
     </article>
     <article class="kpi-card">
         <div class="kpi-top">
             <div class="kpi-icon success">$</div>
             <div class="kpi-meta">
-                <div class="kpi-label">Total revenue</div>
+                <div class="kpi-label"><?= __e('dashboard.kpi.total_revenue') ?></div>
                 <div class="kpi-value" style="font-size:1.25rem;"><?= e(money($stats['revenue'])) ?></div>
             </div>
         </div>
-        <div class="kpi-foot"><span class="kpi-delta up"><?= (int) $stats['invoices_open'] ?></span> open invoices</div>
+        <div class="kpi-foot"><span class="kpi-delta up"><?= (int) $stats['invoices_open'] ?></span> <?= __e('dashboard.kpi.open_invoices') ?></div>
     </article>
     <article class="kpi-card">
         <div class="kpi-top">
             <div class="kpi-icon warning">H</div>
             <div class="kpi-meta">
-                <div class="kpi-label">Upcoming hearings</div>
+                <div class="kpi-label"><?= __e('dashboard.kpi.upcoming_hearings') ?></div>
                 <div class="kpi-value"><?= (int) $stats['hearings'] ?></div>
             </div>
         </div>
-        <div class="kpi-foot"><span class="kpi-delta down"><?= (int) $stats['appointments'] ?></span> appointments booked</div>
+        <div class="kpi-foot"><span class="kpi-delta down"><?= (int) $stats['appointments'] ?></span> <?= __e('dashboard.kpi.appointments_booked') ?></div>
     </article>
 </section>
 
@@ -136,18 +145,18 @@ require __DIR__ . '/../includes/header.php';
     <div class="chart-card">
         <div class="panel-header">
             <div>
-                <h2>Case overview</h2>
-                <p class="muted" style="margin:0;">Opened vs closed matters · last 7 months</p>
+                <h2><?= __e('dashboard.panel.case_overview') ?></h2>
+                <p class="muted" style="margin:0;"><?= __e('dashboard.panel.opened_vs_closed') ?></p>
             </div>
-            <a href="cases.php">Manage cases</a>
+            <a href="cases.php"><?= __e('dashboard.panel.manage_cases') ?></a>
         </div>
         <div class="chart-wrap lg"><canvas id="chartCases"></canvas></div>
     </div>
     <div class="dash-side">
         <div class="chart-card">
             <div class="panel-header">
-                <h2>Case status mix</h2>
-                <span class="muted"><?= $closedPct ?>% closed</span>
+                <h2><?= __e('dashboard.panel.status_mix') ?></h2>
+                <span class="muted"><?= __e('dashboard.panel.pct_closed', ['pct' => $closedPct]) ?></span>
             </div>
             <div class="donut-row" style="position:relative;">
                 <div class="chart-wrap sm" style="position:relative;">
@@ -155,29 +164,29 @@ require __DIR__ . '/../includes/header.php';
                     <div class="donut-center-label">
                         <div>
                             <strong><?= (int) $totalCases ?></strong>
-                            <span>Total cases</span>
+                            <span><?= __e('dashboard.panel.total_cases') ?></span>
                         </div>
                     </div>
                 </div>
                 <div class="chart-legend">
-                    <span><i style="background:var(--primary)"></i>Active <?= (int) $stats['active_cases'] ?></span>
-                    <span><i style="background:var(--info)"></i>Closed <?= (int) $stats['closed_cases'] ?></span>
+                    <span><i style="background:var(--primary)"></i><?= __e('status.active') ?> <?= (int) $stats['active_cases'] ?></span>
+                    <span><i style="background:var(--info)"></i><?= __e('status.closed') ?> <?= (int) $stats['closed_cases'] ?></span>
                 </div>
             </div>
         </div>
         <div class="panel">
-            <div class="panel-header"><h2>Workload by type</h2></div>
+            <div class="panel-header"><h2><?= __e('dashboard.panel.workload_by_type') ?></h2></div>
             <div class="progress-list">
                 <?php foreach ($typeRows as $i => $type):
                     $pct = (int) round(((int) $type['c'] / $typeTotal) * 100);
                     $barClass = ['', 'info', 'success', 'warning'][$i % 4];
                 ?>
                     <div class="progress-item">
-                        <div class="row"><strong><?= e($type['label']) ?></strong><span><?= (int) $type['c'] ?> · <?= $pct ?>%</span></div>
+                        <div class="row"><strong><?= e(t_content($type['label'])) ?></strong><span><?= (int) $type['c'] ?> · <?= $pct ?>%</span></div>
                         <div class="progress-bar <?= e($barClass) ?>"><span style="width:<?= $pct ?>%"></span></div>
                     </div>
                 <?php endforeach; ?>
-                <?php if (!$typeRows): ?><div class="empty-state">No case types yet.</div><?php endif; ?>
+                <?php if (!$typeRows): ?><div class="empty-state"><?= __e('dashboard.empty.no_case_types') ?></div><?php endif; ?>
             </div>
         </div>
     </div>
@@ -186,23 +195,23 @@ require __DIR__ . '/../includes/header.php';
 <section class="dash-bottom">
     <div class="panel">
         <div class="panel-header">
-            <h2>Recent cases</h2>
-            <a href="cases.php">See all</a>
+            <h2><?= __e('dashboard.panel.recent_cases') ?></h2>
+            <a href="cases.php"><?= __e('common.see_all') ?></a>
         </div>
         <div class="table-wrap">
             <table>
                 <thead>
-                    <tr><th>Case</th><th>Client</th><th>Lawyer</th><th>Status</th></tr>
+                    <tr><th><?= __e('common.case') ?></th><th><?= __e('common.client') ?></th><th><?= __e('common.lawyer') ?></th><th><?= __e('common.status') ?></th></tr>
                 </thead>
                 <tbody>
                 <?php foreach ($recentCases as $c): ?>
                     <tr>
                         <td>
                             <strong><a href="cases.php?id=<?= (int) $c['id'] ?>"><?= e($c['case_number']) ?></a></strong>
-                            <div class="muted" style="font-size:0.8rem;"><?= e($c['title']) ?></div>
+                            <div class="muted" style="font-size:0.8rem;"><?= e(t_content($c['title'])) ?></div>
                         </td>
                         <td><?= e($c['client_name']) ?></td>
-                        <td><?= e($c['lawyer_name'] ?: 'Unassigned') ?></td>
+                        <td><?= e($c['lawyer_name'] ?: __('common.unassigned')) ?></td>
                         <td><?= status_badge($c['status']) ?></td>
                     </tr>
                 <?php endforeach; ?>
@@ -212,8 +221,8 @@ require __DIR__ . '/../includes/header.php';
     </div>
     <div class="chart-card">
         <div class="panel-header">
-            <h2>Appointments by weekday</h2>
-            <a href="appointments.php">Calendar</a>
+            <h2><?= __e('dashboard.panel.appointments_weekday') ?></h2>
+            <a href="appointments.php"><?= __e('common.calendar') ?></a>
         </div>
         <div class="chart-wrap md"><canvas id="chartWeekdays"></canvas></div>
     </div>
@@ -221,7 +230,7 @@ require __DIR__ . '/../includes/header.php';
 
 <section class="dash-lists">
     <div class="panel">
-        <div class="panel-header"><h2>Revenue collections</h2><a href="finance.php">Finance</a></div>
+        <div class="panel-header"><h2><?= __e('dashboard.panel.revenue_collections') ?></h2><a href="finance.php"><?= __e('nav.finance') ?></a></div>
         <div class="chart-wrap sm" style="margin-bottom:1rem;"><canvas id="chartRevenue"></canvas></div>
         <div class="list-stack">
             <?php foreach ($payments as $p): ?>
@@ -230,25 +239,25 @@ require __DIR__ . '/../includes/header.php';
                     <span class="muted"><?= e(money($p['amount'])) ?> · <?= e(format_datetime($p['paid_at'])) ?></span>
                 </div>
             <?php endforeach; ?>
-            <?php if (!$payments): ?><div class="empty-state">No payments recorded.</div><?php endif; ?>
+            <?php if (!$payments): ?><div class="empty-state"><?= __e('dashboard.empty.no_payments') ?></div><?php endif; ?>
         </div>
     </div>
     <div class="panel">
-        <div class="panel-header"><h2>Upcoming schedule</h2><a href="court.php">Court tracking</a></div>
+        <div class="panel-header"><h2><?= __e('dashboard.panel.upcoming_schedule') ?></h2><a href="court.php"><?= __e('nav.court') ?></a></div>
         <div class="list-stack">
             <?php foreach ($hearings as $h): ?>
                 <div class="list-item">
-                    <strong>Hearing · <?= e($h['case_number']) ?></strong>
-                    <span class="muted"><?= e(format_datetime($h['hearing_date'])) ?> · <?= e($h['court_name']) ?></span>
+                    <strong><?= __e('court.hearing_prefix') ?> <?= e($h['case_number']) ?></strong>
+                    <span class="muted"><?= e(format_datetime($h['hearing_date'])) ?> · <?= e(t_content($h['court_name'])) ?></span>
                 </div>
             <?php endforeach; ?>
             <?php foreach ($appointments as $a): ?>
                 <div class="list-item">
-                    <strong><?= e($a['title']) ?></strong>
-                    <span class="muted"><?= e(format_datetime($a['scheduled_at'])) ?> · <?= e($a['client_name'] ?? '—') ?></span>
+                    <strong><?= e(t_content($a['title'])) ?></strong>
+                    <span class="muted"><?= e(format_datetime($a['scheduled_at'])) ?> · <?= e($a['client_name'] ?? __('common.em_dash')) ?></span>
                 </div>
             <?php endforeach; ?>
-            <?php if (!$hearings && !$appointments): ?><div class="empty-state">Nothing scheduled.</div><?php endif; ?>
+            <?php if (!$hearings && !$appointments): ?><div class="empty-state"><?= __e('dashboard.empty.nothing_scheduled') ?></div><?php endif; ?>
         </div>
     </div>
 </section>
