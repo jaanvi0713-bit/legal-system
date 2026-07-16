@@ -64,7 +64,7 @@ require __DIR__ . '/../includes/header.php';
                 <div class="list-item">
                     <strong><?= e(t_content($d['title'])) ?></strong>
                     <span class="muted"><?= e(__('doc.category.' . $d['category'])) ?> · <?= e($d['case_number'] ?: __('common.case')) ?> · <?= e(format_datetime($d['created_at'])) ?></span>
-                    <div><a href="../<?= e($d['file_path']) ?>" target="_blank"><?= __e('common.download') ?></a></div>
+                    <div class="row-actions" style="justify-content:flex-start;margin-top:0.35rem"><a class="btn btn-row-open btn-sm" href="../<?= e($d['file_path']) ?>" target="_blank"><?= __e('common.download') ?></a></div>
                 </div>
             <?php endforeach; ?>
             <?php if (!$docs): ?><div class="empty-state"><?= __e('cases.no_documents') ?></div><?php endif; ?>

@@ -112,7 +112,7 @@ CREATE TABLE appointments (
     scheduled_at DATETIME NOT NULL,
     duration_minutes INT UNSIGNED DEFAULT 60,
     location VARCHAR(255) DEFAULT NULL,
-    status ENUM('pending','accepted','rejected','cancelled','completed') NOT NULL DEFAULT 'pending',
+    status ENUM('scheduled','confirmed','rescheduled','pending','completed','cancelled') NOT NULL DEFAULT 'pending',
     created_by INT UNSIGNED DEFAULT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

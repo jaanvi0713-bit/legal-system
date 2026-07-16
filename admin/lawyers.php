@@ -248,9 +248,11 @@ require __DIR__ . '/../includes/header.php';
                     <td><?= e($l['specialization'] ?: '—') ?></td>
                     <td><?= (int)$l['open_cases'] ?> open</td>
                     <td><?= status_badge($l['availability']) ?></td>
-                    <td class="case-row-actions">
-                        <a class="btn btn-row-open btn-sm" href="?action=edit&id=<?= (int)$l['id'] ?>">Edit</a>
-                        <form method="post" class="inline-form" onsubmit="return confirm('Remove this lawyer?')"><?= csrf_field() ?><input type="hidden" name="form_action" value="delete"><input type="hidden" name="id" value="<?= (int)$l['id'] ?>"><button class="btn btn-row-delete btn-sm" type="submit">Remove</button></form>
+                    <td class="col-actions">
+                        <div class="row-actions">
+                            <a class="btn btn-row-edit btn-sm" href="?action=edit&id=<?= (int)$l['id'] ?>">Edit</a>
+                            <form method="post" onsubmit="return confirm('Remove this lawyer?')"><?= csrf_field() ?><input type="hidden" name="form_action" value="delete"><input type="hidden" name="id" value="<?= (int)$l['id'] ?>"><button class="btn btn-row-delete btn-sm" type="submit">Remove</button></form>
+                        </div>
                     </td>
                 </tr>
             <?php endforeach; ?>

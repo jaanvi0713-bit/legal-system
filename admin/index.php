@@ -10,7 +10,8 @@ $stats = [
     'active_cases' => (int) $pdo->query("SELECT COUNT(*) FROM cases WHERE status IN ('open','active','pending','reopened','on_hold')")->fetchColumn(),
     'closed_cases' => (int) $pdo->query("SELECT COUNT(*) FROM cases WHERE status='closed'")->fetchColumn(),
     'revenue' => (float) $pdo->query('SELECT COALESCE(SUM(amount),0) FROM payments')->fetchColumn(),
-    'appointments' => (int) $pdo->query("SELECT COUNT(*) FROM appointments WHERE status NOT IN ('cancelled','rejected')")->fetchColumn(),
+    'messages' => (int) $pdo->query('SELECT COUNT(*) FROM messages')->fetchColumn(),
+    'appointments' => (int) $pdo->query("SELECT COUNT(*) FROM appointments WHERE status IN ('scheduled','confirmed','rescheduled','pending')")->fetchColumn(),
     'hearings' => (int) $pdo->query("SELECT COUNT(*) FROM court_hearings WHERE status='scheduled' AND hearing_date >= NOW()")->fetchColumn(),
     'invoices_open' => (int) $pdo->query("SELECT COUNT(*) FROM invoices WHERE status IN ('sent','partial','overdue')")->fetchColumn(),
     'outstanding' => (float) $pdo->query("SELECT COALESCE(SUM(total),0) FROM invoices WHERE status IN ('sent','partial','overdue')")->fetchColumn(),
@@ -63,6 +64,16 @@ $hearings = $pdo->query("
     LIMIT 6
 ")->fetchAll();
 
+$appointments = $pdo->query("
+    SELECT a.*, CONCAT(c.first_name,' ',c.last_name) AS client_name
+    FROM appointments a
+    LEFT JOIN users c ON c.id = a.client_id
+    WHERE a.scheduled_at >= NOW()
+      AND a.status IN ('scheduled','confirmed','rescheduled','pending')
+    ORDER BY a.scheduled_at ASC
+    LIMIT 5
+")->fetchAll();
+
 $unread = unread_notifications($pdo, (int) $user['id']);
 
 $balanceVar = 0.0;
@@ -81,8 +92,10 @@ $aiCaption = abs($balanceVar) >= 0.1
     ? ('AI analytics confirm your ' . ($balanceVar >= 0 ? 'collections rise' : 'collections dip'))
     : 'AI analytics ready to review cases and billing';
 
+$hasSchedule = $hearings || $appointments;
+
 $chartData = [
-    'months' => array_map(static fn($m) => date('M', strtotime($m . '-01')), $months),
+    'months' => array_map('format_month_short', $months),
     'monthKeys' => $months,
     'opened' => array_values($openedByMonth),
     'closed' => array_values($closedByMonth),
@@ -144,7 +157,7 @@ if (array_sum($overviewValues) <= 0) {
 $overviewSvg = $buildOverviewSvg($overviewLabels, $overviewValues);
 
 $pageTitle = __('page.dashboard');
-$pageSubtitle = 'Firm overview';
+$pageSubtitle = __('dashboard.welcome_body');
 $portal = 'admin';
 $activeNav = 'dashboard';
 $includeCharts = true;
@@ -157,14 +170,14 @@ require __DIR__ . '/../includes/header.php';
             <section class="glass-card glass-balance">
                 <div class="glass-balance-head">
                     <div>
-                        <span class="glass-kicker">Overall balance</span>
+                        <span class="glass-kicker"><?= __e('dashboard.kpi.total_revenue') ?></span>
                         <div class="glass-balance-value"><?= e(money($stats['revenue'])) ?></div>
                         <div class="glass-balance-var <?= $balanceVar >= 0 ? 'is-up' : 'is-down' ?>">
                             <span><?= ($balanceVar >= 0 ? '+' : '') . number_format($balanceVar, 1) ?>%</span>
                             Balance variation
                         </div>
                     </div>
-                    <a class="glass-chip" href="reports.php">Details</a>
+                    <a class="glass-chip" href="reports.php"><?= __e('dashboard.action.view_reports') ?></a>
                 </div>
 
                 <a class="glass-ai" href="ai.php">
@@ -189,11 +202,11 @@ require __DIR__ . '/../includes/header.php';
 
             <section class="glass-card glass-side-list">
                 <div class="glass-panel-head">
-                    <h2><?= $hearings ? 'Upcoming hearings' : 'Case mix' ?></h2>
-                    <a class="glass-link" href="<?= $hearings ? 'court.php' : 'cases.php' ?>">View</a>
+                    <h2><?= $hasSchedule ? __e('dashboard.panel.upcoming_schedule') : __e('dashboard.panel.workload_by_type') ?></h2>
+                    <a class="glass-link" href="<?= $hasSchedule ? ($hearings ? 'court.php' : 'appointments.php') : 'cases.php' ?>"><?= __e('common.view') ?></a>
                 </div>
                 <div class="glass-list">
-                    <?php if ($hearings): ?>
+                    <?php if ($hasSchedule): ?>
                         <?php foreach ($hearings as $h): ?>
                             <div class="glass-list-item">
                                 <div class="glass-list-mark">H</div>
@@ -202,8 +215,21 @@ require __DIR__ . '/../includes/header.php';
                                     <span><?= e(format_datetime($h['hearing_date'])) ?></span>
                                 </div>
                                 <div class="glass-list-right">
-                                    <strong><?= e($h['court_name'] ?: 'Court') ?></strong>
+                                    <strong><?= e(t_content($h['court_name'] ?: __('common.court'))) ?></strong>
                                     <span class="is-soft"><?= (int) $stats['appointments'] ?> appts</span>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                        <?php foreach ($appointments as $a): ?>
+                            <div class="glass-list-item">
+                                <div class="glass-list-mark">A</div>
+                                <div class="glass-list-meta">
+                                    <strong><?= e(t_content($a['title'])) ?></strong>
+                                    <span><?= e(format_datetime($a['scheduled_at'])) ?></span>
+                                </div>
+                                <div class="glass-list-right">
+                                    <strong><?= e($a['client_name'] ?? __('common.em_dash')) ?></strong>
+                                    <span class="is-soft"><?= e($a['status'] ?? '') ?></span>
                                 </div>
                             </div>
                         <?php endforeach; ?>
@@ -214,7 +240,7 @@ require __DIR__ . '/../includes/header.php';
                             <div class="glass-list-item">
                                 <div class="glass-list-mark"><?= e(strtoupper(substr($type['label'], 0, 1))) ?></div>
                                 <div class="glass-list-meta">
-                                    <strong><?= e($type['label']) ?></strong>
+                                    <strong><?= e(t_content($type['label'])) ?></strong>
                                     <span><?= (int) $type['c'] ?> matters</span>
                                 </div>
                                 <div class="glass-list-right">
@@ -224,12 +250,20 @@ require __DIR__ . '/../includes/header.php';
                             </div>
                         <?php endforeach; ?>
                         <?php if (!$typeRows): ?>
-                            <div class="empty-state">No case data yet.</div>
+                            <div class="empty-state"><?= __e('dashboard.empty.no_case_types') ?></div>
                         <?php endif; ?>
                     <?php endif; ?>
                 </div>
-                <?php if ($unread > 0): ?>
-                    <a class="glass-notify-strip" href="notifications.php"><?= (int) $unread ?> new notification<?= $unread === 1 ? '' : 's' ?></a>
+                <?php if ($unread > 0 || $stats['messages'] > 0): ?>
+                    <a class="glass-notify-strip" href="notifications.php">
+                        <?php if ($unread > 0): ?>
+                            <?= (int) $unread ?> new notification<?= $unread === 1 ? '' : 's' ?>
+                        <?php endif; ?>
+                        <?php if ($unread > 0 && $stats['messages'] > 0): ?> Â· <?php endif; ?>
+                        <?php if ($stats['messages'] > 0): ?>
+                            <?= (int) $stats['messages'] ?> <?= __e('common.message') ?><?= $stats['messages'] === 1 ? '' : 's' ?>
+                        <?php endif; ?>
+                    </a>
                 <?php endif; ?>
             </section>
         </div>
@@ -238,25 +272,25 @@ require __DIR__ . '/../includes/header.php';
             <div class="glass-mini-row">
                 <a class="glass-card glass-mini glass-mini-link" href="cases.php?filter=active">
                     <div class="glass-mini-top">
-                        <span>Active cases</span>
+                        <span><?= __e('dashboard.kpi.active_cases') ?></span>
                         <strong>+<?= (int) $stats['active_cases'] ?></strong>
                     </div>
                     <div class="glass-mini-bar"><span style="width:<?= $casesBar ?>%"></span></div>
-                    <p><?= (int) $stats['clients'] ?> clients · <?= (int) $stats['lawyers'] ?> lawyers</p>
+                    <p><?= (int) $stats['clients'] ?> <?= __e('dashboard.kpi.clients') ?> · <?= (int) $stats['lawyers'] ?> <?= __e('dashboard.kpi.lawyers_available') ?></p>
                 </a>
                 <a class="glass-card glass-mini glass-mini-link" href="cases.php?filter=outstanding">
                     <div class="glass-mini-top">
-                        <span>Outstanding</span>
+                        <span><?= __e('finance.outstanding') ?></span>
                         <strong><?= e(money($stats['outstanding'])) ?></strong>
                     </div>
                     <div class="glass-mini-bar is-warn"><span style="width:<?= max(8, 100 - $collectBar) ?>%"></span></div>
-                    <p><?= (int) $stats['invoices_open'] ?> open invoices</p>
+                    <p><?= (int) $stats['invoices_open'] ?> <?= __e('dashboard.kpi.open_invoices') ?></p>
                 </a>
             </div>
 
             <section class="glass-card glass-overview">
                 <div class="glass-overview-head">
-                    <h2>Overview</h2>
+                    <h2><?= __e('dashboard.panel.case_overview') ?></h2>
                     <div class="glass-range" id="overviewRange" role="tablist" aria-label="Chart range">
                         <button type="button" class="glass-range-btn" data-range="day">Day</button>
                         <button type="button" class="glass-range-btn" data-range="week">Week</button>
@@ -271,7 +305,7 @@ require __DIR__ . '/../includes/header.php';
 
             <section class="glass-card glass-tx">
                 <div class="glass-panel-head">
-                    <h2>Last transactions</h2>
+                    <h2><?= __e('dashboard.panel.revenue_collections') ?></h2>
                     <span class="glass-soft-chip">This month Â· <?= e(money($stats['month_revenue'])) ?></span>
                 </div>
                 <div class="table-wrap glass-table-wrap">
@@ -279,15 +313,15 @@ require __DIR__ . '/../includes/header.php';
                         <thead>
                             <tr>
                                 <th>Activity</th>
-                                <th>Date</th>
-                                <th>Amount</th>
-                                <th>Status</th>
+                                <th><?= __e('common.date') ?></th>
+                                <th><?= __e('common.amount') ?></th>
+                                <th><?= __e('common.status') ?></th>
                             </tr>
                         </thead>
                         <tbody>
                         <?php foreach ($payments as $p):
-                            $status = $p['invoice_status'] === 'partial' ? 'Pending' : 'Success';
-                            $isPending = $status === 'Pending';
+                            $status = $p['invoice_status'] === 'partial' ? __('common.pending') : 'Success';
+                            $isPending = $p['invoice_status'] === 'partial';
                         ?>
                             <tr>
                                 <td>
@@ -309,7 +343,7 @@ require __DIR__ . '/../includes/header.php';
                             </tr>
                         <?php endforeach; ?>
                         <?php if (!$payments): ?>
-                            <tr><td colspan="4" class="muted">No payments recorded yet.</td></tr>
+                            <tr><td colspan="4" class="muted"><?= __e('dashboard.empty.no_payments') ?></td></tr>
                         <?php endif; ?>
                         </tbody>
                     </table>

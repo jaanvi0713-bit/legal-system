@@ -8,7 +8,7 @@ $cases = $pdo->prepare("SELECT c.*, CONCAT(u.first_name,' ',u.last_name) AS clie
 $cases->execute([$uid]);
 $cases = $cases->fetchAll();
 
-$today = $pdo->prepare("SELECT * FROM appointments WHERE lawyer_id=? AND DATE(scheduled_at)=CURDATE() AND status NOT IN ('cancelled','rejected') ORDER BY scheduled_at");
+$today = $pdo->prepare("SELECT * FROM appointments WHERE lawyer_id=? AND DATE(scheduled_at)=CURDATE() AND status IN ('scheduled','confirmed','rescheduled','pending') ORDER BY scheduled_at");
 $today->execute([$uid]);
 $today = $today->fetchAll();
 

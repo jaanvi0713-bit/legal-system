@@ -117,6 +117,9 @@ function lang_switch_url(string $lang): string
 
 function translate_status(string $status): string
 {
+    if (function_exists('normalize_appointment_status')) {
+        $status = normalize_appointment_status($status);
+    }
     $key = 'status.' . $status;
     $translated = __($key);
     if ($translated !== $key) {

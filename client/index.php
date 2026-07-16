@@ -20,7 +20,7 @@ $docs = $pdo->prepare('SELECT * FROM case_documents WHERE client_id=? ORDER BY c
 $docs->execute([$uid]);
 $docs = $docs->fetchAll();
 
-$appointments = $pdo->prepare("SELECT * FROM appointments WHERE client_id=? AND scheduled_at >= NOW() AND status NOT IN ('cancelled','rejected') ORDER BY scheduled_at LIMIT 5");
+$appointments = $pdo->prepare("SELECT * FROM appointments WHERE client_id=? AND scheduled_at >= NOW() AND status IN ('scheduled','confirmed','rescheduled','pending') ORDER BY scheduled_at LIMIT 5");
 $appointments->execute([$uid]);
 $appointments = $appointments->fetchAll();
 

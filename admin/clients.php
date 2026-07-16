@@ -242,12 +242,14 @@ require __DIR__ . '/../includes/header.php';
                     <td><?= e($c['company_name'] ?: '—') ?></td>
                     <td><?= e($c['lawyer_name'] ?: 'Unassigned') ?></td>
                     <td><?= status_badge($c['is_active'] ? 'active' : 'pending') ?></td>
-                    <td class="case-row-actions">
-                        <a class="btn btn-row-open btn-sm" href="?action=edit&id=<?= (int)$c['id'] ?>">Edit</a>
-                        <?php if (!$c['is_active']): ?>
-                        <form method="post" class="inline-form"><?= csrf_field() ?><input type="hidden" name="form_action" value="approve"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>"><button class="btn btn-secondary btn-sm" type="submit">Approve</button></form>
-                        <?php endif; ?>
-                        <form method="post" class="inline-form" onsubmit="return confirm('Delete this client?')"><?= csrf_field() ?><input type="hidden" name="form_action" value="delete"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>"><button class="btn btn-row-delete btn-sm" type="submit">Delete</button></form>
+                    <td class="col-actions">
+                        <div class="row-actions">
+                            <a class="btn btn-row-edit btn-sm" href="?action=edit&id=<?= (int)$c['id'] ?>">Edit</a>
+                            <?php if (!$c['is_active']): ?>
+                            <form method="post"><?= csrf_field() ?><input type="hidden" name="form_action" value="approve"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>"><button class="btn btn-row-approve btn-sm" type="submit">Approve</button></form>
+                            <?php endif; ?>
+                            <form method="post" onsubmit="return confirm('Delete this client?')"><?= csrf_field() ?><input type="hidden" name="form_action" value="delete"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>"><button class="btn btn-row-delete btn-sm" type="submit">Delete</button></form>
+                        </div>
                     </td>
                 </tr>
             <?php endforeach; ?>

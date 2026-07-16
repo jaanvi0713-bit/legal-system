@@ -60,7 +60,11 @@ require __DIR__ . '/../includes/header.php';
                     <td><?= e($d['case_number'] ?: __('common.em_dash')) ?></td>
                     <td><?= e(__('doc.category.' . $d['category'])) ?></td>
                     <td><?= e(format_datetime($d['created_at'])) ?></td>
-                    <td class="case-row-actions"><a class="btn btn-row-open btn-sm" href="../<?= e($d['file_path']) ?>" target="_blank"><?= __e('common.download') ?></a></td>
+                    <td class="col-actions">
+                        <div class="row-actions">
+                            <a class="btn btn-row-open btn-sm" href="../<?= e($d['file_path']) ?>" target="_blank"><?= __e('common.download') ?></a>
+                        </div>
+                    </td>
                 </tr>
             <?php endforeach; ?>
             </tbody>

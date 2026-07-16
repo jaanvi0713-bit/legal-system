@@ -104,7 +104,7 @@ $gradInfo = "linear-gradient(135deg, {$accent} 0%, {$accentDeep} 100%)";
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="<?= e($base) ?>/assets/css/style.css">
+    <link rel="stylesheet" href="<?= e($base) ?>/assets/css/style.css?v=<?= (int) @filemtime(__DIR__ . '/../assets/css/style.css') ?>">
     <style>
         :root, [data-theme="light"], html[data-theme="dark"] {
             --primary: <?= e($accent) ?>;
@@ -165,7 +165,7 @@ $gradInfo = "linear-gradient(135deg, {$accent} 0%, {$accentDeep} 100%)";
             <button class="nav-toggle" type="button" aria-label="<?= __e('common.toggle_menu') ?>">☰</button>
             <div class="topbar-title">
                 <h1><?= e($pageTitle ?? __('page.dashboard')) ?></h1>
-                <p class="muted page-subtitle"><?= e($pageSubtitle ?? __('common.welcome_back', ['name' => full_name($user)])) ?></p>
+                <p class="muted"><?= e($pageSubtitle ?? __('common.welcome_back', ['name' => full_name($user)])) ?></p>
             </div>
             <div class="topbar-actions">
                 <div class="topbar-tools">

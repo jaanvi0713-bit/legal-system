@@ -262,28 +262,30 @@ require __DIR__ . '/../includes/header.php';
                     </td>
                     <td><?= e(format_datetime($u['last_login'])) ?></td>
                     <td><?= status_badge($u['is_active'] ? 'active' : 'unavailable') ?></td>
-                    <td class="case-row-actions">
-                        <a class="btn btn-row-open btn-sm" href="?action=edit&id=<?= (int) $u['id'] ?>">Edit</a>
-                        <form method="post" class="inline-form">
-                            <?= csrf_field() ?>
-                            <input type="hidden" name="form_action" value="toggle">
-                            <input type="hidden" name="id" value="<?= (int) $u['id'] ?>">
-                            <button class="btn btn-secondary btn-sm" type="submit"><?= $u['is_active'] ? 'Deactivate' : 'Activate' ?></button>
-                        </form>
-                        <form method="post" class="inline-form" onsubmit="return confirm('Reset password to password123?')">
-                            <?= csrf_field() ?>
-                            <input type="hidden" name="form_action" value="reset">
-                            <input type="hidden" name="id" value="<?= (int) $u['id'] ?>">
-                            <button class="btn btn-secondary btn-sm" type="submit">Reset PW</button>
-                        </form>
-                        <?php if ($u['role'] === 'staff'): ?>
-                            <form method="post" class="inline-form" onsubmit="return confirm('Remove this staff member?')">
+                    <td class="col-actions">
+                        <div class="row-actions">
+                            <a class="btn btn-row-edit btn-sm" href="?action=edit&id=<?= (int) $u['id'] ?>">Edit</a>
+                            <form method="post">
                                 <?= csrf_field() ?>
-                                <input type="hidden" name="form_action" value="delete">
+                                <input type="hidden" name="form_action" value="toggle">
                                 <input type="hidden" name="id" value="<?= (int) $u['id'] ?>">
-                                <button class="btn btn-row-delete btn-sm" type="submit">Remove</button>
+                                <button class="btn btn-sm <?= $u['is_active'] ? 'btn-row-delete' : 'btn-row-approve' ?>" type="submit"><?= $u['is_active'] ? 'Deactivate' : 'Activate' ?></button>
                             </form>
-                        <?php endif; ?>
+                            <form method="post" onsubmit="return confirm('Reset password to password123?')">
+                                <?= csrf_field() ?>
+                                <input type="hidden" name="form_action" value="reset">
+                                <input type="hidden" name="id" value="<?= (int) $u['id'] ?>">
+                                <button class="btn btn-row-edit btn-sm" type="submit">Reset PW</button>
+                            </form>
+                            <?php if ($u['role'] === 'staff'): ?>
+                                <form method="post" onsubmit="return confirm('Remove this staff member?')">
+                                    <?= csrf_field() ?>
+                                    <input type="hidden" name="form_action" value="delete">
+                                    <input type="hidden" name="id" value="<?= (int) $u['id'] ?>">
+                                    <button class="btn btn-row-delete btn-sm" type="submit">Remove</button>
+                                </form>
+                            <?php endif; ?>
+                        </div>
                     </td>
                 </tr>
             <?php endforeach; ?>

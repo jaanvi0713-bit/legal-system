@@ -85,6 +85,58 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  // Shared search + status filter for appointment / court list panels
+  window.lexoraInitListFilter = function (opts) {
+    const panel = document.getElementById(opts.panelId || '');
+    if (!panel) return;
+    const search = document.getElementById(opts.searchId || '');
+    const status = document.getElementById(opts.statusId || '');
+    const table = document.getElementById(opts.tableId || '');
+    const footer = document.getElementById(opts.footerId || '');
+    const totalMeta = document.getElementById(opts.totalMetaId || '');
+    if (!table) return;
+    const rows = Array.prototype.slice.call(table.querySelectorAll('tbody tr[data-list-search], tbody tr[data-appt-search]'));
+    const total = rows.length;
+    const showingTpl = opts.showingTpl || 'Showing :shown of :total.';
+    const totalOne = opts.totalOne || ':count total';
+    const totalMany = opts.totalMany || ':count total';
+
+    function applyFilter() {
+      const q = (search && search.value ? search.value : '').trim().toLowerCase();
+      const st = status && status.value ? status.value : '';
+      let shown = 0;
+      rows.forEach(function (row) {
+        const hay = row.getAttribute('data-list-search') || row.getAttribute('data-appt-search') || '';
+        const rowStatus = row.getAttribute('data-list-status') || row.getAttribute('data-appt-status') || '';
+        const ok = (!q || hay.indexOf(q) !== -1) && (!st || rowStatus === st);
+        row.hidden = !ok;
+        if (ok) shown += 1;
+      });
+      if (footer) {
+        footer.textContent = String(showingTpl).replace(':shown', String(shown)).replace(':total', String(total));
+      }
+      if (totalMeta) {
+        totalMeta.textContent = String(shown === 1 ? totalOne : totalMany).replace(':count', String(shown));
+      }
+    }
+    if (search) search.addEventListener('input', applyFilter);
+    if (status) status.addEventListener('change', applyFilter);
+  };
+
+  document.querySelectorAll('[data-list-filter]').forEach((panel) => {
+    window.lexoraInitListFilter({
+      panelId: panel.id,
+      searchId: panel.getAttribute('data-search-id') || 'apptListSearch',
+      statusId: panel.getAttribute('data-status-id') || 'apptListStatus',
+      tableId: panel.getAttribute('data-table-id') || 'apptListTable',
+      footerId: panel.getAttribute('data-footer-id') || 'apptListFooter',
+      totalMetaId: panel.getAttribute('data-total-meta-id') || 'apptListTotalMeta',
+      showingTpl: panel.getAttribute('data-showing-tpl') || '',
+      totalOne: panel.getAttribute('data-total-one') || '',
+      totalMany: panel.getAttribute('data-total-many') || '',
+    });
+  });
+
   const aiForm = document.getElementById('ai-compose-form');
   if (aiForm) {
     const sendAiMessage = async (text) => {
@@ -522,19 +574,76 @@ function initDashboardCharts() {
 
 function initAppointmentsCalendar() {
   const root = document.getElementById('apptCalendar');
-  const data = window.LEXORA_APPT_CAL;
-  if (!root || !data) return;
-
   const daysEl = document.getElementById('apptCalDays');
+  if (!root || !daysEl) return;
+
+  const defaults = {
+    items: [],
+    months: [],
+    createUrl: root.dataset.createUrl || '',
+    emptyDay: root.dataset.emptyDay || 'No appointments on this day.',
+    scheduleLabel: root.dataset.scheduleLabel || 'Schedule appointment',
+    viewLabel: root.dataset.viewLabel || 'View appointment',
+    viewAllLabel: root.dataset.viewAllLabel || 'View appointments',
+    noViewLabel: root.dataset.noViewLabel || 'No appointments to view',
+    apptCountOne: root.dataset.apptCountOne || ':count total appointment',
+    apptCountMany: root.dataset.apptCountMany || ':count total appointments',
+    pageOf: root.dataset.pageOf || 'Page :page of :pages',
+    prevLabel: root.dataset.prevLabel || 'Previous',
+    nextLabel: root.dataset.nextLabel || 'Next',
+    locale: root.dataset.locale || document.documentElement.lang || 'en',
+  };
+
+  let data = defaults;
+  if (window.LEXORA_APPT_CAL && typeof window.LEXORA_APPT_CAL === 'object') {
+    data = { ...defaults, ...window.LEXORA_APPT_CAL };
+  } else {
+    const dataEl = document.getElementById('apptCalData');
+    if (dataEl) {
+      try {
+        data = { ...defaults, ...JSON.parse(dataEl.textContent) };
+      } catch (err) {
+        console.error('Appointment calendar data parse failed', err);
+      }
+    }
+  }
+
+  const items = Array.isArray(data.items)
+    ? data.items
+    : Object.values(data.items || {}).filter((item) => item && typeof item === 'object');
+  data.items = items;
+
+  try {
   const agendaEl = document.getElementById('apptCalAgenda');
+  const agendaHeadEl = document.getElementById('apptCalAgendaHead');
+  const agendaPagerEl = document.getElementById('apptCalAgendaPager');
   const yearLabel = document.getElementById('apptCalYear');
   const monthTitle = document.getElementById('apptCalMonthTitle');
   const monthButtons = root.querySelectorAll('.appt-cal-month-btn');
   const monthCounts = root.querySelectorAll('[data-month-count]');
+  const AGENDA_PER_PAGE = 2;
+  let agendaPage = 1;
 
-  let year = parseInt(root.dataset.year, 10) || new Date().getFullYear();
-  let month = parseInt(root.dataset.month, 10) || new Date().getMonth();
-  let selectedDay = parseInt(root.dataset.day, 10) || new Date().getDate();
+  let year = parseInt(root.dataset.year, 10);
+  let month = parseInt(root.dataset.month, 10);
+  let selectedDay = parseInt(root.dataset.day, 10);
+  if (Number.isNaN(year)) year = new Date().getFullYear();
+  if (Number.isNaN(month)) month = new Date().getMonth();
+  if (Number.isNaN(selectedDay)) selectedDay = new Date().getDate();
+
+  const urlCalDate = new URLSearchParams(window.location.search).get('cal_date');
+  if (urlCalDate && /^\d{4}-\d{2}-\d{2}$/.test(urlCalDate)) {
+    const parts = urlCalDate.split('-').map((n) => parseInt(n, 10));
+    if (parts.length === 3 && parts[0] && parts[1] && parts[2]) {
+      year = parts[0];
+      month = parts[1] - 1;
+      selectedDay = parts[2];
+    }
+  }
+
+  if (!Array.isArray(data.months) || !data.months.length) {
+    data.months = Array.from(monthButtons, (btn) => btn.querySelector('span')?.textContent?.trim() || '');
+  }
 
   const esc = (value) =>
     String(value ?? '')
@@ -546,7 +655,7 @@ function initAppointmentsCalendar() {
   const tonePriority = {
     cancelled: 6,
     completed: 5,
-    past: 4,
+    pending: 4,
     confirmed: 3,
     rescheduled: 2,
     scheduled: 1,
@@ -555,14 +664,17 @@ function initAppointmentsCalendar() {
   const dateKey = (y, m, d) =>
     `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
+  /** Prefer YYYY-MM-DD prefix to avoid timezone shifts from Date parsing. */
   const apptDateKey = (iso) => {
-    const dt = new Date(iso.replace(' ', 'T'));
+    const match = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+    const dt = new Date(String(iso || '').replace(' ', 'T'));
     if (Number.isNaN(dt.getTime())) return '';
     return dateKey(dt.getFullYear(), dt.getMonth(), dt.getDate());
   };
 
   const byDate = {};
-  (data.items || []).forEach((item) => {
+  items.forEach((item) => {
     const key = apptDateKey(item.scheduledAt);
     if (!key) return;
     if (!byDate[key]) byDate[key] = [];
@@ -570,29 +682,18 @@ function initAppointmentsCalendar() {
   });
 
   Object.keys(byDate).forEach((key) => {
-    byDate[key].sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
+    byDate[key].sort((a, b) => String(a.scheduledAt).localeCompare(String(b.scheduledAt)));
   });
 
   const monthCountForYear = (y) => {
     const counts = Array(12).fill(0);
-    (data.items || []).forEach((item) => {
-      const dt = new Date(item.scheduledAt.replace(' ', 'T'));
-      if (Number.isNaN(dt.getTime()) || dt.getFullYear() !== y) return;
-      counts[dt.getMonth()] += 1;
+    items.forEach((item) => {
+      const key = apptDateKey(item.scheduledAt);
+      if (!key || !key.startsWith(`${y}-`)) return;
+      const m = parseInt(key.slice(5, 7), 10) - 1;
+      if (m >= 0 && m < 12) counts[m] += 1;
     });
     return counts;
-  };
-
-  const formatAgendaWhen = (iso) => {
-    const dt = new Date(iso.replace(' ', 'T'));
-    if (Number.isNaN(dt.getTime())) return iso;
-    return new Intl.DateTimeFormat(data.locale || undefined, {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    }).format(dt);
   };
 
   const pickDayTone = (items) => {
@@ -608,44 +709,295 @@ function initAppointmentsCalendar() {
     return best;
   };
 
-  const badgeClass = (tone) => {
-    return `appt-cal-status tone-${tone || 'scheduled'}`;
+  const formatWithLocale = (dt, options, fallback) => {
+    if (Number.isNaN(dt.getTime())) return fallback || '';
+    try {
+      return new Intl.DateTimeFormat(data.locale || undefined, options).format(dt);
+    } catch (err) {
+      try {
+        return new Intl.DateTimeFormat(undefined, options).format(dt);
+      } catch (err2) {
+        return fallback || '';
+      }
+    }
   };
 
-  const monthItems = () => {
-    const prefix = `${year}-${String(month + 1).padStart(2, '0')}-`;
-    return (data.items || [])
-      .filter((item) => apptDateKey(item.scheduledAt).startsWith(prefix))
-      .sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
+  const formatDayTime = (iso) => {
+    const dt = new Date(String(iso).replace(' ', 'T'));
+    return formatWithLocale(
+      dt,
+      { hour: 'numeric', minute: '2-digit', hour12: true },
+      ''
+    )
+      .replace(/\s/g, '')
+      .toLowerCase();
+  };
+
+  const formatSelectedDate = (y, m, d) => {
+    const dt = new Date(y, m, d);
+    return formatWithLocale(
+      dt,
+      { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' },
+      `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+    );
+  };
+
+  const buildCreateUrl = (y, m, d) => {
+    const isoDate = dateKey(y, m, d);
+    const base = (data.createUrl || root.dataset.createUrl || '').trim();
+    if (!base) return '';
+    const join = base.includes('?') ? '&' : '?';
+    return `${base}${join}date=${isoDate}`;
+  };
+
+  const buildCalDateUrl = (y, m, d) => `?cal_date=${dateKey(y, m, d)}`;
+
+  const syncCalDateUrl = (y, m, d) => {
+    const next = buildCalDateUrl(y, m, d);
+    if (window.history?.replaceState && window.location.search !== next) {
+      window.history.replaceState(null, '', next);
+    }
+  };
+
+  const badgeClass = (tone) => `appt-cal-badge tone-${tone || 'scheduled'}`;
+
+  const selectDay = (day) => {
+    if (!day) return;
+    selectedDay = day;
+    agendaPage = 1;
+    root.dataset.day = String(selectedDay);
+    updateDaySelection();
+    renderAgenda();
+    syncCalDateUrl(year, month, selectedDay);
+    if (agendaEl) {
+      agendaEl.scrollTop = 0;
+    }
+  };
+
+  const updateDaySelection = () => {
+    daysEl.querySelectorAll('.appt-cal-day:not(.is-empty)').forEach((cell) => {
+      const d = parseInt(cell.dataset.day, 10);
+      cell.classList.toggle('is-selected', d === selectedDay);
+    });
+  };
+
+  const renderDayEvents = (items) => {
+    if (!items.length) return '';
+    const maxShow = 2;
+    const shown = items.slice(0, maxShow);
+    const extra = items.length - maxShow;
+    const rows = shown
+      .map(
+        (item) => `
+        <a href="?view=${item.id}" class="appt-cal-day-event tone-${esc(item.tone)}" data-appt-view="${item.id}" title="${esc(data.viewLabel || 'View appointment')}: ${esc(item.caseLabel || item.title)}" onclick="return window.lexoraViewAppointment ? window.lexoraViewAppointment(${item.id}, event) : true;">
+          <span class="appt-cal-day-event-dot" aria-hidden="true"></span>
+          <span class="appt-cal-day-event-label">
+            <span class="appt-cal-day-event-time">${esc(formatDayTime(item.scheduledAt))}</span>
+            ${esc(item.title)}
+          </span>
+        </a>`
+      )
+      .join('');
+    const more =
+      extra > 0
+        ? `<span class="appt-cal-day-more">+${extra} more</span>`
+        : '';
+    return `<div class="appt-cal-day-events">${rows}${more}</div>`;
+  };
+
+  const renderAgendaPager = (total, page, pages) => {
+    if (!agendaPagerEl) return;
+    if (total < 1) {
+      agendaPagerEl.innerHTML = '';
+      agendaPagerEl.hidden = true;
+      return;
+    }
+    agendaPagerEl.hidden = false;
+    const label = esc(
+      String(data.pageOf || 'Page :page of :pages')
+        .replace(':page', String(page))
+        .replace(':pages', String(pages))
+    );
+    agendaPagerEl.innerHTML = `
+      <div class="appt-cal-agenda-pager" data-page="${page}" data-pages="${pages}">
+        <button type="button" class="appt-cal-agenda-page-btn" data-agenda-page="prev"${page <= 1 ? ' disabled' : ''} aria-label="${esc(data.prevLabel || 'Previous')}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+        </button>
+        <span class="appt-cal-agenda-page-label">${label}</span>
+        <button type="button" class="appt-cal-agenda-page-btn" data-agenda-page="next"${page >= pages ? ' disabled' : ''} aria-label="${esc(data.nextLabel || 'Next')}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
+      </div>`;
+  };
+
+  const dayMenuEl = document.getElementById('apptCalDayMenu');
+  const dayMenuDateEl = document.getElementById('apptCalDayMenuDate');
+  const dayMenuViewBtn = document.getElementById('apptCalDayMenuView');
+  const dayMenuScheduleBtn = document.getElementById('apptCalDayMenuSchedule');
+
+  const buildScheduleHref = (dateStr) => {
+    const base = String(data.createUrl || '').trim();
+    if (!base) return '';
+    if (base.startsWith('#')) return base;
+    const sep = base.includes('?') ? '&' : '?';
+    return `${base}${sep}date=${encodeURIComponent(dateStr)}`;
+  };
+
+  const focusScheduleForm = (href, dateStr) => {
+    if (!href || !href.startsWith('#')) return false;
+    const form = document.querySelector(href);
+    if (!form) return false;
+    const input =
+      form.querySelector('input[type="datetime-local"][name="scheduled_at"]') ||
+      form.querySelector('input[type="datetime-local"][name="hearing_date"]') ||
+      form.querySelector('input[type="datetime-local"]');
+    if (input && dateStr) {
+      input.value = `${dateStr}T09:00`;
+    }
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (input) {
+      try {
+        input.focus({ preventScroll: true });
+      } catch (err) {
+        input.focus();
+      }
+    }
+    return true;
+  };
+
+  let dayMenuPortaled = false;
+  const ensureDayMenuPortal = () => {
+    if (!dayMenuEl || dayMenuPortaled) return;
+    if (dayMenuEl.parentElement !== document.body) {
+      document.body.appendChild(dayMenuEl);
+    }
+    dayMenuEl.style.position = 'fixed';
+    dayMenuPortaled = true;
+  };
+
+  const hideDayMenu = () => {
+    if (!dayMenuEl) return;
+    dayMenuEl.hidden = true;
+    dayMenuEl.setAttribute('hidden', '');
+    dayMenuEl.removeAttribute('data-date');
+    dayMenuEl.style.left = '';
+    dayMenuEl.style.top = '';
+  };
+
+  const showDayMenu = (cell) => {
+    if (!dayMenuEl || !cell) return;
+    ensureDayMenuPortal();
+    const key = cell.dataset.date || dateKey(year, month, parseInt(cell.dataset.day, 10));
+    const dayItems = byDate[key] || [];
+    const firstId = dayItems.length ? parseInt(dayItems[0].id, 10) || 0 : 0;
+    const viewText =
+      dayItems.length > 1
+        ? data.viewAllLabel || data.viewLabel || 'View'
+        : data.viewLabel || 'View';
+    const scheduleText = data.scheduleLabel || 'Schedule';
+    const noViewText = data.noViewLabel || 'Nothing to view';
+    const scheduleHref = buildScheduleHref(key);
+    const selectedLabel = formatSelectedDate(year, month, parseInt(cell.dataset.day, 10));
+
+    if (dayMenuDateEl) dayMenuDateEl.textContent = selectedLabel;
+
+    if (dayMenuViewBtn) {
+      dayMenuViewBtn.textContent = viewText;
+      dayMenuViewBtn.disabled = !firstId;
+      dayMenuViewBtn.title = firstId ? viewText : noViewText;
+      dayMenuViewBtn.removeAttribute('data-appt-view');
+      dayMenuViewBtn.onclick = (ev) => {
+        if (!firstId) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        hideDayMenu();
+        if (window.lexoraViewAppointment) {
+          window.lexoraViewAppointment(firstId, ev);
+        }
+      };
+    }
+
+    if (dayMenuScheduleBtn) {
+      if (scheduleHref) {
+        dayMenuScheduleBtn.hidden = false;
+        dayMenuScheduleBtn.textContent = scheduleText;
+        dayMenuScheduleBtn.href = scheduleHref;
+        dayMenuScheduleBtn.dataset.date = key;
+        dayMenuScheduleBtn.setAttribute('data-cal-schedule', '');
+      } else {
+        dayMenuScheduleBtn.hidden = true;
+      }
+    }
+
+    dayMenuEl.dataset.date = key;
+    dayMenuEl.hidden = false;
+    dayMenuEl.removeAttribute('hidden');
+
+    const cellRect = cell.getBoundingClientRect();
+    const menuWidth = dayMenuEl.offsetWidth || 184;
+    const menuHeight = dayMenuEl.offsetHeight || 120;
+    let left = cellRect.left + cellRect.width / 2 - menuWidth / 2;
+    let top = cellRect.bottom + 6;
+    left = Math.max(8, Math.min(left, window.innerWidth - menuWidth - 8));
+    if (top + menuHeight > window.innerHeight - 8) {
+      top = Math.max(8, cellRect.top - menuHeight - 6);
+    }
+    dayMenuEl.style.left = `${left}px`;
+    dayMenuEl.style.top = `${top}px`;
   };
 
   const renderAgenda = () => {
+    const key = dateKey(year, month, selectedDay);
+    const dayItems = byDate[key] || [];
+    const selectedLabel = formatSelectedDate(year, month, selectedDay);
+    const pages = Math.max(1, Math.ceil(dayItems.length / AGENDA_PER_PAGE));
+    agendaPage = Math.min(Math.max(1, agendaPage), pages);
+    const slice = dayItems.slice((agendaPage - 1) * AGENDA_PER_PAGE, agendaPage * AGENDA_PER_PAGE);
+
+    const countLabel = dayItems.length
+      ? esc(
+          String(
+            (dayItems.length === 1 ? data.apptCountOne : data.apptCountMany) ||
+              `${dayItems.length} appointment${dayItems.length > 1 ? 's' : ''}`
+          ).replace(':count', String(dayItems.length))
+        )
+      : esc(data.emptyDay || 'No appointments on this day.');
+
+    if (agendaHeadEl) {
+      agendaHeadEl.innerHTML = `
+        <div class="appt-cal-agenda-panel">
+          <p class="appt-cal-agenda-date">${esc(selectedLabel)}</p>
+          <p class="appt-cal-agenda-count">${countLabel}</p>
+        </div>`;
+    }
+
     if (!agendaEl) return;
-    // Match mock: agenda lists the month's appointments (not only the selected day)
-    const items = monthItems();
-    if (!items.length) {
-      agendaEl.innerHTML = `<div class="appt-cal-empty">${esc(data.emptyMonth || data.emptyDay || 'No appointments this month.')}</div>`;
+    if (!dayItems.length) {
+      agendaEl.innerHTML = '';
+      renderAgendaPager(0, 1, 1);
       return;
     }
-    agendaEl.innerHTML = items
+    agendaEl.innerHTML = slice
       .map(
-        (item) => `
-      <article class="appt-cal-agenda-card tone-${esc(item.tone)}${apptDateKey(item.scheduledAt) === dateKey(year, month, selectedDay) ? ' is-active-day' : ''}">
-        <a href="${esc(item.editUrl)}">
-          <div class="appt-cal-agenda-when">
-            <span class="appt-cal-agenda-when-text">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
-              ${esc(formatAgendaWhen(item.scheduledAt))}
+        (item, index) => `
+      <article class="appt-cal-agenda-card tone-${esc(item.tone)}" style="animation-delay:${index * 40}ms">
+        <a href="?view=${item.id}" class="appt-cal-agenda-card-link" data-appt-view="${item.id}" title="${esc(data.viewLabel || 'View appointment')}" onclick="return window.lexoraViewAppointment ? window.lexoraViewAppointment(${item.id}, event) : true;">
+          <span class="appt-cal-agenda-line tone-${esc(item.tone)}">
+            <span class="appt-cal-day-event-dot" aria-hidden="true"></span>
+            <span class="appt-cal-day-event-label">
+              <span class="appt-cal-day-event-time">${esc(formatDayTime(item.scheduledAt))}</span>
+              ${esc(item.caseLabel || item.title)}
             </span>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>
-          </div>
-          <strong>${esc(item.caseLabel || item.title)}</strong>
-          <div class="appt-cal-person">${esc(item.client || item.lawyer || '')}</div>
-          <span class="${badgeClass(item.tone)}">${esc(item.statusLabel)}</span>
+          </span>
+          <span class="appt-cal-agenda-meta">
+            <span class="appt-cal-person">${esc(item.client || item.lawyer || '')}</span>
+            <span class="${badgeClass(item.tone)}">${esc(item.statusLabel)}</span>
+          </span>
         </a>
       </article>`
       )
       .join('');
+    renderAgendaPager(dayItems.length, agendaPage, pages);
   };
 
   const renderMonthCounts = () => {
@@ -656,8 +1008,59 @@ function initAppointmentsCalendar() {
     });
   };
 
+  daysEl.addEventListener('click', (e) => {
+    if (e.target.closest('[data-appt-view]')) return;
+    if (e.target.closest('#apptCalDayMenu')) return;
+
+    const cell = e.target.closest('.appt-cal-day:not(.is-empty)');
+    if (!cell) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const day = parseInt(cell.dataset.day, 10);
+    if (Number.isNaN(day)) return;
+
+    selectDay(day);
+    showDayMenu(cell);
+  });
+
+  if (agendaPagerEl) {
+    agendaPagerEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-agenda-page]');
+      if (!btn || btn.disabled) return;
+      const dir = btn.getAttribute('data-agenda-page');
+      if (dir === 'prev') agendaPage -= 1;
+      if (dir === 'next') agendaPage += 1;
+      renderAgenda();
+      if (agendaEl) agendaEl.scrollTop = 0;
+    });
+  }
+
+  if (dayMenuEl) {
+    dayMenuEl.addEventListener('click', (e) => {
+      const scheduleLink = e.target.closest('[data-cal-schedule]');
+      if (!scheduleLink) return;
+      const href = scheduleLink.getAttribute('href') || '';
+      const dateStr = scheduleLink.getAttribute('data-date') || dayMenuEl.dataset.date || '';
+      if (href.startsWith('#') && focusScheduleForm(href, dateStr)) {
+        e.preventDefault();
+        hideDayMenu();
+      }
+    });
+  }
+
+  document.addEventListener('click', (e) => {
+    if (!dayMenuEl || dayMenuEl.hidden) return;
+    if (e.target.closest('#apptCalDayMenu')) return;
+    hideDayMenu();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') hideDayMenu();
+  });
+
   const renderCalendar = () => {
-    if (!daysEl) return;
     const today = new Date();
     const firstDow = (new Date(year, month, 1).getDay() + 6) % 7;
     const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -691,65 +1094,79 @@ function initAppointmentsCalendar() {
       ]
         .filter(Boolean)
         .join(' ');
-      html += `<button type="button" class="${classes}" data-day="${d}" data-col="${colIndex}" aria-label="${d}"><span class="appt-cal-day-num">${d}</span></button>`;
+      const calDateUrl = esc(buildCalDateUrl(year, month, d));
+      html += `<div class="${classes}" data-day="${d}" data-date="${dateKey(year, month, d)}" data-col="${colIndex}"><a href="${calDateUrl}" class="appt-cal-day-select" aria-label="${d}${items.length ? `, ${items.length} appointment${items.length > 1 ? 's' : ''}` : ''}"><span class="appt-cal-day-num">${d}</span></a>${renderDayEvents(items)}</div>`;
     }
     daysEl.innerHTML = html;
 
-    // Column highlight follows today when viewing current month, else selected day
-    let highlightDay = selectedDay;
-    if (today.getFullYear() === year && today.getMonth() === month) {
-      highlightDay = today.getDate();
-    }
-    const highlightBtn = daysEl.querySelector(`[data-day="${highlightDay}"]`);
-    const colIndex = highlightBtn ? parseInt(highlightBtn.dataset.col, 10) : 0;
-    daysEl.classList.toggle('has-col-highlight', !!highlightBtn);
-    daysEl.style.setProperty('--col-index', String(colIndex));
-
-    daysEl.querySelectorAll('.appt-cal-day:not(.is-empty)').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        selectedDay = parseInt(btn.dataset.day, 10);
-        renderCalendar();
-        renderAgenda();
-      });
-    });
-
+    updateDaySelection();
     renderAgenda();
+    hideDayMenu();
   };
 
   root.querySelectorAll('[data-cal-nav]').forEach((btn) => {
     btn.addEventListener('click', () => {
       year += parseInt(btn.dataset.dir, 10);
+      agendaPage = 1;
       renderCalendar();
+      syncCalDateUrl(year, month, selectedDay);
     });
   });
 
   monthButtons.forEach((btn) => {
     btn.addEventListener('click', () => {
       month = parseInt(btn.dataset.month, 10);
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      selectedDay = Math.min(selectedDay, daysInMonth);
+      // Prefer first day in this month that has appointments
+      const prefix = `${year}-${String(month + 1).padStart(2, '0')}-`;
+      const dayWithAppt = Object.keys(byDate)
+        .filter((key) => key.startsWith(prefix))
+        .sort()[0];
+      if (dayWithAppt) {
+        selectedDay = parseInt(dayWithAppt.slice(8, 10), 10) || selectedDay;
+      }
+      agendaPage = 1;
       renderCalendar();
+      syncCalDateUrl(year, month, selectedDay);
     });
   });
 
-  const upcoming = (data.items || [])
+  const upcomingStatuses = new Set(['scheduled', 'confirmed', 'rescheduled', 'pending', 'accepted']);
+  const nowMs = Date.now();
+  const upcoming = items
     .filter((item) => {
-      const dt = new Date(item.scheduledAt.replace(' ', 'T'));
-      return dt >= new Date() && ['pending', 'accepted'].includes(item.status);
+      if (!upcomingStatuses.has(item.status)) return false;
+      const dt = new Date(String(item.scheduledAt).replace(' ', 'T'));
+      return !Number.isNaN(dt.getTime()) && dt.getTime() >= nowMs;
     })
-    .sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt))[0];
+    .sort((a, b) => String(a.scheduledAt).localeCompare(String(b.scheduledAt)))[0];
 
-  // Open the month that has upcoming work, but keep "today" selected when possible
-  // (matches mock: today highlighted, agenda still lists month appointments)
-  if (upcoming) {
-    const dt = new Date(upcoming.scheduledAt.replace(' ', 'T'));
-    const now = new Date();
-    year = dt.getFullYear();
-    month = dt.getMonth();
-    if (now.getFullYear() === year && now.getMonth() === month) {
-      selectedDay = now.getDate();
-    } else {
-      selectedDay = dt.getDate();
+  const urlHasCalDate = !!(urlCalDate && /^\d{4}-\d{2}-\d{2}$/.test(urlCalDate));
+  const selectedKey = dateKey(year, month, selectedDay);
+  const selectedHasAppts = !!(byDate[selectedKey] && byDate[selectedKey].length);
+
+  // Stale cal_date with no appointments: jump to next upcoming
+  if (upcoming && (!urlHasCalDate || !selectedHasAppts)) {
+    const key = apptDateKey(upcoming.scheduledAt);
+    if (key) {
+      const [y, m, d] = key.split('-').map((n) => parseInt(n, 10));
+      year = y;
+      month = m - 1;
+      selectedDay = d;
     }
   }
 
+  root.dataset.year = String(year);
+  root.dataset.month = String(month);
+  root.dataset.day = String(selectedDay);
+
   renderCalendar();
+  syncCalDateUrl(year, month, selectedDay);
+  } catch (err) {
+    console.error('Appointment calendar init failed', err);
+    // Last resort: keep PHP-rendered markup visible
+  } finally {
+    root.dataset.calReady = '1';
+  }
 }

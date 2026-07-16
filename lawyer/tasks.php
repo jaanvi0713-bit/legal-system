@@ -8,7 +8,7 @@ $pending = $pdo->prepare("SELECT a.*, CONCAT(c.first_name,' ',c.last_name) AS cl
 $pending->execute([$uid]);
 $pending = $pending->fetchAll();
 
-$upcoming = $pdo->prepare("SELECT a.*, CONCAT(c.first_name,' ',c.last_name) AS client_name FROM appointments a LEFT JOIN users c ON c.id=a.client_id WHERE a.lawyer_id=? AND a.status IN ('accepted','pending') AND a.scheduled_at >= NOW() ORDER BY a.scheduled_at LIMIT 12");
+$upcoming = $pdo->prepare("SELECT a.*, CONCAT(c.first_name,' ',c.last_name) AS client_name FROM appointments a LEFT JOIN users c ON c.id=a.client_id WHERE a.lawyer_id=? AND a.status IN ('scheduled','confirmed','rescheduled','pending') AND a.scheduled_at >= NOW() ORDER BY a.scheduled_at LIMIT 12");
 $upcoming->execute([$uid]);
 $upcoming = $upcoming->fetchAll();
 

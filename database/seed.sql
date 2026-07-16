@@ -17,10 +17,10 @@ INSERT INTO users (id, role, first_name, last_name, username, email, password, p
 (8, 'client', 'Raj', 'Sharma', 'raj', 'raj.client@email.com', '$2y$12$fvodPtEffBg0snZt1zE8Qee/9v2xkOk2r8EtHtnrF/CZtIB.hmxJ2', '+971-55-400-0008', 'Al Quoz', NULL, NULL, 'Sharma Logistics', 1, 'available', 2);
 
 INSERT INTO cases (id, case_number, title, description, case_type, status, priority, client_id, lawyer_id, court_name, court_location, filing_date, next_hearing_date, created_by) VALUES
-(1, 'LEX-2026-001', 'Al Maktoum Holdings v. Northwind Corp', 'Commercial dispute regarding supply contract breach and damages claim.', 'Commercial', 'active', 'high', 6, 2, 'Dubai Courts - Commercial Circuit', 'Dubai', '2026-01-15', '2026-07-20', 1),
-(2, 'LEX-2026-002', 'Vasquez Employment Dispute', 'Wrongful termination claim and severance negotiation.', 'Employment', 'pending', 'medium', 7, 3, 'Labour Court Dubai', 'Dubai', '2026-03-02', '2026-07-25', 1),
-(3, 'LEX-2026-003', 'Sharma Logistics Contract Review', 'Ongoing contract drafting and vendor agreement review.', 'Corporate', 'open', 'low', 8, 2, NULL, NULL, '2026-05-10', NULL, 1),
-(4, 'LEX-2026-004', 'Al Maktoum Property Transfer', 'Real estate title transfer and escrow coordination.', 'Real Estate', 'closed', 'medium', 6, 4, 'Dubai Land Department', 'Dubai', '2025-08-01', NULL, 1);
+(1, 'CASE-2026-001', 'Al Maktoum Holdings v. Northwind Corp', 'Commercial dispute regarding supply contract breach and damages claim.', 'Commercial', 'active', 'high', 6, 2, 'Dubai Courts - Commercial Circuit', 'Dubai', '2026-01-15', '2026-07-20', 1),
+(2, 'CASE-2026-002', 'Vasquez Employment Dispute', 'Wrongful termination claim and severance negotiation.', 'Employment', 'pending', 'medium', 7, 3, 'Labour Court Dubai', 'Dubai', '2026-03-02', '2026-07-25', 1),
+(3, 'CASE-2026-003', 'Sharma Logistics Contract Review', 'Ongoing contract drafting and vendor agreement review.', 'Corporate', 'open', 'low', 8, 2, NULL, NULL, '2026-05-10', NULL, 1),
+(4, 'CASE-2026-004', 'Al Maktoum Property Transfer', 'Real estate title transfer and escrow coordination.', 'Real Estate', 'closed', 'medium', 6, 4, 'Dubai Land Department', 'Dubai', '2025-08-01', NULL, 1);
 
 UPDATE cases SET closed_at = '2026-02-28 16:00:00' WHERE id = 4;
 
@@ -31,10 +31,10 @@ INSERT INTO case_notes (case_id, user_id, note, is_private) VALUES
 (3, 2, 'Vendor agreement template shared with client for review.', 0);
 
 INSERT INTO appointments (title, description, appointment_type, case_id, client_id, lawyer_id, scheduled_at, duration_minutes, location, status, created_by) VALUES
-('Case Strategy Meeting', 'Review evidence and next steps for commercial dispute.', 'meeting', 1, 6, 2, '2026-07-14 10:00:00', 60, 'Lexora Office - Boardroom A', 'accepted', 1),
+('Case Strategy Meeting', 'Review evidence and next steps for commercial dispute.', 'meeting', 1, 6, 2, '2026-07-14 10:00:00', 60, 'Lexora Office - Boardroom A', 'confirmed', 1),
 ('Labour Hearing Prep', 'Prepare client for labour court appearance.', 'consultation', 2, 7, 3, '2026-07-15 14:30:00', 45, 'Virtual - Zoom', 'pending', 3),
-('Contract Signing', 'Finalize logistics vendor agreement.', 'meeting', 3, 8, 2, '2026-07-16 11:00:00', 30, 'Lexora Office - Room 2', 'accepted', 2),
-('Commercial Hearing', 'First hearing - Commercial Circuit.', 'hearing', 1, 6, 2, '2026-07-20 09:00:00', 120, 'Dubai Courts', 'accepted', 1);
+('Contract Signing', 'Finalize logistics vendor agreement.', 'meeting', 3, 8, 2, '2026-07-16 11:00:00', 30, 'Lexora Office - Room 2', 'confirmed', 2),
+('Commercial Hearing', 'First hearing - Commercial Circuit.', 'hearing', 1, 6, 2, '2026-07-20 09:00:00', 120, 'Dubai Courts', 'rescheduled', 1);
 
 INSERT INTO court_hearings (case_id, hearing_date, court_name, court_location, judge_name, hearing_type, outcome, notes, status, created_by) VALUES
 (1, '2026-07-20 09:00:00', 'Dubai Courts - Commercial Circuit', 'Dubai', 'Hon. Judge Al Rashid', 'Preliminary', NULL, 'Bring original contracts and witness list.', 'scheduled', 1),
@@ -57,7 +57,7 @@ INSERT INTO payments (invoice_id, client_id, amount, payment_method, reference_n
 INSERT INTO notifications (user_id, title, message, type, link, is_read, created_by) VALUES
 (1, 'notify.new_client', 'notify.msg.new_client::{"name":"Raj Sharma"}', 'info', 'clients.php', 0, 1),
 (1, 'notify.payment_received', 'notify.msg.payment_received::{"amount":"Rs 4,725.00","from":"Sharma Logistics"}', 'success', 'finance.php', 1, 1),
-(2, 'notify.case_assigned', 'notify.msg.case_assigned::{"number":"LEX-2026-001"}', 'case', 'cases.php?id=1', 0, 1),
+(2, 'notify.case_assigned', 'notify.msg.case_assigned::{"number":"CASE-2026-001"}', 'case', 'cases.php?id=1', 0, 1),
 (2, 'notify.hearing_reminder', 'notify.msg.hearing_reminder::{"date":"20 Jul 2026","title":"Commercial hearing"}', 'reminder', 'court.php', 0, 1),
 (3, 'notify.appointment_pending', 'notify.msg.appointment_pending::{"title":"Labour Hearing Prep"}', 'appointment', 'appointments.php', 0, 1),
 (6, 'notify.document_requested', 'notify.msg.document_requested_named::{"doc":"the original supply contract"}', 'document', 'documents.php', 0, 2),
@@ -71,8 +71,8 @@ INSERT INTO messages (sender_id, receiver_id, case_id, subject, body, is_read) V
 
 INSERT INTO activity_logs (user_id, action, entity_type, entity_id, description, ip_address) VALUES
 (1, 'login', 'user', 1, 'Admin logged in', '127.0.0.1'),
-(1, 'create', 'case', 1, 'Created case LEX-2026-001', '127.0.0.1'),
-(2, 'update', 'case', 1, 'Updated case notes for LEX-2026-001', '127.0.0.1'),
+(1, 'create', 'case', 1, 'Created case CASE-2026-001', '127.0.0.1'),
+(2, 'update', 'case', 1, 'Updated case notes for CASE-2026-001', '127.0.0.1'),
 (1, 'payment', 'payment', 1, 'Recorded payment RCP-2026-001', '127.0.0.1'),
 (3, 'create', 'appointment', 2, 'Created Labour Hearing Prep appointment', '127.0.0.1');
 

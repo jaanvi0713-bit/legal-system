@@ -168,7 +168,7 @@ require __DIR__ . '/../includes/header.php';
                             <?= csrf_field() ?>
                             <input type="hidden" name="form_action" value="read">
                             <input type="hidden" name="id" value="<?= (int)$n['id'] ?>">
-                            <button class="btn btn-row-open btn-sm" type="submit"><?= __e('common.mark_read') ?></button>
+                            <button class="btn btn-row-edit btn-sm" type="submit"><?= __e('common.mark_read') ?></button>
                         </form>
                         <?php endif; ?>
                     </article>

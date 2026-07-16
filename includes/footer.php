@@ -28,9 +28,34 @@ window.LEXORA_I18N = <?= json_encode([
     ],
 ], JSON_UNESCAPED_UNICODE) ?>;
 </script>
+<?php if (!empty($apptCalPayload)): ?>
+<?php
+$apptCalJsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
+if (defined('JSON_INVALID_UTF8_SUBSTITUTE')) {
+    $apptCalJsonFlags |= JSON_INVALID_UTF8_SUBSTITUTE;
+}
+$apptCalJson = json_encode($apptCalPayload, $apptCalJsonFlags);
+?>
+<?php if ($apptCalJson !== false): ?>
+<script type="application/json" id="apptCalData"><?= $apptCalJson ?></script>
+<script>
+(function () {
+  var el = document.getElementById('apptCalData');
+  if (!el) return;
+  try {
+    window.LEXORA_APPT_CAL = JSON.parse(el.textContent);
+  } catch (err) {
+    console.error('Failed to load appointment calendar data', err);
+    window.LEXORA_APPT_CAL = null;
+  }
+})();
+</script>
+<?php endif; ?>
+<script src="<?= e(app_config('url')) ?>/assets/js/appt-view.js?v=<?= (int) @filemtime(__DIR__ . '/../assets/js/appt-view.js') ?>"></script>
+<?php endif; ?>
 <?php if (!empty($includeCharts)): ?>
 <script src="<?= e(app_config('url')) ?>/assets/js/chart.umd.min.js"></script>
 <?php endif; ?>
-<script src="<?= e(app_config('url')) ?>/assets/js/app.js"></script>
+<script src="<?= e(app_config('url')) ?>/assets/js/app.js?v=<?= (int) @filemtime(__DIR__ . '/../assets/js/app.js') ?>"></script>
 </body>
 </html>

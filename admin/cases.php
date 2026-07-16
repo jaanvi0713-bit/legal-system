@@ -573,7 +573,7 @@ if ($action === 'view' && $id) {
                             <th><?= __e('common.amount') ?></th>
                             <th><?= __e('finance.due_date') ?></th>
                             <th><?= __e('common.status') ?></th>
-                            <th class="is-right"><?= __e('common.actions') ?></th>
+                            <th class="col-actions"><?= __e('common.actions') ?></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -586,15 +586,17 @@ if ($action === 'view' && $id) {
                             <td><?= e(money($i['total'])) ?></td>
                             <td><?= e(format_date($i['due_date'], 'M j, Y')) ?></td>
                             <td><?= status_badge($i['status']) ?></td>
-                            <td class="is-right case-row-actions inv-row-actions">
-                                <a class="btn btn-row-open btn-sm" href="invoice.php?id=<?= (int) $i['id'] ?>&from=<?= e(urlencode($caseInvReturn)) ?>"><?= __e('common.view') ?></a>
-                                <form method="post" action="invoice.php" class="inline-form" onsubmit="return confirm('<?= e(__('finance.delete_confirm', ['number' => $i['invoice_number']])) ?>');">
-                                    <?= csrf_field() ?>
-                                    <input type="hidden" name="form_action" value="delete_invoice">
-                                    <input type="hidden" name="invoice_id" value="<?= (int) $i['id'] ?>">
-                                    <input type="hidden" name="return_to" value="<?= e($caseInvReturn) ?>">
-                                    <button class="btn btn-row-delete btn-sm" type="submit"><?= __e('common.delete') ?></button>
-                                </form>
+                            <td class="col-actions">
+                                <div class="row-actions">
+                                    <a class="btn btn-row-open btn-sm" href="invoice.php?id=<?= (int) $i['id'] ?>&from=<?= e(urlencode($caseInvReturn)) ?>"><?= __e('common.view') ?></a>
+                                    <form method="post" action="invoice.php" onsubmit="return confirm('<?= e(__('finance.delete_confirm', ['number' => $i['invoice_number']])) ?>');">
+                                        <?= csrf_field() ?>
+                                        <input type="hidden" name="form_action" value="delete_invoice">
+                                        <input type="hidden" name="invoice_id" value="<?= (int) $i['id'] ?>">
+                                        <input type="hidden" name="return_to" value="<?= e($caseInvReturn) ?>">
+                                        <button class="btn btn-row-delete btn-sm" type="submit"><?= __e('common.delete') ?></button>
+                                    </form>
+                                </div>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -745,6 +747,8 @@ if ($action === 'view' && $id) {
     <?php require __DIR__ . '/../includes/footer.php'; exit;
 }
 
+$pdo->exec("UPDATE cases SET case_number = REPLACE(case_number, 'LEX-', 'CASE-') WHERE case_number LIKE 'LEX-%'");
+
 $filter = (string) get('filter', '');
 $activeStatuses = ['open', 'active', 'pending', 'reopened', 'on_hold'];
 $sql = "
@@ -780,7 +784,18 @@ $pageSubtitle = $filter === 'active'
     : ($filter === 'outstanding' ? 'Cases with unpaid invoices' : 'View and manage all legal cases');
 require __DIR__ . '/../includes/header.php';
 $totalCases = count($cases);
+$perPage = 10;
+$page = max(1, (int) get('page', 1));
+$totalPages = max(1, (int) ceil($totalCases / $perPage));
+if ($page > $totalPages) {
+    $page = $totalPages;
+}
+$offset = ($page - 1) * $perPage;
+$pageCases = array_slice($cases, $offset, $perPage);
+$shownFrom = $totalCases === 0 ? 0 : $offset + 1;
+$shownTo = min($offset + count($pageCases), $totalCases);
 $amountLabel = $filter === 'outstanding' ? 'Outstanding' : 'Fee';
+$pagerQs = $filter !== '' ? '&filter=' . urlencode($filter) : '';
 ?>
 <div class="panel case-list-panel">
     <div class="case-list-head">
@@ -808,7 +823,7 @@ $amountLabel = $filter === 'outstanding' ? 'Outstanding' : 'Fee';
                 </tr>
             </thead>
             <tbody>
-            <?php foreach ($cases as $c):
+            <?php foreach ($pageCases as $c):
                 $amount = $filter === 'outstanding' ? (float) $c['outstanding_total'] : (float) $c['fee_total'];
             ?>
                 <tr>
@@ -821,9 +836,10 @@ $amountLabel = $filter === 'outstanding' ? 'Outstanding' : 'Fee';
                     <td><?= status_badge($c['status']) ?></td>
                     <td class="case-fee-cell"><?= $amount > 0 ? e(money($amount)) : '—' ?></td>
                     <td class="col-actions">
-                        <div class="case-row-actions">
+                        <div class="row-actions">
                             <a class="btn btn-row-open btn-sm" href="?action=view&id=<?= (int)$c['id'] ?><?= $filter === 'outstanding' ? '&tab=invoices' : '' ?>">Open</a>
-                            <form method="post" class="inline-form" onsubmit="return confirm('Delete this case?')">
+                            <a class="btn btn-row-edit btn-sm" href="?action=edit&id=<?= (int)$c['id'] ?>">Edit</a>
+                            <form method="post" onsubmit="return confirm('Delete this case?')">
                                 <?= csrf_field() ?>
                                 <input type="hidden" name="form_action" value="delete">
                                 <input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
@@ -849,6 +865,25 @@ $amountLabel = $filter === 'outstanding' ? 'Outstanding' : 'Fee';
             </tbody>
         </table>
     </div>
-    <p class="case-list-footer muted"><?= (int) $totalCases ?> case<?= $totalCases === 1 ? '' : 's' ?></p>
+    <div class="case-list-foot">
+        <p class="case-list-footer muted">Showing <?= (int)$shownFrom ?>–<?= (int)$shownTo ?> of <?= (int)$totalCases ?> case<?= $totalCases === 1 ? '' : 's' ?></p>
+        <?php if ($totalPages > 1): ?>
+        <nav class="case-list-pager" aria-label="Cases pagination">
+            <?php if ($page > 1): ?>
+            <a class="case-page-btn" href="?page=<?= $page - 1 ?><?= e($pagerQs) ?>" aria-label="Previous page">‹</a>
+            <?php else: ?>
+            <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
+            <?php endif; ?>
+            <?php for ($p = 1; $p <= $totalPages; $p++): ?>
+            <a class="case-page-btn<?= $p === $page ? ' is-active' : '' ?>" href="?page=<?= $p ?><?= e($pagerQs) ?>"<?= $p === $page ? ' aria-current="page"' : '' ?>><?= $p ?></a>
+            <?php endfor; ?>
+            <?php if ($page < $totalPages): ?>
+            <a class="case-page-btn" href="?page=<?= $page + 1 ?><?= e($pagerQs) ?>" aria-label="Next page">›</a>
+            <?php else: ?>
+            <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
+            <?php endif; ?>
+        </nav>
+        <?php endif; ?>
+    </div>
 </div>
 <?php require __DIR__ . '/../includes/footer.php'; ?>
