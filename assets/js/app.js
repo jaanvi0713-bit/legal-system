@@ -174,7 +174,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  const popMenus = document.querySelectorAll('.topbar-account, .topbar-notify-menu');
+  const popMenus = document.querySelectorAll('.topbar-account, .topbar-notify-menu, .row-actions-dropdown');
   if (popMenus.length) {
     document.addEventListener('click', (e) => {
       popMenus.forEach((menu) => {

@@ -85,8 +85,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('users.php');
     }
     if ($fa === 'delete') {
-        $pdo->prepare('DELETE FROM users WHERE id=? AND role="staff"')->execute([(int) post('id')]);
-        flash('success', __('flash.staff.removed'));
+        $deleteId = (int) post('id');
+        $currentId = (int) (current_user()['id'] ?? 0);
+        if ($deleteId && $deleteId !== $currentId) {
+            $pdo->prepare('DELETE FROM users WHERE id=?')->execute([$deleteId]);
+            flash('success', __('flash.user.removed'));
+        } else {
+            flash('error', __('flash.user.cannot_remove_self'));
+        }
         redirect('users.php');
     }
 }
@@ -237,22 +243,61 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
     exit;
 }
 
-$filter = get('role', '');
-$allowedFilters = ['', 'admin', 'staff', 'lawyer', 'client'];
-if (!in_array($filter, $allowedFilters, true)) {
-    $filter = '';
-}
+$filterRaw = strtolower(trim((string) get('role', 'all')));
+$filter = in_array($filterRaw, ['admin', 'staff', 'lawyer', 'client'], true) ? $filterRaw : '';
+$search = trim((string) get('q', ''));
+$perPage = 10;
+$page = max(1, (int) get('page', 1));
 
-$sql = 'SELECT * FROM users';
+$usersListUrl = static function (string $roleKey, int $pageNum = 1) use ($search): string {
+    $qs = ['role' => $roleKey];
+    if ($search !== '') {
+        $qs['q'] = $search;
+    }
+    if ($pageNum > 1) {
+        $qs['page'] = $pageNum;
+    }
+    return 'users.php?' . http_build_query($qs);
+};
+
+$where = [];
 $params = [];
 if ($filter !== '') {
-    $sql .= ' WHERE role = ?';
+    $where[] = 'role = ?';
     $params[] = $filter;
 }
-$sql .= ' ORDER BY FIELD(role, "admin", "staff", "lawyer", "client"), first_name';
+if ($search !== '') {
+    $where[] = '(first_name LIKE ? OR last_name LIKE ? OR username LIKE ? OR email LIKE ? OR phone LIKE ? OR CONCAT(first_name, " ", last_name) LIKE ?)';
+    $like = '%' . $search . '%';
+    array_push($params, $like, $like, $like, $like, $like, $like);
+}
+$whereSql = $where ? (' WHERE ' . implode(' AND ', $where)) : '';
+
+$countStmt = $pdo->prepare('SELECT COUNT(*) FROM users' . $whereSql);
+$countStmt->execute($params);
+$totalUsers = (int) $countStmt->fetchColumn();
+
+$totalPages = max(1, (int) ceil($totalUsers / $perPage));
+if ($page > $totalPages) {
+    $page = $totalPages;
+}
+$offset = ($page - 1) * $perPage;
+
+$sql = 'SELECT * FROM users' . $whereSql . ' ORDER BY FIELD(role, "admin", "staff", "lawyer", "client"), first_name LIMIT ' . $perPage . ' OFFSET ' . $offset;
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $users = $stmt->fetchAll();
+$shownFrom = $totalUsers === 0 ? 0 : $offset + 1;
+$shownTo = min($offset + count($users), $totalUsers);
+$listRoleKey = $filter !== '' ? $filter : 'all';
+
+$currentUserId = (int) (current_user()['id'] ?? 0);
+$roleConfig = role_access_load($pdo);
+$roleList = $roleConfig['roles'];
+$rolePerms = $roleConfig['permissions'];
+$roleModules = role_access_modules();
+$roleUserCounts = role_access_user_counts($pdo);
+$companyName = get_setting($pdo, 'company_name', app_config('name', 'LEGAL PRO'));
 
 require __DIR__ . '/../includes/header.php';
 ?>
@@ -261,20 +306,30 @@ require __DIR__ . '/../includes/header.php';
         <h2><?= __e('users.list') ?></h2>
         <a class="btn btn-primary btn-sm" href="?action=create"><?= __e('users.create') ?></a>
     </div>
-    <div class="quick-links" style="margin-bottom:1rem;">
+    <div class="users-list-toolbar">
+        <form method="get" class="users-list-search-form" role="search">
+            <input type="hidden" name="role" value="<?= e($filter !== '' ? $filter : 'all') ?>">
+            <label class="appt-list-search">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+                <input type="search" name="q" value="<?= e($search) ?>" placeholder="<?= __e('users.search_placeholder') ?>" autocomplete="off">
+            </label>
+        </form>
+        <div class="users-list-filters">
         <?php
         $filters = [
-            '' => __('users.filter.all'),
+            'all' => __('users.filter.all'),
             'admin' => __('users.filter.admin'),
             'staff' => __('users.filter.staff'),
             'lawyer' => __('users.filter.lawyer'),
             'client' => __('users.filter.client'),
         ];
         foreach ($filters as $key => $label):
-            $href = $key === '' ? 'users.php' : 'users.php?role=' . urlencode($key);
+            $href = $usersListUrl($key, 1);
+            $isActive = $key === 'all' ? $filter === '' : $filter === $key;
         ?>
-            <a class="chip <?= $filter === $key ? 'active' : '' ?>" href="<?= e($href) ?>"><?= e($label) ?></a>
+            <a class="chip <?= $isActive ? 'active' : '' ?>" href="<?= e($href) ?>"><?= e($label) ?></a>
         <?php endforeach; ?>
+        </div>
     </div>
     <div class="table-wrap">
         <table>
@@ -303,34 +358,71 @@ require __DIR__ . '/../includes/header.php';
                     <td><?= e(format_datetime($u['last_login'])) ?></td>
                     <td><?= status_badge($u['is_active'] ? 'active' : 'unavailable') ?></td>
                     <td class="col-actions">
-                        <div class="row-actions">
-                            <a class="btn btn-row-edit btn-sm" href="?action=edit&id=<?= (int) $u['id'] ?>"><?= __e('common.edit') ?></a>
-                            <form method="post"<?= $u['is_active'] ? ' data-confirm="' . __e('confirm.deactivate_user') . '"' : '' ?>>
-                                <?= csrf_field() ?>
-                                <input type="hidden" name="form_action" value="toggle">
-                                <input type="hidden" name="id" value="<?= (int) $u['id'] ?>">
-                                <button class="btn btn-sm <?= $u['is_active'] ? 'btn-row-delete' : 'btn-row-approve' ?>" type="submit"><?= $u['is_active'] ? __e('common.deactivate') : __e('common.activate') ?></button>
-                            </form>
-                            <form method="post" data-confirm="<?= __e('confirm.reset_password') ?>">
-                                <?= csrf_field() ?>
-                                <input type="hidden" name="form_action" value="reset">
-                                <input type="hidden" name="id" value="<?= (int) $u['id'] ?>">
-                                <button class="btn btn-row-edit btn-sm" type="submit"><?= __e('common.reset_pw') ?></button>
-                            </form>
-                            <?php if ($u['role'] === 'staff'): ?>
-                                <form method="post" data-confirm="<?= __e('confirm.remove_staff') ?>">
+                        <details class="row-actions-dropdown">
+                            <summary class="row-actions-toggle" aria-label="<?= __e('common.actions') ?>">
+                                <span><?= __e('common.actions') ?></span>
+                                <svg class="row-actions-caret" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                            </summary>
+                            <div class="row-actions-menu">
+                                <a class="row-actions-item" href="?action=edit&id=<?= (int) $u['id'] ?>"><?= __e('common.edit') ?></a>
+                                <form method="post"<?= $u['is_active'] ? ' data-confirm="' . __e('confirm.deactivate_user') . '"' : '' ?>>
                                     <?= csrf_field() ?>
-                                    <input type="hidden" name="form_action" value="delete">
+                                    <input type="hidden" name="form_action" value="toggle">
                                     <input type="hidden" name="id" value="<?= (int) $u['id'] ?>">
-                                    <button class="btn btn-row-delete btn-sm" type="submit"><?= __e('common.remove') ?></button>
+                                    <button class="row-actions-item<?= $u['is_active'] ? ' row-actions-item--danger' : ' row-actions-item--success' ?>" type="submit"><?= $u['is_active'] ? __e('common.deactivate') : __e('common.activate') ?></button>
                                 </form>
-                            <?php endif; ?>
-                        </div>
+                                <form method="post" data-confirm="<?= __e('confirm.reset_password') ?>">
+                                    <?= csrf_field() ?>
+                                    <input type="hidden" name="form_action" value="reset">
+                                    <input type="hidden" name="id" value="<?= (int) $u['id'] ?>">
+                                    <button class="row-actions-item" type="submit"><?= __e('common.reset_pw') ?></button>
+                                </form>
+                                <?php if ((int) $u['id'] !== $currentUserId): ?>
+                                    <form method="post" data-confirm="<?= __e('confirm.remove_user') ?>">
+                                        <?= csrf_field() ?>
+                                        <input type="hidden" name="form_action" value="delete">
+                                        <input type="hidden" name="id" value="<?= (int) $u['id'] ?>">
+                                        <button class="row-actions-item row-actions-item--danger" type="submit"><?= __e('common.remove') ?></button>
+                                    </form>
+                                <?php endif; ?>
+                            </div>
+                        </details>
                     </td>
                 </tr>
             <?php endforeach; ?>
+            <?php if (!$users): ?>
+                <tr><td colspan="6" class="case-empty muted"><?= __e($search !== '' ? 'users.empty.search' : 'users.empty.none') ?></td></tr>
+            <?php endif; ?>
             </tbody>
         </table>
     </div>
+    <div class="case-list-foot">
+        <p class="case-list-footer muted"><?= e(__($totalUsers === 1 ? 'users.pager.showing_one' : 'users.pager.showing_many', ['from' => (int) $shownFrom, 'to' => (int) $shownTo, 'total' => (int) $totalUsers])) ?></p>
+        <?php if ($totalPages > 1): ?>
+        <nav class="case-list-pager" aria-label="<?= __e('users.pagination.aria') ?>">
+            <?php if ($page > 1): ?>
+            <a class="case-page-btn" href="<?= e($usersListUrl($listRoleKey, $page - 1)) ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
+            <?php else: ?>
+            <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
+            <?php endif; ?>
+            <?php for ($p = 1; $p <= $totalPages; $p++): ?>
+            <a class="case-page-btn<?= $p === $page ? ' is-active' : '' ?>" href="<?= e($usersListUrl($listRoleKey, $p)) ?>"<?= $p === $page ? ' aria-current="page"' : '' ?>><?= $p ?></a>
+            <?php endfor; ?>
+            <?php if ($page < $totalPages): ?>
+            <a class="case-page-btn" href="<?= e($usersListUrl($listRoleKey, $page + 1)) ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
+            <?php else: ?>
+            <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
+            <?php endif; ?>
+        </nav>
+        <?php endif; ?>
+    </div>
+</div>
+
+<div class="panel users-role-access-panel">
+    <?php
+    $roleAccessSummariesCustomize = true;
+    $roleAccessSummariesShowUsers = false;
+    require __DIR__ . '/../includes/role-access-summaries-panel.php';
+    ?>
 </div>
 <?php require __DIR__ . '/../includes/footer.php'; ?>

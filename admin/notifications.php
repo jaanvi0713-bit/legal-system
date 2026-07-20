@@ -80,10 +80,6 @@ require __DIR__ . '/../includes/header.php';
                 <h2><?= __e('notifications.send') ?></h2>
                 <p><?= __e('notifications.send_help') ?></p>
             </div>
-            <div class="notify-board-banner-actions notify-compose-tools row-actions">
-                <button type="button" class="btn btn-row-open btn-sm" id="notifyComposeCopy"><?= __e('common.copy') ?></button>
-                <button type="button" class="btn btn-row-edit btn-sm" id="notifyComposeEdit"><?= __e('common.edit') ?></button>
-            </div>
         </div>
         <form method="post" class="form-grid notify-form entity-inline-form notify-compose-body" id="notifyComposeForm">
             <?= csrf_field() ?><input type="hidden" name="form_action" value="send">
@@ -107,12 +103,32 @@ require __DIR__ . '/../includes/header.php';
                     </select>
                 </div>
                 <div class="form-group">
-                    <label><?= __e('notifications.title_field') ?></label>
+                    <div class="notify-field-label-row">
+                        <label for="notifyComposeTitle"><?= __e('notifications.title_field') ?></label>
+                        <div class="notify-field-tools">
+                            <button type="button" class="notify-field-icon-btn" data-copy-for="notifyComposeTitle" title="<?= __e('common.copy') ?>" aria-label="<?= __e('common.copy') ?>">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                            </button>
+                            <button type="button" class="notify-field-icon-btn" data-edit-for="notifyComposeTitle" title="<?= __e('common.edit') ?>" aria-label="<?= __e('common.edit') ?>">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+                            </button>
+                        </div>
+                    </div>
                     <input name="title" id="notifyComposeTitle" required placeholder="<?= __e('notifications.title_ph') ?>">
                 </div>
             </div>
             <div class="form-group full">
-                <label><?= __e('common.message') ?></label>
+                <div class="notify-field-label-row">
+                    <label for="notifyComposeMessage"><?= __e('common.message') ?></label>
+                    <div class="notify-field-tools">
+                        <button type="button" class="notify-field-icon-btn" data-copy-for="notifyComposeMessage" title="<?= __e('common.copy') ?>" aria-label="<?= __e('common.copy') ?>">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        </button>
+                        <button type="button" class="notify-field-icon-btn" data-edit-for="notifyComposeMessage" title="<?= __e('common.edit') ?>" aria-label="<?= __e('common.edit') ?>">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+                        </button>
+                    </div>
+                </div>
                 <textarea name="message" id="notifyComposeMessage" required rows="5" placeholder="<?= __e('notifications.message_ph') ?>"></textarea>
             </div>
             <div class="form-actions full">
@@ -122,34 +138,44 @@ require __DIR__ . '/../includes/header.php';
     </section>
     <script>
     (function () {
-      var form = document.getElementById('notifyComposeForm');
-      var title = document.getElementById('notifyComposeTitle');
-      var message = document.getElementById('notifyComposeMessage');
-      var copyBtn = document.getElementById('notifyComposeCopy');
-      var editBtn = document.getElementById('notifyComposeEdit');
-      if (!form || !title || !message) return;
-      if (copyBtn) {
-        copyBtn.addEventListener('click', async function () {
-          var text = (title.value || '').trim();
-          var body = (message.value || '').trim();
-          if (body) text = text ? (text + '\n\n' + body) : body;
+      var copiedLabel = <?= json_encode(__('contact.copied')) ?>;
+      var copyPromptLabel = <?= json_encode(__('contact.copy_prompt')) ?>;
+
+      function focusField(field) {
+        if (!field) return;
+        field.focus();
+        var len = field.value.length;
+        if (typeof field.setSelectionRange === 'function') {
+          field.setSelectionRange(len, len);
+        }
+      }
+
+      document.querySelectorAll('[data-copy-for]').forEach(function (btn) {
+        btn.addEventListener('click', async function () {
+          var field = document.getElementById(btn.getAttribute('data-copy-for'));
+          if (!field) return;
+          var text = (field.value || '').trim();
           if (!text) return;
           try {
             await navigator.clipboard.writeText(text);
-            var prev = copyBtn.textContent;
-            copyBtn.textContent = <?= json_encode(__('contact.copied')) ?>;
-            setTimeout(function () { copyBtn.textContent = prev; }, 1400);
+            btn.classList.add('is-copied');
+            var prevTitle = btn.getAttribute('title');
+            btn.setAttribute('title', copiedLabel);
+            setTimeout(function () {
+              btn.classList.remove('is-copied');
+              btn.setAttribute('title', prevTitle || '');
+            }, 1400);
           } catch (e) {
-            window.prompt(<?= json_encode(__('contact.copy_prompt')) ?>, text);
+            window.prompt(copyPromptLabel, text);
           }
         });
-      }
-      if (editBtn) {
-        editBtn.addEventListener('click', function () {
-          form.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          (message.value ? message : title).focus();
+      });
+
+      document.querySelectorAll('[data-edit-for]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          focusField(document.getElementById(btn.getAttribute('data-edit-for')));
         });
-      }
+      });
     })();
     </script>
 

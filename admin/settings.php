@@ -30,6 +30,68 @@ $notifyCategories = [
     'system' => ['label' => 'settings.notif.cat.system', 'email' => false],
 ];
 
+function backup_payload_build(PDO $pdo): array
+{
+    $settings = [];
+    $stmt = $pdo->query('SELECT setting_key, setting_value FROM settings ORDER BY setting_key');
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $settings[(string) $row['setting_key']] = (string) ($row['setting_value'] ?? '');
+    }
+
+    $count = static function (string $sql) use ($pdo): int {
+        try {
+            return (int) $pdo->query($sql)->fetchColumn();
+        } catch (Throwable $e) {
+            return 0;
+        }
+    };
+
+    $usersByRole = [
+        'admin' => 0,
+        'staff' => 0,
+        'lawyer' => 0,
+        'client' => 0,
+    ];
+    try {
+        $roleStmt = $pdo->query('SELECT role, COUNT(*) AS c FROM users GROUP BY role');
+        while ($r = $roleStmt->fetch(PDO::FETCH_ASSOC)) {
+            $role = (string) ($r['role'] ?? '');
+            if ($role !== '') {
+                $usersByRole[$role] = (int) ($r['c'] ?? 0);
+            }
+        }
+    } catch (Throwable $e) {
+        // Ignore if table doesn't exist yet.
+    }
+
+    return [
+        'meta' => [
+            'generated_at' => gmdate('c'),
+            'company' => (string) get_setting($pdo, 'company_name', app_config('name', 'LEGAL PRO')),
+            'workspace_url' => (string) app_config('url', ''),
+            'version' => 1,
+        ],
+        'counts' => [
+            'users_total' => array_sum($usersByRole),
+            'users_by_role' => $usersByRole,
+            'cases' => $count('SELECT COUNT(*) FROM cases'),
+            'invoices' => $count('SELECT COUNT(*) FROM invoices'),
+            'payments' => $count('SELECT COUNT(*) FROM payments'),
+            'appointments' => $count('SELECT COUNT(*) FROM appointments'),
+            'notifications' => $count('SELECT COUNT(*) FROM notifications'),
+        ],
+        'settings' => $settings,
+    ];
+}
+
+function backup_payload_json(PDO $pdo): string
+{
+    return json_encode(
+        backup_payload_build($pdo),
+        JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+    ) ?: '{}';
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     $section = post('settings_tab', $tab);
@@ -150,6 +212,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($section === 'roles') {
         $roleAction = post('role_action', 'save');
         $config = role_access_load($pdo);
+        $roleId = post('role_id', '');
         if ($roleAction === 'add') {
             $name = trim(post('role_name'));
             $description = trim(post('role_description'));
@@ -161,13 +224,91 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 role_access_save($pdo, $config['roles'], $config['permissions']);
                 flash('success', __('settings.roles.added'));
             }
+        } elseif ($roleAction === 'delete' && $roleId !== '') {
+            $config = role_access_delete_role($config, $roleId);
+            role_access_save($pdo, $config['roles'], $config['permissions']);
+            flash('success', __('settings.roles.deleted'));
+        } elseif ($roleAction === 'copy' && $roleId !== '') {
+            $config = role_access_duplicate_role($config, $roleId);
+            role_access_save($pdo, $config['roles'], $config['permissions']);
+            flash('success', __('settings.roles.copied'));
+        } elseif (($roleAction === 'move_left' || $roleAction === 'move_right') && $roleId !== '') {
+            $config = role_access_move_role($config, $roleId, $roleAction === 'move_left' ? 'left' : 'right');
+            role_access_save($pdo, $config['roles'], $config['permissions']);
+            flash('success', __('settings.roles.reordered'));
+        } elseif ($roleAction === 'rename' && $roleId !== '') {
+            $name = trim(post('role_rename', ''));
+            $description = trim(post('role_rename_description', ''));
+            if ($name === '') {
+                flash('error', __('settings.roles.error_name'));
+            } else {
+                $config = role_access_rename_role($config, $roleId, $name, $description);
+                role_access_save($pdo, $config['roles'], $config['permissions']);
+                flash('success', __('settings.roles.renamed'));
+            }
         } else {
             $config = role_access_parse_post($_POST, $config);
             role_access_save($pdo, $config['roles'], $config['permissions']);
             flash('success', __('settings.roles.saved'));
         }
     } elseif ($section === 'backup') {
-        flash('success', __('settings.backup.saved'));
+        $action = post('backup_action', '');
+        if ($action === 'download') {
+            $json = backup_payload_json($pdo);
+            $filename = 'website-backup-' . date('Y-m-d-His') . '.json';
+            header('Content-Type: application/json; charset=UTF-8');
+            header('Content-Disposition: attachment; filename="' . $filename . '"');
+            header('Content-Length: ' . strlen($json));
+            echo $json;
+            exit;
+        }
+        if ($action === 'email') {
+            $to = trim((string) get_setting($pdo, 'company_email', ''));
+            if ($to === '') {
+                flash('error', __('settings.backup.email_missing'));
+            } else {
+                $subject = __('settings.backup.email_subject') . ' · ' . date('Y-m-d H:i');
+                $body = backup_payload_json($pdo);
+                $ok = @mail($to, $subject, $body, "Content-Type: text/plain; charset=UTF-8\r\n");
+                if ($ok) {
+                    flash('success', __('settings.backup.emailed', ['email' => $to]));
+                } else {
+                    flash('error', __('settings.backup.email_failed'));
+                }
+            }
+        } elseif ($action === 'schedule') {
+            $frequency = strtolower(post('backup_frequency', 'never'));
+            if (!in_array($frequency, ['never', 'weekly', 'monthly'], true)) {
+                $frequency = 'never';
+            }
+            set_setting($pdo, 'backup_frequency', $frequency);
+            flash('success', __('settings.backup.schedule_saved'));
+        } elseif ($action === 'restore') {
+            try {
+                if (!isset($_FILES['backup_file']) || (int) $_FILES['backup_file']['error'] !== UPLOAD_ERR_OK) {
+                    throw new RuntimeException(__('settings.backup.restore_file_required'));
+                }
+                $raw = (string) file_get_contents((string) $_FILES['backup_file']['tmp_name']);
+                $data = json_decode($raw, true);
+                if (!is_array($data) || !is_array($data['settings'] ?? null)) {
+                    throw new RuntimeException(__('settings.backup.restore_invalid'));
+                }
+                $applied = 0;
+                foreach ($data['settings'] as $key => $value) {
+                    $k = trim((string) $key);
+                    if ($k === '') {
+                        continue;
+                    }
+                    set_setting($pdo, $k, is_scalar($value) ? (string) $value : json_encode($value, JSON_UNESCAPED_UNICODE));
+                    $applied++;
+                }
+                flash('success', __('settings.backup.restore_done', ['count' => (string) $applied]));
+            } catch (RuntimeException $ex) {
+                flash('error', $ex->getMessage());
+            }
+        } else {
+            flash('success', __('settings.backup.saved'));
+        }
     }
 
     redirect('settings.php?tab=' . urlencode($section));
@@ -296,8 +437,13 @@ require __DIR__ . '/../includes/header.php';
                     </div>
                     <div class="form-grid">
                         <div class="entity-field-row">
-                            <div class="form-group" style="grid-column: span 2;"><label><?= __e('settings.branding.company_name') ?></label><input name="company_name" value="<?= e($get('company_name', 'LEGAL PRO')) ?>"></div>
+                            <div class="form-group"><label><?= __e('settings.branding.company_name') ?></label><input name="company_name" value="<?= e($get('company_name', 'LEGAL PRO')) ?>"></div>
                             <div class="form-group"><label><?= __e('settings.branding.workspace_url') ?></label><input value="<?= e($base) ?>" disabled></div>
+                            <div class="form-group">
+                                <label><?= __e('settings.branding.created_by') ?></label>
+                                <input value="Company Automator" disabled readonly>
+                                <span class="field-hint"><?= __e('settings.branding.created_by_help') ?></span>
+                            </div>
                         </div>
                         <div class="entity-field-row">
                             <div class="form-group">
@@ -734,7 +880,7 @@ require __DIR__ . '/../includes/header.php';
                         <?= csrf_field() ?>
                         <input type="hidden" name="settings_tab" value="roles">
                         <input type="hidden" name="role_action" value="add">
-                        <div class="form-grid">
+                        <div class="form-grid role-access-add-grid">
                             <div class="form-group">
                                 <label for="role_name"><?= __e('settings.roles.role_name') ?></label>
                                 <input type="text" id="role_name" name="role_name" placeholder="<?= __e('settings.roles.role_name_ph') ?>" required>
@@ -747,7 +893,7 @@ require __DIR__ . '/../includes/header.php';
                                     <?php endforeach; ?>
                                 </select>
                             </div>
-                            <div class="form-group full">
+                            <div class="form-group">
                                 <label for="role_description"><?= __e('settings.roles.description') ?></label>
                                 <input type="text" id="role_description" name="role_description" placeholder="<?= __e('settings.roles.description_ph') ?>">
                             </div>
@@ -763,7 +909,7 @@ require __DIR__ . '/../includes/header.php';
                     <input type="hidden" name="settings_tab" value="roles">
                     <input type="hidden" name="role_action" value="save">
 
-                    <div class="settings-block role-access-matrix-wrap">
+                    <div class="settings-block role-access-matrix-wrap" style="--role-cols: <?= count($roleList) ?>;">
                         <div class="role-access-matrix-head">
                             <p class="role-access-note"><?= __e('settings.roles.matrix_note', ['company' => $companyName]) ?></p>
                             <span class="role-access-toggle-hint"><?= __e('settings.roles.toggle_hint') ?></span>
@@ -772,30 +918,80 @@ require __DIR__ . '/../includes/header.php';
                         <div class="role-access-scroll">
                             <table class="role-access-matrix">
                                 <thead>
-                                    <tr>
-                                        <th class="role-access-perm-col"><?= __e('settings.roles.permission') ?></th>
-                                        <?php foreach ($roleList as $role):
+                                    <tr class="role-access-head-row">
+                                        <th class="role-access-perm-col role-access-perm-col-head"><?= __e('settings.roles.permission') ?></th>
+                                        <?php foreach ($roleList as $i => $role):
                                             $rid = $role['id'];
                                             $count = (int) ($roleUserCounts[$rid] ?? 0);
+                                            $theme = role_access_role_theme($rid, !empty($role['builtin']));
+                                            $isFirst = $i === 0;
+                                            $isLast = $i === count($roleList) - 1;
                                             ?>
                                             <th class="role-access-role-col">
-                                                <div class="role-access-role-card">
-                                                    <div class="role-access-avatar" aria-hidden="true"><?= e(role_access_role_initials($role['name'])) ?></div>
-                                                    <div class="role-access-role-name"><?= e($role['name']) ?></div>
+                                                <div class="role-access-header-card" style="--rah-color: <?= e($theme['color']) ?>">
+                                                    <div class="rah-top">
+                                                        <form method="post" class="rah-mini-form">
+                                                            <?= csrf_field() ?>
+                                                            <input type="hidden" name="settings_tab" value="roles">
+                                                            <input type="hidden" name="role_action" value="rename">
+                                                            <input type="hidden" name="role_id" value="<?= e($rid) ?>">
+                                                            <input type="hidden" name="role_rename" value="<?= e($role['name']) ?>" class="rah-rename-input">
+                                                            <input type="hidden" name="role_rename_description" value="<?= e((string) ($role['description'] ?? '')) ?>">
+                                                            <button type="button" class="rah-icon-btn rah-edit" title="<?= __e('common.edit') ?>" aria-label="<?= __e('common.edit') ?>" data-role-name="<?= e($role['name']) ?>" data-role-description="<?= e((string) ($role['description'] ?? '')) ?>">
+                                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+                                                            </button>
+                                                        </form>
+                                                        <?php if (empty($role['builtin'])): ?>
+                                                        <form method="post" class="rah-mini-form" data-confirm="<?= __e('settings.roles.confirm_delete') ?>">
+                                                            <?= csrf_field() ?>
+                                                            <input type="hidden" name="settings_tab" value="roles">
+                                                            <input type="hidden" name="role_action" value="delete">
+                                                            <input type="hidden" name="role_id" value="<?= e($rid) ?>">
+                                                            <button type="submit" class="rah-icon-btn rah-delete" title="<?= __e('common.delete') ?>" aria-label="<?= __e('common.delete') ?>">
+                                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+                                                            </button>
+                                                        </form>
+                                                        <?php else: ?>
+                                                        <span class="rah-top-spacer" aria-hidden="true"></span>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                    <div class="rah-icon">
+                                                        <?= role_access_role_icon_svg($theme['icon']) ?>
+                                                    </div>
+                                                    <div class="rah-name"><?= e($role['name']) ?></div>
                                                     <?php if (!empty($role['builtin'])): ?>
                                                         <span class="role-access-tag role-access-tag--builtin"><?= __e('settings.roles.builtin') ?></span>
                                                     <?php else: ?>
                                                         <span class="role-access-tag role-access-tag--custom"><?= __e('settings.roles.custom') ?></span>
                                                     <?php endif; ?>
-                                            <?php
-                                            if ($count === 0) {
-                                                echo __e('settings.roles.no_users');
-                                            } elseif ($count === 1) {
-                                                echo __e('settings.roles.one_user');
-                                            } else {
-                                                echo __e('settings.roles.users_count', ['n' => (string) $count]);
-                                            }
-                                            ?>
+                                                    <div class="rah-users"><?= e(role_access_user_label($count)) ?></div>
+                                                    <div class="rah-foot">
+                                                        <form method="post" class="rah-mini-form">
+                                                            <?= csrf_field() ?>
+                                                            <input type="hidden" name="settings_tab" value="roles">
+                                                            <input type="hidden" name="role_action" value="copy">
+                                                            <input type="hidden" name="role_id" value="<?= e($rid) ?>">
+                                                            <button type="submit" class="rah-icon-btn rah-copy" title="<?= __e('common.copy') ?>" aria-label="<?= __e('common.copy') ?>">
+                                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                                            </button>
+                                                        </form>
+                                                        <div class="rah-reorder">
+                                                            <form method="post" class="rah-mini-form">
+                                                                <?= csrf_field() ?>
+                                                                <input type="hidden" name="settings_tab" value="roles">
+                                                                <input type="hidden" name="role_action" value="move_left">
+                                                                <input type="hidden" name="role_id" value="<?= e($rid) ?>">
+                                                                <button type="submit" class="rah-icon-btn rah-move" <?= $isFirst ? 'disabled' : '' ?> aria-label="<?= __e('settings.roles.move_left') ?>">‹</button>
+                                                            </form>
+                                                            <form method="post" class="rah-mini-form">
+                                                                <?= csrf_field() ?>
+                                                                <input type="hidden" name="settings_tab" value="roles">
+                                                                <input type="hidden" name="role_action" value="move_right">
+                                                                <input type="hidden" name="role_id" value="<?= e($rid) ?>">
+                                                                <button type="submit" class="rah-icon-btn rah-move" <?= $isLast ? 'disabled' : '' ?> aria-label="<?= __e('settings.roles.move_right') ?>">›</button>
+                                                            </form>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </th>
                                         <?php endforeach; ?>
@@ -845,49 +1041,11 @@ require __DIR__ . '/../includes/header.php';
                     </div>
 
                     <div class="settings-block">
-                        <div class="settings-block-head">
-                            <h3><?= __e('settings.roles.summaries') ?></h3>
-                        </div>
-                        <div class="role-access-summaries">
-                            <?php foreach ($roleList as $role):
-                                $rid = $role['id'];
-                                $perm = $rolePerms[$rid] ?? [];
-                                $count = (int) ($roleUserCounts[$rid] ?? 0);
-                                $descKey = $role['description'] ?? '';
-                                $desc = $descKey !== '' && str_starts_with($descKey, 'settings.') ? __($descKey) : (string) $descKey;
-                                ?>
-                                <div class="role-access-summary-card">
-                                    <div class="role-access-summary-top">
-                                        <span class="role-access-avatar role-access-avatar--sm"><?= e(role_access_role_initials($role['name'])) ?></span>
-                                        <div>
-                                            <strong><?= e($role['name']) ?></strong>
-                                            <p><?= e($desc) ?></p>
-                                        </div>
-                                    </div>
-                                    <div class="role-access-summary-meta">
-                                        <span class="muted"><?php
-                                        if ($count === 0) {
-                                            echo __e('settings.roles.no_users');
-                                        } elseif ($count === 1) {
-                                            echo __e('settings.roles.one_user');
-                                        } else {
-                                            echo __e('settings.roles.users_count', ['n' => (string) $count]);
-                                        }
-                                        ?></span>
-                                        <div class="role-access-badges">
-                                            <?php if (!empty($perm['assigned_cases'])): ?>
-                                                <span class="role-access-badge"><?= __e('settings.roles.badge.assigned') ?></span>
-                                            <?php endif; ?>
-                                            <?php if (!empty($perm['read_only'])): ?>
-                                                <span class="role-access-badge role-access-badge--muted"><?= __e('settings.roles.badge.readonly') ?></span>
-                                            <?php else: ?>
-                                                <span class="role-access-badge role-access-badge--primary"><?= __e('settings.roles.badge.edit') ?></span>
-                                            <?php endif; ?>
-                                        </div>
-                                    </div>
-                                </div>
-                            <?php endforeach; ?>
-                        </div>
+                        <?php
+                        $roleAccessSummariesCustomize = false;
+                        $roleAccessSummariesShowUsers = true;
+                        require __DIR__ . '/../includes/role-access-summaries-panel.php';
+                        ?>
                     </div>
 
                     <div class="form-actions role-access-actions">
@@ -896,15 +1054,88 @@ require __DIR__ . '/../includes/header.php';
                     </div>
                 </form>
             </div>
+            <script>
+            (function () {
+              document.querySelectorAll('.rah-edit').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                  var form = btn.closest('form');
+                  if (!form) return;
+                  var nameInput = form.querySelector('.rah-rename-input');
+                  var descInput = form.querySelector('[name="role_rename_description"]');
+                  var current = btn.getAttribute('data-role-name') || '';
+                  var next = window.prompt(<?= json_encode(__('settings.roles.rename_prompt')) ?>, current);
+                  if (next === null) return;
+                  next = next.trim();
+                  if (!next) return;
+                  if (nameInput) nameInput.value = next;
+                  if (descInput && btn.getAttribute('data-role-description')) {
+                    descInput.value = btn.getAttribute('data-role-description');
+                  }
+                  form.submit();
+                });
+              });
+            })();
+            </script>
 
-        <?php else: ?>
-            <form method="post" class="settings-form">
-                <?= csrf_field() ?>
-                <input type="hidden" name="settings_tab" value="backup">
+        <?php else:
+            $backupFrequency = strtolower((string) $get('backup_frequency', 'never'));
+            if (!in_array($backupFrequency, ['never', 'weekly', 'monthly'], true)) {
+                $backupFrequency = 'never';
+            }
+            ?>
+            <div class="settings-form backup-settings-page">
                 <div class="settings-block">
                     <div class="settings-block-head">
                         <h3><?= __e('settings.backup.title') ?></h3>
                         <p><?= __e('settings.backup.help') ?></p>
+                    </div>
+                    <div class="backup-actions-grid">
+                        <form method="post" class="backup-action-card">
+                            <?= csrf_field() ?>
+                            <input type="hidden" name="settings_tab" value="backup">
+                            <input type="hidden" name="backup_action" value="download">
+                            <h4><?= __e('settings.backup.download_title') ?></h4>
+                            <p><?= __e('settings.backup.download_help') ?></p>
+                            <button class="btn btn-primary btn-sm" type="submit"><?= __e('settings.backup.download_now') ?></button>
+                        </form>
+                        <form method="post" class="backup-action-card">
+                            <?= csrf_field() ?>
+                            <input type="hidden" name="settings_tab" value="backup">
+                            <input type="hidden" name="backup_action" value="email">
+                            <h4><?= __e('settings.backup.email_title') ?></h4>
+                            <p><?= __e('settings.backup.email_help') ?></p>
+                            <button class="btn btn-secondary btn-sm" type="submit"><?= __e('settings.backup.email_now') ?></button>
+                        </form>
+                    </div>
+                </div>
+
+                <form method="post" class="settings-block">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="settings_tab" value="backup">
+                    <input type="hidden" name="backup_action" value="schedule">
+                    <div class="settings-block-head">
+                        <h3><?= __e('settings.backup.auto_title') ?></h3>
+                        <p><?= __e('settings.backup.auto_help') ?></p>
+                    </div>
+                    <div class="backup-schedule-row">
+                        <div class="form-group">
+                            <label for="backup_frequency"><?= __e('settings.backup.frequency') ?></label>
+                            <select id="backup_frequency" name="backup_frequency">
+                                <option value="never" <?= $backupFrequency === 'never' ? 'selected' : '' ?>><?= __e('settings.backup.frequency.never') ?></option>
+                                <option value="weekly" <?= $backupFrequency === 'weekly' ? 'selected' : '' ?>><?= __e('settings.backup.frequency.weekly') ?></option>
+                                <option value="monthly" <?= $backupFrequency === 'monthly' ? 'selected' : '' ?>><?= __e('settings.backup.frequency.monthly') ?></option>
+                            </select>
+                        </div>
+                        <div class="backup-schedule-action">
+                            <button class="btn btn-primary" type="submit"><?= __e('settings.backup.save_schedule') ?></button>
+                        </div>
+                    </div>
+                </form>
+
+                <div class="settings-block">
+                    <div class="settings-block-head">
+                        <h3><?= __e('settings.backup.included_title') ?></h3>
+                        <p><?= __e('settings.backup.included_help') ?></p>
                     </div>
                     <div class="list-stack">
                         <div class="list-item"><strong><?= __e('settings.backup.database') ?></strong><span class="muted"><?= __e('settings.backup.database_help') ?></span></div>
@@ -912,8 +1143,27 @@ require __DIR__ . '/../includes/header.php';
                         <div class="list-item"><strong><?= __e('settings.backup.uploads') ?></strong><span class="muted"><?= __e('settings.backup.uploads_help') ?></span></div>
                     </div>
                 </div>
-                <div class="form-actions"><button class="btn btn-primary" type="submit"><?= __e('settings.backup.acknowledge') ?></button></div>
-            </form>
+
+                <form method="post" class="settings-block" enctype="multipart/form-data">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="settings_tab" value="backup">
+                    <input type="hidden" name="backup_action" value="restore">
+                    <div class="settings-block-head">
+                        <h3><?= __e('settings.backup.restore_title') ?></h3>
+                        <p><?= __e('settings.backup.restore_help') ?></p>
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group full">
+                            <label for="backup_file"><?= __e('settings.backup.restore_file') ?></label>
+                            <input type="file" id="backup_file" name="backup_file" accept="application/json,.json">
+                            <span class="field-hint"><?= __e('settings.backup.restore_note') ?></span>
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button class="btn btn-secondary" type="submit"><?= __e('settings.backup.restore_btn') ?></button>
+                    </div>
+                </form>
+            </div>
         <?php endif; ?>
     </div>
 </section>
