@@ -22,6 +22,7 @@
     const actionMessages = {
       cancel: i18n.confirmCancelAppointment,
       reset: i18n.confirmResetPassword,
+      delete_session: i18n.confirmDeleteSession || i18n.confirm,
     };
     if (actionMessages[fa]) return actionMessages[fa];
 
@@ -255,7 +256,11 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('click', (e) => {
     const el = e.target.closest('[data-confirm]');
     if (!el) return;
-    if (el.closest('form') && (el.type === 'submit' || (el.tagName === 'BUTTON' && !el.type))) return;
+    // Form confirms are handled by the submit listener.
+    if (el.tagName === 'FORM') return;
+    if (el.closest('form') && (el.matches('button[type="submit"], input[type="submit"]') || (el.tagName === 'BUTTON' && !el.getAttribute('type')))) {
+      return;
+    }
 
     const i18n = window.LEXORA_I18N || {};
     const msg = el.getAttribute('data-confirm') || i18n.confirm || 'Are you sure?';
@@ -352,45 +357,278 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   const aiForm = document.getElementById('ai-compose-form');
-  if (aiForm) {
-    const sendAiMessage = async (text) => {
-      const input = document.getElementById('ai-message');
-      const messages = document.getElementById('ai-messages');
-      const sessionId = aiForm.dataset.sessionId;
-      const value = (text || '').trim();
-      if (!value) return;
+  let aiSending = false;
+  let aiPendingFiles = [];
 
-      const welcome = messages.querySelector('.ai-welcome');
-      if (welcome) welcome.remove();
+  const escAi = (value) => String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 
-      const userMsg = document.createElement('div');
-      userMsg.className = 'msg msg-user';
-      userMsg.textContent = value;
-      messages.appendChild(userMsg);
-      if (input) input.value = '';
-      messages.scrollTop = messages.scrollHeight;
+  const formatAiFileSize = (bytes) => {
+    const n = Number(bytes) || 0;
+    if (n < 1024) return n + ' B';
+    if (n < 1048576) return (Math.round((n / 1024) * 10) / 10) + ' KB';
+    return (Math.round((n / 1048576) * 10) / 10) + ' MB';
+  };
 
-      const thinking = document.createElement('div');
-      thinking.className = 'msg msg-assistant ai-bubble';
+  const renderAiAttachList = () => {
+    const list = document.getElementById('ai-attach-list');
+    if (!list) return;
+    if (!aiPendingFiles.length) {
+      list.hidden = true;
+      list.innerHTML = '';
+      return;
+    }
+    list.hidden = false;
+    list.innerHTML = aiPendingFiles.map((file, idx) => (
+      `<span class="ai-attach-chip" data-idx="${idx}">` +
+        `<span class="ai-attach-chip-name">${escAi(file.name)}</span>` +
+        `<span class="ai-attach-chip-size">${formatAiFileSize(file.size)}</span>` +
+        `<button type="button" class="ai-attach-chip-remove" data-remove-idx="${idx}" aria-label="Remove">&times;</button>` +
+      `</span>`
+    )).join('');
+  };
+
+  const aiActionIcons = {
+    copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>',
+    edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 20h4L18 10l-4-4L4 16v4z"/><path d="M12 8l4 4"/></svg>',
+    check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>',
+  };
+
+  const aiActionsHtml = (role) => {
+    const i18n = window.LEXORA_I18N || {};
+    const copyLabel = i18n.ai_copy || 'Copy';
+    const editLabel = i18n.ai_edit || 'Edit';
+    const userClass = role === 'user' ? ' ai-msg-actions--user' : '';
+    let html = `<div class="ai-msg-actions${userClass}">`;
+    if (role === 'user') {
+      html += `<button type="button" class="ai-msg-action" data-ai-edit title="${escAi(editLabel)}" aria-label="${escAi(editLabel)}">${aiActionIcons.edit}</button>`;
+    }
+    html += `<button type="button" class="ai-msg-action" data-ai-copy title="${escAi(copyLabel)}" aria-label="${escAi(copyLabel)}">${aiActionIcons.copy}</button>`;
+    html += '</div>';
+    return html;
+  };
+
+  const bindAiMessageActions = (root) => {
+    const scope = root || document.getElementById('ai-messages');
+    if (!scope || scope.dataset.aiActionsBound === '1') {
+      // Still allow new nodes via event delegation once
+    }
+    if (!scope) return;
+    if (scope.dataset.aiActionsBound === '1') return;
+    scope.dataset.aiActionsBound = '1';
+    scope.addEventListener('click', async (e) => {
+      const copyBtn = e.target.closest('[data-ai-copy]');
+      const editBtn = e.target.closest('[data-ai-edit]');
+      if (!copyBtn && !editBtn) return;
+      const stack = (copyBtn || editBtn).closest('.ai-msg-stack');
+      const body = stack ? stack.querySelector('.ai-msg-body') : null;
+      const raw = body ? (body.getAttribute('data-ai-raw') || body.innerText || '') : '';
       const i18n = window.LEXORA_I18N || {};
-      thinking.innerHTML = '<div class="ai-bot-mark sm" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="7" width="14" height="11" rx="3"/><circle cx="9.5" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="14.5" cy="12" r="1.2" fill="currentColor" stroke="none"/><path d="M9 18v2M15 18v2M12 4v3"/></svg></div><div></div>';
-      thinking.querySelector('div:last-child').textContent = i18n.thinking || 'Thinking…';
-      messages.appendChild(thinking);
-      const thinkingText = thinking.querySelector('div:last-child');
+      if (copyBtn) {
+        e.preventDefault();
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(raw);
+          } else {
+            const ta = document.createElement('textarea');
+            ta.value = raw;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            ta.remove();
+          }
+          const copiedLabel = i18n.ai_copied || 'Copied';
+          const copyLabel = i18n.ai_copy || 'Copy';
+          copyBtn.classList.add('is-copied');
+          copyBtn.innerHTML = aiActionIcons.check;
+          copyBtn.title = copiedLabel;
+          copyBtn.setAttribute('aria-label', copiedLabel);
+          setTimeout(() => {
+            copyBtn.classList.remove('is-copied');
+            copyBtn.innerHTML = aiActionIcons.copy;
+            copyBtn.title = copyLabel;
+            copyBtn.setAttribute('aria-label', copyLabel);
+          }, 1400);
+        } catch (err) {
+          // ignore
+        }
+        return;
+      }
+      if (editBtn) {
+        e.preventDefault();
+        const input = document.getElementById('ai-message');
+        if (!input) return;
+        // Prefer first line / main prompt without attachment footer
+        let editText = raw;
+        const cut = editText.indexOf('\n\n' + (i18n.attach_stored_header || 'Attached files:'));
+        if (cut > -1) editText = editText.slice(0, cut).trim();
+        input.value = editText;
+        input.focus();
+        input.setSelectionRange(editText.length, editText.length);
+      }
+    });
+  };
 
-      try {
-        const res = await fetch('../api/ai-chat.php', {
+  const sendAiMessage = async (text) => {
+    const input = document.getElementById('ai-message');
+    const messages = document.getElementById('ai-messages');
+    if (!aiForm || !messages) return;
+    const sessionId = aiForm.dataset.sessionId;
+    const value = (text || '').trim();
+    const files = aiPendingFiles.slice();
+    if ((!value && !files.length) || aiSending) return;
+    aiSending = true;
+
+    const welcome = messages.querySelector('.ai-welcome');
+    if (welcome) {
+      const row = welcome.closest('.ai-msg-row');
+      (row || welcome).remove();
+    }
+    const userMsg = document.createElement('div');
+    userMsg.className = 'ai-msg-row ai-msg-row--user';
+    const i18n = window.LEXORA_I18N || {};
+    const displayText = value || (i18n.attach_default_prompt || 'Please review the attached file(s).');
+    let bodyHtml = escAi(displayText).replace(/\n/g, '<br>');
+    if (files.length) {
+      bodyHtml += '<div class="ai-msg-files">' + files.map((f) => (
+        `<span class="ai-msg-file">${escAi(f.name)} <em>${formatAiFileSize(f.size)}</em></span>`
+      )).join('') + '</div>';
+    }
+    userMsg.innerHTML = `<div class="ai-msg-stack"><div class="msg msg-user"><div class="ai-msg-body" data-ai-raw="${escAi(displayText)}">${bodyHtml}</div></div>${aiActionsHtml('user')}</div>`;
+    messages.appendChild(userMsg);
+    if (input) input.value = '';
+    aiPendingFiles = [];
+    renderAiAttachList();
+    messages.scrollTop = messages.scrollHeight;
+
+    const thinking = document.createElement('div');
+    thinking.className = 'ai-msg-row ai-msg-row--assistant';
+    thinking.innerHTML = '<div class="ai-bot-mark sm" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="7" width="14" height="11" rx="3"/><circle cx="9.5" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="14.5" cy="12" r="1.2" fill="currentColor" stroke="none"/><path d="M9 18v2M15 18v2M12 4v3"/></svg></div><div class="ai-msg-stack"><div class="msg msg-assistant ai-bubble"><div class="ai-msg-body"></div></div></div>';
+    const thinkingText = thinking.querySelector('.ai-msg-body');
+    thinkingText.textContent = i18n.thinking || 'Thinking…';
+    messages.appendChild(thinking);
+
+    const renderAiHtml = (raw) => {
+      const appBase = (aiForm.getAttribute('data-app-url') || '').replace(/\/$/, '');
+      let escaped = String(raw || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+      const linkHtml = (url, label) => {
+        const clean = String(url || '').replace(/[.,);]+$/, '');
+        const sameApp = appBase && clean.indexOf(appBase) === 0;
+        const target = sameApp ? '_self' : '_blank';
+        const rel = sameApp ? '' : ' rel="noopener noreferrer"';
+        return '<a class="ai-inline-link" href="' + clean + '" target="' + target + '"' + rel + '>' + label + '</a>';
+      };
+      escaped = escaped.replace(
+        /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/gi,
+        (_, label, url) => linkHtml(url, label)
+      );
+      escaped = escaped.replace(
+        /(?<!href=")(https?:\/\/[^\s<]+)/gi,
+        (_, url) => linkHtml(url, url.replace(/[.,);]+$/, ''))
+      );
+      return escaped;
+    };
+
+    try {
+      const endpoint = aiForm.getAttribute('data-ai-endpoint') || '../api/ai-chat.php';
+      let res;
+      if (files.length) {
+        const fd = new FormData();
+        fd.append('session_id', String(sessionId));
+        fd.append('message', value);
+        files.forEach((f) => fd.append('files[]', f, f.name));
+        res = await fetch(endpoint, { method: 'POST', body: fd });
+      } else {
+        res = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ session_id: Number(sessionId), message: value }),
         });
-        const data = await res.json();
-        thinkingText.textContent = data.reply || data.error || i18n.no_response || 'No response.';
-      } catch (err) {
-        thinkingText.textContent = i18n.service_error || 'Unable to reach the AI service. Please try again.';
       }
-      messages.scrollTop = messages.scrollHeight;
-    };
+      const data = await res.json();
+      const reply = data.reply || data.error || i18n.no_response || 'No response.';
+      thinkingText.setAttribute('data-ai-raw', reply);
+      thinkingText.innerHTML = renderAiHtml(reply);
+      const stack = thinking.querySelector('.ai-msg-stack');
+      if (stack && !stack.querySelector('.ai-msg-actions')) {
+        stack.insertAdjacentHTML('beforeend', aiActionsHtml('assistant'));
+      }
+    } catch (err) {
+      const fail = i18n.service_error || 'Unable to reach the AI service. Please try again.';
+      thinkingText.setAttribute('data-ai-raw', fail);
+      thinkingText.textContent = fail;
+      const stack = thinking.querySelector('.ai-msg-stack');
+      if (stack && !stack.querySelector('.ai-msg-actions')) {
+        stack.insertAdjacentHTML('beforeend', aiActionsHtml('assistant'));
+      }
+    } finally {
+      aiSending = false;
+    }
+    messages.scrollTop = messages.scrollHeight;
+  };
+
+  bindAiMessageActions(document.getElementById('ai-messages'));
+
+  window.lexoraSendAiMessage = sendAiMessage;
+  window.__aiPendingFilesRef = {
+    get list() { return aiPendingFiles; },
+    set list(v) { aiPendingFiles = v; },
+    render: renderAiAttachList,
+  };
+
+  if (aiForm) {
+    const attachBtn = document.getElementById('ai-attach-btn') || document.querySelector('.ai-attach');
+    const fileInput = document.getElementById('ai-file-input');
+    const attachListEl = document.getElementById('ai-attach-list');
+    const maxAiFiles = 10;
+    const maxAiBytes = 10 * 1024 * 1024;
+    const allowedAiExt = ['pdf', 'doc', 'docx', 'txt', 'csv', 'jpg', 'jpeg', 'png', 'webp', 'xls', 'xlsx'];
+
+    if (attachBtn && fileInput) {
+      attachBtn.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', () => {
+        const i18n = window.LEXORA_I18N || {};
+        const picked = Array.from(fileInput.files || []);
+        fileInput.value = '';
+        for (const file of picked) {
+          if (aiPendingFiles.length >= maxAiFiles) {
+            alert(i18n.attach_too_many || 'You can attach up to 10 files.');
+            break;
+          }
+          const ext = String(file.name.split('.').pop() || '').toLowerCase();
+          if (!allowedAiExt.includes(ext)) {
+            alert((i18n.attach_type_error || 'File type not allowed:') + ' ' + file.name);
+            continue;
+          }
+          if (file.size > maxAiBytes) {
+            alert((i18n.attach_size_error || 'File is too large:') + ' ' + file.name);
+            continue;
+          }
+          const dup = aiPendingFiles.some((f) => f.name === file.name && f.size === file.size);
+          if (!dup) aiPendingFiles.push(file);
+        }
+        renderAiAttachList();
+      });
+    }
+    if (attachListEl) {
+      attachListEl.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-remove-idx]');
+        if (!btn) return;
+        const idx = Number(btn.getAttribute('data-remove-idx'));
+        if (Number.isNaN(idx)) return;
+        aiPendingFiles.splice(idx, 1);
+        renderAiAttachList();
+      });
+    }
 
     aiForm.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -398,8 +636,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const input = document.getElementById('ai-message');
       await sendAiMessage(input ? input.value : '');
     });
-
-    window.lexoraSendAiMessage = sendAiMessage;
   }
 
   initSelectWraps();
@@ -554,14 +790,6 @@ function initAiAssistantUi() {
   }
   if (libraryRows.length) renderLibraryPage();
 
-  const attachBtn = document.querySelector('.ai-attach');
-  if (attachBtn) {
-    attachBtn.addEventListener('click', () => {
-      const i18n = window.LEXORA_I18N || {};
-      alert(i18n.attach_disabled || 'File attachments will be available when document AI is enabled. For now, describe the file in your question.');
-    });
-  }
-
   const icons = {
     user: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="8" r="3.5"/><path d="M5 19.5c1.5-3.2 4-4.5 7-4.5s5.5 1.3 7 4.5"/></svg>',
     briefcase: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><rect x="3" y="7" width="18" height="14" rx="2"/><path d="M3 13h18"/></svg>',
@@ -579,11 +807,15 @@ function initAiAssistantUi() {
   };
 
   let prompts = [];
-  try {
-    prompts = JSON.parse(workspace.getAttribute('data-prompts') || '[]');
-  } catch (e) {
-    prompts = [];
+  const promptsData = document.getElementById('ai-prompts-data');
+  if (promptsData) {
+    try {
+      prompts = JSON.parse(promptsData.textContent || '[]');
+    } catch (e) {
+      prompts = [];
+    }
   }
+  if (!Array.isArray(prompts)) prompts = [];
 
   const perPage = 8;
   let page = 0;
@@ -593,18 +825,12 @@ function initAiAssistantUi() {
   const next = document.getElementById('ai-prompt-next');
   const totalPages = Math.max(1, Math.ceil(prompts.length / perPage));
 
-  const bindPromptButtons = () => {
-    list.querySelectorAll('.ai-prompt-btn').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const prompt = btn.getAttribute('data-prompt') || '';
-        const input = document.getElementById('ai-message');
-        if (input) input.value = prompt;
-        if (window.lexoraSendAiMessage) {
-          await window.lexoraSendAiMessage(prompt);
-        }
-      });
-    });
-  };
+  const escapeHtml = (value) => String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 
   const renderPrompts = () => {
     if (!list) return;
@@ -612,15 +838,49 @@ function initAiAssistantUi() {
     const slice = prompts.slice(start, start + perPage);
     list.innerHTML = slice.map((item) => {
       const icon = icons[item.icon] || icons.grid;
-      return `<button type="button" class="ai-prompt-btn" data-prompt="${String(item.prompt).replace(/"/g, '&quot;')}">
+      return `<button type="button" class="ai-prompt-btn" data-prompt="${escapeHtml(item.prompt || '')}">
         <span class="ai-prompt-icon">${icon}</span>
-        <span class="ai-prompt-label">${item.label}</span>
+        <span class="ai-prompt-label">${escapeHtml(item.label || '')}</span>
         <span class="ai-prompt-chevron" aria-hidden="true">›</span>
       </button>`;
     }).join('');
     if (label) label.textContent = `${page + 1} / ${totalPages}`;
-    bindPromptButtons();
   };
+
+  if (list && !list.dataset.promptBound) {
+    list.dataset.promptBound = '1';
+    list.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.ai-prompt-btn');
+      if (!btn || !list.contains(btn)) return;
+      e.preventDefault();
+      const prompt = btn.getAttribute('data-prompt') || '';
+      if (!prompt) return;
+      const input = document.getElementById('ai-message');
+      if (input) input.value = prompt;
+      if (typeof window.lexoraSendAiMessage === 'function') {
+        await window.lexoraSendAiMessage(prompt);
+      }
+    });
+  }
+
+  // Also bind at document level so prompts still work if the list is re-rendered elsewhere.
+  if (!document.body.dataset.aiPromptDelegate) {
+    document.body.dataset.aiPromptDelegate = '1';
+    document.addEventListener('click', async (e) => {
+      const btn = e.target.closest('#ai-prompt-list .ai-prompt-btn');
+      if (!btn) return;
+      // Avoid double-firing when list handler already ran.
+      if (btn.closest('#ai-prompt-list')?.dataset.promptBound === '1') return;
+      e.preventDefault();
+      const prompt = btn.getAttribute('data-prompt') || '';
+      if (!prompt) return;
+      const input = document.getElementById('ai-message');
+      if (input) input.value = prompt;
+      if (typeof window.lexoraSendAiMessage === 'function') {
+        await window.lexoraSendAiMessage(prompt);
+      }
+    });
+  }
 
   if (prev) {
     prev.addEventListener('click', () => {

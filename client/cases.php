@@ -68,15 +68,30 @@ if ($id) {
 $rows = $pdo->prepare("SELECT c.*, CONCAT(l.first_name,' ',l.last_name) AS lawyer_name FROM cases c LEFT JOIN users l ON l.id=c.lawyer_id WHERE c.client_id=? ORDER BY c.updated_at DESC");
 $rows->execute([$uid]);
 $rows = $rows->fetchAll();
+$totalCases = count($rows);
+$perPage = 10;
+$page = max(1, (int) get('page', 1));
+$totalPages = max(1, (int) ceil($totalCases / $perPage));
+if ($page > $totalPages) {
+    $page = $totalPages;
+}
+$offset = ($page - 1) * $perPage;
+$pageRows = array_slice($rows, $offset, $perPage);
+$shownFrom = $totalCases === 0 ? 0 : $offset + 1;
+$shownTo = min($offset + count($pageRows), $totalCases);
 require __DIR__ . '/../includes/header.php';
 ?>
-<div class="panel">
-    <h2><?= __e('client.cases.your_cases') ?></h2>
-    <div class="table-wrap">
-        <table>
+<div class="panel case-list-panel">
+    <div class="case-list-head">
+        <div class="case-list-title">
+            <h2><?= __e('client.cases.your_cases') ?></h2>
+        </div>
+    </div>
+    <div class="table-wrap case-table-wrap">
+        <table class="case-table">
             <thead><tr><th><?= __e('common.case') ?></th><th><?= __e('common.lawyer') ?></th><th><?= __e('common.status') ?></th><th><?= __e('common.progress') ?></th></tr></thead>
             <tbody>
-            <?php foreach ($rows as $c): ?>
+            <?php foreach ($pageRows as $c): ?>
                 <tr>
                     <td><a href="?id=<?= (int)$c['id'] ?>"><strong><?= e($c['case_number']) ?></strong></a><div class="muted"><?= e(t_content($c['title'])) ?></div></td>
                     <td><?= e($c['lawyer_name'] ?: __('common.em_dash')) ?></td>
@@ -84,8 +99,31 @@ require __DIR__ . '/../includes/header.php';
                     <td><?= e(format_date($c['next_hearing_date']) !== '—' ? trim(__('court.hearing_prefix')) . ' ' . format_date($c['next_hearing_date']) : translate_status('active')) ?></td>
                 </tr>
             <?php endforeach; ?>
+            <?php if (!$pageRows): ?>
+                <tr><td colspan="4" class="muted"><?= __e('common.no_records') ?></td></tr>
+            <?php endif; ?>
             </tbody>
         </table>
+    </div>
+    <div class="case-list-foot">
+        <p class="case-list-footer muted"><?= e(__($totalCases === 1 ? 'cases.pager.showing_one' : 'cases.pager.showing_many', ['from' => (int) $shownFrom, 'to' => (int) $shownTo, 'total' => (int) $totalCases])) ?></p>
+        <?php if ($totalPages > 1): ?>
+        <nav class="case-list-pager" aria-label="<?= __e('cases.pagination.aria') ?>">
+            <?php if ($page > 1): ?>
+            <a class="case-page-btn" href="?page=<?= $page - 1 ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
+            <?php else: ?>
+            <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
+            <?php endif; ?>
+            <?php for ($p = 1; $p <= $totalPages; $p++): ?>
+            <a class="case-page-btn<?= $p === $page ? ' is-active' : '' ?>" href="?page=<?= $p ?>"<?= $p === $page ? ' aria-current="page"' : '' ?>><?= $p ?></a>
+            <?php endfor; ?>
+            <?php if ($page < $totalPages): ?>
+            <a class="case-page-btn" href="?page=<?= $page + 1 ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
+            <?php else: ?>
+            <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
+            <?php endif; ?>
+        </nav>
+        <?php endif; ?>
     </div>
 </div>
 <?php require __DIR__ . '/../includes/footer.php'; ?>

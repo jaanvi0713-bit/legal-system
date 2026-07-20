@@ -43,7 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             __('notify.lawyer_message'),
             t_stored($root['subject']),
             'info',
-            'contact.php?thread=' . $postThread,
+            '../client/contact.php?thread=' . $postThread,
             $uid
         );
         flash('success', __('flash.message.sent'));

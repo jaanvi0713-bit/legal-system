@@ -9,63 +9,121 @@ $clients->execute([$uid, $uid, $uid]);
 $clients = $clients->fetchAll();
 
 $id = (int) get('id', 0);
+$action = get('action', $id ? 'view' : 'list');
 $pageTitle = __('page.clients_short');
 $pageSubtitle = __('lawyer.clients.permission_note');
 $portal = 'lawyer';
 $activeNav = 'clients';
 
-if ($id) {
+if ($action === 'view' && $id) {
     $allowed = false;
-    foreach ($clients as $c) if ((int)$c['id'] === $id) $allowed = true;
-    if (!$allowed) { flash('error', __('flash.client.not_assigned')); redirect('clients.php'); }
-    $stmt = $pdo->prepare('SELECT * FROM users WHERE id=? AND role="client"');
+    foreach ($clients as $c) {
+        if ((int) $c['id'] === $id) {
+            $allowed = true;
+            break;
+        }
+    }
+    if (!$allowed) {
+        flash('error', __('flash.client.not_assigned'));
+        redirect('clients.php');
+    }
+    $stmt = $pdo->prepare(
+        'SELECT c.*, CONCAT(l.first_name, " ", l.last_name) AS lawyer_name
+         FROM users c
+         LEFT JOIN users l ON l.id = c.assigned_lawyer_id
+         WHERE c.id = ? AND c.role = "client"'
+    );
     $stmt->execute([$id]);
     $client = $stmt->fetch();
-    $cases = $pdo->prepare('SELECT * FROM cases WHERE client_id=? AND lawyer_id=?');
+    if (!$client) {
+        flash('error', __('flash.client.not_assigned'));
+        redirect('clients.php');
+    }
+    $cases = $pdo->prepare('SELECT * FROM cases WHERE client_id = ? AND lawyer_id = ? ORDER BY created_at DESC');
     $cases->execute([$id, $uid]);
-    $cases = $cases->fetchAll();
-    $docs = $pdo->prepare('SELECT * FROM case_documents WHERE client_id=? ORDER BY created_at DESC LIMIT 20');
-    $docs->execute([$id]);
-    $docs = $docs->fetchAll();
+    $clientCases = $cases->fetchAll();
+    $clientLawyerName = trim((string) ($client['lawyer_name'] ?? ''));
+    $viewBackUrl = 'clients.php';
+    $viewMailto = (string) ($client['email'] ?? '');
     require __DIR__ . '/../includes/header.php';
-    ?>
-    <div class="panel">
-        <div class="panel-header">
-            <div><h2><?= e(full_name($client)) ?></h2><p class="muted"><?= e($client['company_name'] ?: '') ?></p></div>
-            <a class="btn btn-primary btn-sm" href="mailto:<?= e($client['email']) ?>"><?= __e('lawyer.clients.contact') ?></a>
-        </div>
-        <div class="grid grid-2">
-            <div class="list-item"><strong><?= __e('common.email') ?></strong><?= e($client['email']) ?></div>
-            <div class="list-item"><strong><?= __e('common.phone') ?></strong><?= e($client['phone'] ?: __('common.em_dash')) ?></div>
-            <div class="list-item span-2"><strong><?= __e('common.history') ?></strong><?= nl2br(e($client['notes'] ?: __('lawyer.clients.no_notes'))) ?></div>
-        </div>
-    </div>
-    <div class="grid grid-2">
-        <div class="panel"><h2><?= __e('nav.cases') ?></h2><div class="list-stack"><?php foreach ($cases as $c): ?><div class="list-item"><a href="cases.php?id=<?= (int)$c['id'] ?>"><strong><?= e($c['case_number']) ?></strong></a> <?= status_badge($c['status']) ?></div><?php endforeach; ?></div></div>
-        <div class="panel"><h2><?= __e('nav.documents') ?></h2><div class="list-stack"><?php foreach ($docs as $d): ?><div class="list-item"><strong><?= e(t_content($d['title'])) ?></strong><a href="../<?= e($d['file_path']) ?>" target="_blank"><?= __e('common.open') ?></a></div><?php endforeach; ?><?php if (!$docs): ?><div class="empty-state"><?= __e('lawyer.clients.no_documents') ?></div><?php endif; ?></div></div>
-    </div>
-    <?php require __DIR__ . '/../includes/footer.php'; exit;
+    require __DIR__ . '/../includes/client-view.php';
+    require __DIR__ . '/../includes/footer.php';
+    exit;
 }
+
+$totalClients = count($clients);
+$perPage = 10;
+$page = max(1, (int) get('page', 1));
+$totalPages = max(1, (int) ceil($totalClients / $perPage));
+if ($page > $totalPages) {
+    $page = $totalPages;
+}
+$offset = ($page - 1) * $perPage;
+$pageClients = array_slice($clients, $offset, $perPage);
+$shownFrom = $totalClients === 0 ? 0 : $offset + 1;
+$shownTo = min($offset + count($pageClients), $totalClients);
 
 require __DIR__ . '/../includes/header.php';
 ?>
-<div class="panel">
-    <h2><?= __e('lawyer.clients.assigned') ?></h2>
-    <p class="muted"><?= __e('lawyer.clients.permission_note') ?></p>
-    <div class="table-wrap">
-        <table>
-            <thead><tr><th><?= __e('common.client') ?></th><th><?= __e('common.company') ?></th><th><?= __e('nav.cases') ?></th><th><?= __e('common.contact') ?></th></tr></thead>
-            <tbody>
-            <?php foreach ($clients as $c): ?>
+<div class="panel case-list-panel">
+    <div class="case-list-head">
+        <div class="case-list-title">
+            <h2><?= __e('lawyer.clients.assigned') ?></h2>
+        </div>
+    </div>
+    <div class="table-wrap case-table-wrap">
+        <table class="case-table">
+            <thead>
                 <tr>
-                    <td><a href="?id=<?= (int)$c['id'] ?>"><strong><?= e(full_name($c)) ?></strong></a></td>
-                    <td><?= e($c['company_name'] ?: __('common.em_dash')) ?></td>
-                    <td><?= (int)$c['case_count'] ?></td>
-                    <td><a href="mailto:<?= e($c['email']) ?>"><?= e($c['email']) ?></a></td>
+                    <th><?= __e('common.client') ?></th>
+                    <th><?= __e('common.contact') ?></th>
+                    <th><?= __e('common.address') ?></th>
+                    <th><?= __e('nav.cases') ?></th>
+                    <th class="col-actions"><?= __e('common.actions') ?></th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($pageClients as $c): ?>
+                <tr>
+                    <td><strong><?= e(full_name($c)) ?></strong></td>
+                    <td>
+                        <a href="mailto:<?= e($c['email']) ?>"><?= e($c['email']) ?></a>
+                        <div class="muted"><?= e($c['phone'] ?: __('common.em_dash')) ?></div>
+                    </td>
+                    <td><?= e(trim((string) ($c['address'] ?? '')) !== '' ? $c['address'] : __('common.em_dash')) ?></td>
+                    <td><span class="badge badge-dark"><?= (int) $c['case_count'] ?></span></td>
+                    <td class="col-actions">
+                        <div class="row-actions">
+                            <a class="btn btn-row-edit btn-sm" href="?action=view&id=<?= (int) $c['id'] ?>"><?= __e('common.view') ?></a>
+                        </div>
+                    </td>
                 </tr>
             <?php endforeach; ?>
+            <?php if (!$pageClients): ?>
+                <tr><td colspan="5" class="muted"><?= __e('common.no_records') ?></td></tr>
+            <?php endif; ?>
             </tbody>
         </table>
+    </div>
+    <div class="case-list-foot">
+        <p class="case-list-footer muted"><?= e(__($totalClients === 1 ? 'clients.pager.showing_one' : 'clients.pager.showing_many', ['from' => (int) $shownFrom, 'to' => (int) $shownTo, 'total' => (int) $totalClients])) ?></p>
+        <?php if ($totalPages > 1): ?>
+        <nav class="case-list-pager" aria-label="<?= __e('clients.pagination.aria') ?>">
+            <?php if ($page > 1): ?>
+            <a class="case-page-btn" href="?page=<?= $page - 1 ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
+            <?php else: ?>
+            <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
+            <?php endif; ?>
+            <?php for ($p = 1; $p <= $totalPages; $p++): ?>
+            <a class="case-page-btn<?= $p === $page ? ' is-active' : '' ?>" href="?page=<?= $p ?>"<?= $p === $page ? ' aria-current="page"' : '' ?>><?= $p ?></a>
+            <?php endfor; ?>
+            <?php if ($page < $totalPages): ?>
+            <a class="case-page-btn" href="?page=<?= $page + 1 ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
+            <?php else: ?>
+            <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
+            <?php endif; ?>
+        </nav>
+        <?php endif; ?>
     </div>
 </div>
 <?php require __DIR__ . '/../includes/footer.php'; ?>

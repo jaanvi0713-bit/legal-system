@@ -36,6 +36,17 @@ $invoices = $invoices->fetchAll();
 $payments = $pdo->prepare('SELECT * FROM payments WHERE client_id=? ORDER BY paid_at DESC');
 $payments->execute([$uid]);
 $payments = $payments->fetchAll();
+$totalPayments = count($payments);
+$perPage = 10;
+$page = max(1, (int) get('page', 1));
+$totalPages = max(1, (int) ceil($totalPayments / $perPage));
+if ($page > $totalPages) {
+    $page = $totalPages;
+}
+$offset = ($page - 1) * $perPage;
+$pagePayments = array_slice($payments, $offset, $perPage);
+$shownFrom = $totalPayments === 0 ? 0 : $offset + 1;
+$shownTo = min($offset + count($pagePayments), $totalPayments);
 $outstanding = 0;
 foreach ($invoices as $i) {
     if (in_array($i['status'], ['sent', 'partial', 'overdue', 'draft'], true)) {
@@ -108,13 +119,17 @@ require __DIR__ . '/../includes/header.php';
         </form>
     </div>
 </div>
-<div class="panel">
-    <h2><?= __e('payments.history') ?></h2>
-    <div class="table-wrap">
-        <table>
+<div class="panel case-list-panel">
+    <div class="case-list-head">
+        <div class="case-list-title">
+            <h2><?= __e('payments.history') ?></h2>
+        </div>
+    </div>
+    <div class="table-wrap case-table-wrap">
+        <table class="case-table">
             <thead><tr><th><?= __e('finance.receipt') ?></th><th><?= __e('common.amount') ?></th><th><?= __e('finance.method') ?></th><th><?= __e('common.date') ?></th><th class="is-right"><?= __e('common.actions') ?></th></tr></thead>
             <tbody>
-            <?php foreach ($payments as $p): ?>
+            <?php foreach ($pagePayments as $p): ?>
                 <tr>
                     <td>
                         <a class="inv-list-number" href="receipt.php?id=<?= (int) $p['id'] ?>"><strong><?= e($p['receipt_number']) ?></strong></a>
@@ -128,11 +143,31 @@ require __DIR__ . '/../includes/header.php';
                     </td>
                 </tr>
             <?php endforeach; ?>
-            <?php if (!$payments): ?>
+            <?php if (!$pagePayments): ?>
                 <tr><td colspan="5" class="muted"><?= __e('finance.no_receipts') ?></td></tr>
             <?php endif; ?>
             </tbody>
         </table>
+    </div>
+    <div class="case-list-foot">
+        <p class="case-list-footer muted"><?= e(__($totalPayments === 1 ? 'payments.pager.showing_one' : 'payments.pager.showing_many', ['from' => (int) $shownFrom, 'to' => (int) $shownTo, 'total' => (int) $totalPayments])) ?></p>
+        <?php if ($totalPages > 1): ?>
+        <nav class="case-list-pager" aria-label="<?= __e('payments.pagination.aria') ?>">
+            <?php if ($page > 1): ?>
+            <a class="case-page-btn" href="?page=<?= $page - 1 ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
+            <?php else: ?>
+            <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
+            <?php endif; ?>
+            <?php for ($p = 1; $p <= $totalPages; $p++): ?>
+            <a class="case-page-btn<?= $p === $page ? ' is-active' : '' ?>" href="?page=<?= $p ?>"<?= $p === $page ? ' aria-current="page"' : '' ?>><?= $p ?></a>
+            <?php endfor; ?>
+            <?php if ($page < $totalPages): ?>
+            <a class="case-page-btn" href="?page=<?= $page + 1 ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
+            <?php else: ?>
+            <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
+            <?php endif; ?>
+        </nav>
+        <?php endif; ?>
     </div>
 </div>
 <script>

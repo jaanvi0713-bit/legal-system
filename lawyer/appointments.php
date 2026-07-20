@@ -196,12 +196,16 @@ foreach ($appointments as $a):
     <td class="appt-list-case"><?= e($caseLabel !== '' ? t_content($caseLabel) : __('common.em_dash')) ?></td>
     <td><?= appointment_list_status_badge($status) ?></td>
     <td><?= calendar_export_buttons_html($exports, (string) $a['title']) ?></td>
-    <td>
-        <div class="row-actions">
-            <a class="btn btn-row-edit btn-sm" href="?action=edit&id=<?= (int) $a['id'] ?>"><?= __e('common.edit') ?></a>
+    <td class="col-actions">
+        <div class="row-actions appt-list-actions">
             <?php if ($status === 'pending'): ?>
             <form method="post"><?= csrf_field() ?><input type="hidden" name="form_action" value="respond"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="status" value="confirmed"><button class="btn btn-row-approve btn-sm" type="submit"><?= __e('common.accept') ?></button></form>
+            <?php endif; ?>
+            <a class="btn btn-row-edit btn-sm" href="?action=edit&id=<?= (int) $a['id'] ?>"><?= __e('common.edit') ?></a>
+            <?php if ($status === 'pending'): ?>
             <form method="post" data-confirm="<?= __e('confirm.reject_appointment') ?>"><?= csrf_field() ?><input type="hidden" name="form_action" value="respond"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="status" value="cancelled"><button class="btn btn-row-delete btn-sm" type="submit"><?= __e('common.reject') ?></button></form>
+            <?php elseif (in_array($status, ['scheduled', 'confirmed', 'rescheduled'], true)): ?>
+            <form method="post" data-confirm="<?= __e('appointments.confirm_cancel') ?>"><?= csrf_field() ?><input type="hidden" name="form_action" value="respond"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="status" value="cancelled"><button class="btn btn-row-delete btn-sm" type="submit"><?= __e('common.cancel') ?></button></form>
             <?php endif; ?>
         </div>
     </td>
@@ -233,6 +237,6 @@ $listColumns = [
 $listShowingTpl = __('appointments.showing', ['shown' => $totalCount, 'total' => $totalCount]);
 $listTotalOneTpl = __('appointments.total_one', ['count' => ':count']);
 $listTotalManyTpl = __('appointments.total_many', ['count' => ':count']);
-$listHeroActionHtml = '<a class="btn btn-primary btn-sm" href="?action=create">' . __e('lawyer.appointments.schedule') . '</a>';
+$listHeroActionHtml = '';
 require __DIR__ . '/../includes/entity-list-panel.php';
 require __DIR__ . '/../includes/footer.php';

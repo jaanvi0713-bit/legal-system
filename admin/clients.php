@@ -27,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             array_splice($data, 4, 0, [$password]);
             $pdo->prepare($sql)->execute($data);
             $newId = (int) $pdo->lastInsertId();
-            create_notification($pdo, current_user()['id'], 'notify.client_created', post('first_name') . ' ' . post('last_name') . ' added.', 'info', 'clients.php?id=' . $newId, current_user()['id']);
+            create_notification($pdo, current_user()['id'], 'notify.client_created', post('first_name') . ' ' . post('last_name') . ' added.', 'info', 'clients.php?action=view&id=' . $newId, current_user()['id']);
             if (post('assigned_lawyer_id')) {
                 create_notification($pdo, (int) post('assigned_lawyer_id'), 'notify.client_assigned', 'Client ' . post('first_name') . ' ' . post('last_name') . ' assigned to you.', 'case', '../lawyer/clients.php', current_user()['id']);
             }

@@ -2,6 +2,25 @@
 /**
  * Shared AI page bootstrap for all portals
  */
+function ai_welcome_text(string $portal, string $company): string
+{
+    return match ($portal) {
+        'admin' => __('ai.welcome_admin', ['company' => $company]),
+        'lawyer' => __('ai.welcome_lawyer', ['company' => $company]),
+        default => __('ai.welcome_client', ['company' => $company]),
+    };
+}
+
+function ai_create_session_with_welcome(PDO $pdo, int $userId, string $portal, string $company): int
+{
+    $stmt = $pdo->prepare('INSERT INTO ai_chat_sessions (user_id, portal, title) VALUES (?, ?, ?)');
+    $stmt->execute([$userId, $portal, __('ai.new_chat')]);
+    $sessionId = (int) $pdo->lastInsertId();
+    $pdo->prepare('INSERT INTO ai_chat_messages (session_id, role, content) VALUES (?, ?, ?)')
+        ->execute([$sessionId, 'assistant', ai_welcome_text($portal, $company)]);
+    return $sessionId;
+}
+
 function render_ai_page(string $portal): void
 {
     require_role($portal === 'admin' ? ['admin', 'staff'] : [$portal]);
@@ -38,17 +57,17 @@ function render_ai_page(string $portal): void
             $next->execute([$user['id'], $portal]);
             $nextId = (int) ($next->fetchColumn() ?: 0);
             flash('success', __('ai.session_deleted'));
-            if ($nextId) {
+            if ($nextId > 0) {
                 redirect($aiBase . '?session=' . $nextId . '&library=1');
             }
-            redirect($aiBase . '?new=1&library=1');
+            $newId = ai_create_session_with_welcome($pdo, (int) $user['id'], $portal, $company);
+            redirect($aiBase . '?session=' . $newId . '&library=1');
         }
     }
 
     if (isset($_GET['new'])) {
-        $stmt = $pdo->prepare('INSERT INTO ai_chat_sessions (user_id, portal, title) VALUES (?, ?, ?)');
-        $stmt->execute([$user['id'], $portal, __('ai.new_chat')]);
-        $qs = ['session' => $pdo->lastInsertId()];
+        $newId = ai_create_session_with_welcome($pdo, (int) $user['id'], $portal, $company);
+        $qs = ['session' => $newId];
         if (isset($_GET['library'])) {
             $qs['library'] = '1';
         }
@@ -73,9 +92,7 @@ function render_ai_page(string $portal): void
 
     $sessionId = (int) (get('session') ?: ($sessions[0]['id'] ?? 0));
     if (!$sessionId) {
-        $stmt = $pdo->prepare('INSERT INTO ai_chat_sessions (user_id, portal, title) VALUES (?, ?, ?)');
-        $stmt->execute([$user['id'], $portal, __('ai.new_chat')]);
-        $sessionId = (int) $pdo->lastInsertId();
+        $sessionId = ai_create_session_with_welcome($pdo, (int) $user['id'], $portal, $company);
         $sessions = $pdo->prepare(
             'SELECT s.*,
                 (
@@ -104,6 +121,7 @@ function render_ai_page(string $portal): void
             [__('ai.prompt.client_count'), __('ai.prompt.client_count_body'), 'user'],
             [__('ai.prompt.active_cases'), __('ai.prompt.active_cases_body'), 'briefcase'],
             [__('ai.prompt.total_revenue'), __('ai.prompt.total_revenue_body'), 'money'],
+            [__('ai.prompt.calculate'), __('ai.prompt.calculate_body'), 'calc'],
             [__('ai.prompt.appointments'), __('ai.prompt.appointments_body'), 'calendar'],
             [__('ai.prompt.recent_payments'), __('ai.prompt.recent_payments_body'), 'doc'],
             [__('ai.prompt.overdue_invoices'), __('ai.prompt.overdue_invoices_body'), 'alert'],
@@ -113,35 +131,39 @@ function render_ai_page(string $portal): void
             [__('ai.prompt.new_case_draft'), __('ai.prompt.new_case_draft_body'), 'edit'],
             [__('ai.prompt.lawyer_workload'), __('ai.prompt.lawyer_workload_body'), 'users'],
             [__('ai.prompt.court_schedule'), __('ai.prompt.court_schedule_body'), 'court'],
+            [__('ai.prompt.mauritius_laws'), __('ai.prompt.mauritius_laws_body'), 'doc'],
+            [__('ai.prompt.legal_definitions'), __('ai.prompt.legal_definitions_body'), 'tasks'],
         ],
         'lawyer' => [
             [__('ai.prompt.my_cases'), __('ai.prompt.my_cases_body'), 'briefcase'],
             [__('ai.prompt.todays_appointments'), __('ai.prompt.todays_appointments_body'), 'calendar'],
             [__('ai.prompt.upcoming_hearings'), __('ai.prompt.upcoming_hearings_body'), 'court'],
+            [__('ai.prompt.calculate'), __('ai.prompt.calculate_body'), 'calc'],
             [__('ai.prompt.pending_tasks'), __('ai.prompt.pending_tasks_body'), 'tasks'],
             [__('ai.prompt.my_clients'), __('ai.prompt.my_clients_body'), 'user'],
             [__('ai.prompt.notifications'), __('ai.prompt.notifications_body'), 'bell'],
             [__('ai.prompt.draft_letter'), __('ai.prompt.draft_letter_body'), 'edit'],
             [__('ai.prompt.case_timeline'), __('ai.prompt.case_timeline_body'), 'chart'],
             [__('ai.prompt.document_qa'), __('ai.prompt.document_qa_body'), 'doc'],
+            [__('ai.prompt.mauritius_laws'), __('ai.prompt.mauritius_laws_body'), 'court'],
+            [__('ai.prompt.legal_definitions'), __('ai.prompt.legal_definitions_body'), 'tasks'],
         ],
         default => [
             [__('ai.prompt.my_cases'), __('ai.prompt.my_cases_client_body'), 'briefcase'],
             [__('ai.prompt.documents'), __('ai.prompt.documents_body'), 'doc'],
             [__('ai.prompt.appointments'), __('ai.prompt.appointments_client_body'), 'calendar'],
             [__('ai.prompt.outstanding_balance'), __('ai.prompt.outstanding_balance_body'), 'money'],
+            [__('ai.prompt.calculate'), __('ai.prompt.calculate_body'), 'calc'],
             [__('ai.prompt.notifications'), __('ai.prompt.notifications_body'), 'bell'],
             [__('ai.prompt.invoice_help'), __('ai.prompt.invoice_help_body'), 'doc'],
             [__('ai.prompt.court_dates'), __('ai.prompt.court_dates_body'), 'court'],
             [__('ai.prompt.checklist'), __('ai.prompt.checklist_body'), 'tasks'],
+            [__('ai.prompt.mauritius_laws'), __('ai.prompt.mauritius_laws_body'), 'court'],
+            [__('ai.prompt.legal_definitions'), __('ai.prompt.legal_definitions_body'), 'doc'],
         ],
     };
 
-    $welcome = match ($portal) {
-        'admin' => __('ai.welcome_admin', ['company' => $company]),
-        'lawyer' => __('ai.welcome_lawyer', ['company' => $company]),
-        default => __('ai.welcome_client', ['company' => $company]),
-    };
+    $welcome = ai_welcome_text($portal, $company);
 
     $subtitle = match ($portal) {
         'admin' => __('ai.subtitle.admin'),
@@ -165,6 +187,7 @@ function render_ai_page(string $portal): void
             'user' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="8" r="3.5"/><path d="M5 19.5c1.5-3.2 4-4.5 7-4.5s5.5 1.3 7 4.5"/></svg>',
             'briefcase' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><rect x="3" y="7" width="18" height="14" rx="2"/><path d="M3 13h18"/></svg>',
             'money' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M2 10h20M12 10v8"/></svg>',
+            'calc' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 11h2M12 11h2M16 11h2M8 15h2M12 15h2M16 15h2M8 19h2M12 19h2M16 19h2"/></svg>',
             'calendar' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
             'doc' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 3h6l5 5v13a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/></svg>',
             'alert' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3l9 16H3L12 3z"/><path d="M12 10v4M12 17h.01"/></svg>',
@@ -179,7 +202,8 @@ function render_ai_page(string $portal): void
         };
     };
     ?>
-    <div class="ai-workspace<?= $libraryOpen ? ' is-library-open' : '' ?>" id="ai-workspace" data-prompts='<?= e(json_encode(array_map(static fn($p) => ['label' => $p[0], 'prompt' => $p[1], 'icon' => $p[2]], $prompts), JSON_UNESCAPED_UNICODE)) ?>'>
+    <div class="ai-workspace<?= $libraryOpen ? ' is-library-open' : '' ?>" id="ai-workspace">
+        <script type="application/json" id="ai-prompts-data"><?= json_encode(array_map(static fn($p) => ['label' => $p[0], 'prompt' => $p[1], 'icon' => $p[2]], $prompts), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS) ?></script>
         <aside class="ai-library" id="ai-library"<?= $libraryOpen ? '' : ' hidden' ?>>
             <div class="ai-library-head">
                 <strong><?= __e('ai.library') ?></strong>
@@ -210,11 +234,11 @@ function render_ai_page(string $portal): void
                                 <button type="button" class="ai-library-icon-btn" data-rename-session="<?= (int) $s['id'] ?>" data-current-title="<?= e($s['title'] ?: __('ai.new_chat')) ?>" title="<?= __e('common.edit') ?>" aria-label="<?= __e('common.edit') ?>">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
                                 </button>
-                                <form method="post" data-confirm="<?= __e('ai.confirm_delete_session') ?>">
+                                <form method="post" class="ai-library-delete-form">
                                     <?= csrf_field() ?>
                                     <input type="hidden" name="form_action" value="delete_session">
                                     <input type="hidden" name="session_id" value="<?= (int) $s['id'] ?>">
-                                    <button type="submit" class="ai-library-icon-btn is-danger" title="<?= __e('common.delete') ?>" aria-label="<?= __e('common.delete') ?>">
+                                    <button type="submit" class="ai-library-icon-btn is-danger" data-confirm="<?= __e('ai.confirm_delete_session') ?>" title="<?= __e('common.delete') ?>" aria-label="<?= __e('common.delete') ?>">
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/></svg>
                                     </button>
                                 </form>
@@ -253,7 +277,7 @@ function render_ai_page(string $portal): void
             <div class="ai-chat-panel">
                 <div class="ai-messages" id="ai-messages">
                     <?php if (!$messages): ?>
-                        <div class="ai-welcome msg msg-assistant">
+                        <div class="ai-msg-row ai-msg-row--assistant">
                             <div class="ai-bot-mark" aria-hidden="true">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
                                     <rect x="5" y="7" width="14" height="11" rx="3"/>
@@ -262,12 +286,21 @@ function render_ai_page(string $portal): void
                                     <path d="M9 18v2M15 18v2M12 4v3"/>
                                 </svg>
                             </div>
-                            <div><?= e($welcome) ?></div>
+                            <div class="ai-msg-stack">
+                                <div class="msg msg-assistant ai-bubble ai-welcome">
+                                    <div class="ai-msg-body" data-ai-raw="<?= e($welcome) ?>"><?= e($welcome) ?></div>
+                                </div>
+                                <div class="ai-msg-actions">
+                                    <button type="button" class="ai-msg-action" data-ai-copy title="<?= __e('ai.copy') ?>" aria-label="<?= __e('ai.copy') ?>">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     <?php endif; ?>
                     <?php foreach ($messages as $m): ?>
                         <?php if ($m['role'] === 'assistant'): ?>
-                            <div class="msg msg-assistant ai-bubble">
+                            <div class="ai-msg-row ai-msg-row--assistant">
                                 <div class="ai-bot-mark sm" aria-hidden="true">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
                                         <rect x="5" y="7" width="14" height="11" rx="3"/>
@@ -276,20 +309,45 @@ function render_ai_page(string $portal): void
                                         <path d="M9 18v2M15 18v2M12 4v3"/>
                                     </svg>
                                 </div>
-                                <div><?= e($m['content']) ?></div>
+                                <div class="ai-msg-stack">
+                                    <div class="msg msg-assistant ai-bubble">
+                                        <div class="ai-msg-body" data-ai-raw="<?= e($m['content']) ?>"><?= ai_format_message($m['content']) ?></div>
+                                    </div>
+                                    <div class="ai-msg-actions">
+                                        <button type="button" class="ai-msg-action" data-ai-copy title="<?= __e('ai.copy') ?>" aria-label="<?= __e('ai.copy') ?>">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         <?php else: ?>
-                            <div class="msg msg-user"><?= e($m['content']) ?></div>
+                            <div class="ai-msg-row ai-msg-row--user">
+                                <div class="ai-msg-stack">
+                                    <div class="msg msg-user">
+                                        <div class="ai-msg-body" data-ai-raw="<?= e($m['content']) ?>"><?= nl2br(e($m['content'])) ?></div>
+                                    </div>
+                                    <div class="ai-msg-actions ai-msg-actions--user">
+                                        <button type="button" class="ai-msg-action" data-ai-edit title="<?= __e('ai.edit') ?>" aria-label="<?= __e('ai.edit') ?>">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 20h4L18 10l-4-4L4 16v4z"/><path d="M12 8l4 4"/></svg>
+                                        </button>
+                                        <button type="button" class="ai-msg-action" data-ai-copy title="<?= __e('ai.copy') ?>" aria-label="<?= __e('ai.copy') ?>">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                         <?php endif; ?>
                     <?php endforeach; ?>
                 </div>
 
-                <form id="ai-compose-form" class="ai-compose-wrap" data-session-id="<?= (int) $sessionId ?>">
+                <form id="ai-compose-form" class="ai-compose-wrap" data-session-id="<?= (int) $sessionId ?>" data-ai-endpoint="<?= e(app_config('url') . '/api/ai-chat.php') ?>" data-app-url="<?= e(rtrim((string) app_config('url'), '/')) ?>">
+                    <div id="ai-attach-list" class="ai-attach-list" hidden></div>
                     <div class="ai-compose-bar">
-                        <button type="button" class="ai-attach" title="<?= __e('ai.attach_files') ?>" aria-label="<?= __e('ai.attach_files') ?>">
+                        <button type="button" class="ai-attach" id="ai-attach-btn" title="<?= __e('ai.attach_files') ?>" aria-label="<?= __e('ai.attach_files') ?>">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 12.5V8a5 5 0 0 0-10 0v9a3 3 0 0 0 6 0V9"/></svg>
                         </button>
-                        <input type="text" id="ai-message" placeholder="<?= e($placeholder) ?>" required autocomplete="off">
+                        <input type="file" id="ai-file-input" class="ai-file-input" multiple accept=".pdf,.doc,.docx,.txt,.csv,.jpg,.jpeg,.png,.webp,.xls,.xlsx" hidden>
+                        <input type="text" id="ai-message" placeholder="<?= e($placeholder) ?>" autocomplete="off">
                         <button class="ai-send" type="submit" aria-label="<?= __e('ai.send') ?>">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12l15-7-4 15-4-5-7-3z"/></svg>
                         </button>

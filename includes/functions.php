@@ -20,6 +20,43 @@ function e(?string $value): string
     return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 }
 
+/**
+ * Escape AI message text and turn markdown/bare URLs into clickable links.
+ * Markdown form: [Open page](https://...)
+ */
+function ai_format_message(?string $text): string
+{
+    $safe = e($text);
+    // [label](url) → labelled link (open in same tab for in-app navigation)
+    $safe = (string) preg_replace_callback(
+        '~\[([^\]]+)\]\((https?://[^)\s]+)\)~i',
+        static function (array $m): string {
+            $label = $m[1];
+            $url = rtrim($m[2], '.,);]');
+            $appBase = rtrim((string) app_config('url', ''), '/');
+            $sameApp = $appBase !== '' && str_starts_with($url, $appBase);
+            $target = $sameApp ? '_self' : '_blank';
+            $rel = $sameApp ? '' : ' rel="noopener noreferrer"';
+            return '<a class="ai-inline-link" href="' . e($url) . '" target="' . $target . '"' . $rel . '>' . $label . '</a>';
+        },
+        $safe
+    );
+    // Remaining bare URLs
+    $safe = (string) preg_replace_callback(
+        '~(?<!href=")(https?://[^\s<]+)~i',
+        static function (array $m): string {
+            $url = rtrim($m[1], '.,);]');
+            $appBase = rtrim((string) app_config('url', ''), '/');
+            $sameApp = $appBase !== '' && str_starts_with($url, $appBase);
+            $target = $sameApp ? '_self' : '_blank';
+            $rel = $sameApp ? '' : ' rel="noopener noreferrer"';
+            return '<a class="ai-inline-link" href="' . e($url) . '" target="' . $target . '"' . $rel . '>' . e($url) . '</a>';
+        },
+        $safe
+    );
+    return $safe;
+}
+
 function redirect(string $url): void
 {
     header('Location: ' . $url);
@@ -1423,7 +1460,7 @@ function handle_upload(array $file, string $subdir = 'documents'): ?array
     if (($file['size'] ?? 0) > app_config('upload_max', 10485760)) {
         throw new RuntimeException(__('error.upload.too_large'));
     }
-    $allowed = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'txt', 'xls', 'xlsx', 'zip'];
+    $allowed = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'webp', 'txt', 'csv', 'xls', 'xlsx', 'zip'];
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
     if (!in_array($ext, $allowed, true)) {
         throw new RuntimeException(__('error.upload.type_not_allowed'));

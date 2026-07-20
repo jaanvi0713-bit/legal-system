@@ -14,8 +14,8 @@ $items = [
     ['court.php', 'nav.court', 'court', 'court'],
     ['notifications.php', 'nav.notifications', 'notifications', 'notifications'],
     ['ai.php', 'nav.ai', 'ai', 'ai'],
-    ['settings.php', 'nav.settings', 'settings', 'settings'],
     ['users.php', 'nav.users', 'users', 'users'],
+    ['settings.php', 'nav.settings', 'settings', 'settings'],
 ];
 foreach ($items as [$href, $labelKey, $key, $icon]):
     if ($allowedModules !== null && !in_array($key, $allowedModules, true)) {
