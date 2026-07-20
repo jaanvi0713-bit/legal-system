@@ -6,6 +6,7 @@ $allowedModules = $canSeeAll ? null : role_access_staff_modules(db(), $user);
 
 $items = [
     ['index.php', 'nav.dashboard', 'dashboard', 'dashboard'],
+    ['insights.php', 'nav.insights', 'insights', 'insights'],
     ['clients.php', 'nav.clients', 'clients', 'clients'],
     ['lawyers.php', 'nav.lawyers', 'lawyers', 'lawyers'],
     ['cases.php', 'nav.cases', 'cases', 'cases'],

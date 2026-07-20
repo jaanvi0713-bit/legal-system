@@ -1,6 +1,7 @@
 <?php
 $items = [
     ['index.php', 'nav.dashboard', 'dashboard', 'dashboard'],
+    ['insights.php', 'nav.insights', 'insights', 'insights'],
     ['cases.php', 'nav.my_cases', 'cases', 'cases'],
     ['documents.php', 'nav.documents', 'documents', 'documents'],
     ['appointments.php', 'nav.appointments', 'appointments', 'appointments'],

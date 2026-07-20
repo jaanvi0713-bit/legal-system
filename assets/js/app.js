@@ -171,6 +171,9 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         initDashboardCharts();
       }
+      if (typeof window.refreshInsightsCharts === 'function') {
+        window.refreshInsightsCharts();
+      }
     });
   }
 
@@ -1687,3 +1690,207 @@ function initAppointmentSlotPicker() {
 
   refreshSlots();
 }
+
+function initInsightsCockpit() {
+  const data = window.LEXORA_INSIGHTS;
+  const root = document.querySelector('[data-ih-root]');
+  if (!data || !root) return;
+
+  const cssVar = (name, fallback) => {
+    const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return value || fallback;
+  };
+  const primary = () => cssVar('--primary', '#023e8a');
+  const primaryRgb = () => cssVar('--primary-rgb', '2, 62, 138');
+  const blueBright = () => cssVar('--blue-bright', '#1e5fad');
+  const isDark = () => document.documentElement.getAttribute('data-theme') === 'dark';
+  // Light mode needs strong dark ticks/grid — CSS --chart-grid is too faint on white.
+  const tickColor = () => (isDark() ? 'rgba(255, 255, 255, 0.92)' : '#475569');
+  const gridColor = () => (isDark() ? 'rgba(255, 255, 255, 0.14)' : 'rgba(22, 27, 46, 0.14)');
+  const legendColor = () => (isDark() ? 'rgba(255, 255, 255, 0.9)' : '#475569');
+
+  const applyInsightsChartTheme = () => {
+    const tick = tickColor();
+    const grid = gridColor();
+    const legend = legendColor();
+    ['ihForecastChart', 'ihTrendChart'].forEach((chartId) => {
+      const el = document.getElementById(chartId);
+      const chart = el && typeof Chart !== 'undefined' ? Chart.getChart(el) : null;
+      if (!chart) return;
+      if (chart.options.plugins?.legend?.labels) {
+        chart.options.plugins.legend.labels.color = legend;
+      }
+      Object.keys(chart.options.scales || {}).forEach((axis) => {
+        const scale = chart.options.scales[axis];
+        if (!scale) return;
+        if (scale.ticks) scale.ticks.color = tick;
+        if (scale.grid && scale.grid.display !== false) scale.grid.color = grid;
+      });
+      chart.update('none');
+    });
+  };
+  window.refreshInsightsCharts = applyInsightsChartTheme;
+
+  const showPanel = (id) => {
+    root.querySelectorAll('[data-ih-tab]').forEach((btn) => {
+      const on = btn.getAttribute('data-ih-tab') === id;
+      btn.classList.toggle('is-active', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    root.querySelectorAll('[data-ih-panel]').forEach((panel) => {
+      const on = panel.getAttribute('data-ih-panel') === id;
+      panel.classList.toggle('is-active', on);
+    });
+    window.requestAnimationFrame(() => {
+      ['ihForecastChart', 'ihTrendChart'].forEach((chartId) => {
+        const el = document.getElementById(chartId);
+        const chart = el && typeof Chart !== 'undefined' ? Chart.getChart(el) : null;
+        if (chart) chart.resize();
+      });
+      applyInsightsChartTheme();
+    });
+  };
+
+  root.querySelectorAll('[data-ih-tab]').forEach((btn) => {
+    btn.addEventListener('click', (event) => {
+      event.preventDefault();
+      showPanel(btn.getAttribute('data-ih-tab'));
+    });
+  });
+
+  if (typeof Chart === 'undefined') return;
+
+  Chart.defaults.font.family = '"Montserrat", "Segoe UI", sans-serif';
+  Chart.defaults.font.size = 11;
+
+  const tooltip = {
+    backgroundColor: primary(),
+    titleColor: '#fff',
+    bodyColor: '#fff',
+    cornerRadius: 10,
+    padding: 10,
+  };
+
+  const forecastEl = document.getElementById('ihForecastChart');
+  if (forecastEl && data.forecast && !Chart.getChart(forecastEl)) {
+    const labels = data.forecast.labels || [];
+    const seriesLabels = data.forecast.labelsSeries || {};
+    new Chart(forecastEl, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: seriesLabels.base || 'Base',
+            data: data.forecast.base || [],
+            borderColor: primary(),
+            backgroundColor: `rgba(${primaryRgb()}, 0.12)`,
+            fill: true,
+            tension: 0.35,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            borderWidth: 2.4,
+          },
+          {
+            label: seriesLabels.best || 'Best',
+            data: data.forecast.best || [],
+            borderColor: '#16a34a',
+            borderDash: [6, 4],
+            fill: false,
+            tension: 0.35,
+            pointRadius: 0,
+            pointHoverRadius: 3,
+            borderWidth: 1.8,
+          },
+          {
+            label: seriesLabels.worst || 'Worst',
+            data: data.forecast.worst || [],
+            borderColor: '#ea580c',
+            borderDash: [2, 4],
+            fill: false,
+            tension: 0.35,
+            pointRadius: 0,
+            pointHoverRadius: 3,
+            borderWidth: 1.8,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top',
+            align: 'end',
+            labels: {
+              boxWidth: 10,
+              boxHeight: 10,
+              usePointStyle: true,
+              pointStyle: 'circle',
+              color: legendColor(),
+            },
+          },
+          tooltip,
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { color: tickColor(), maxRotation: 0, autoSkip: true, maxTicksLimit: 8 },
+            border: { display: false },
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: gridColor() },
+            ticks: { color: tickColor() },
+            border: { display: false },
+          },
+        },
+      },
+    });
+  }
+
+  const trendEl = document.getElementById('ihTrendChart');
+  if (trendEl && data.trend && !Chart.getChart(trendEl)) {
+    new Chart(trendEl, {
+      type: 'bar',
+      data: {
+        labels: data.trend.labels || [],
+        datasets: [{
+          label: data.trend.label || 'Trend',
+          data: data.trend.values || [],
+          backgroundColor: blueBright(),
+          borderRadius: 8,
+          borderSkipped: false,
+          maxBarThickness: 48,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip,
+        },
+        scales: {
+          x: {
+            grid: { color: gridColor() },
+            ticks: { color: tickColor() },
+            border: { display: false },
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: gridColor() },
+            ticks: { color: tickColor() },
+            border: { display: false },
+          },
+        },
+      },
+    });
+  }
+
+  applyInsightsChartTheme();
+}
+
+document.addEventListener('DOMContentLoaded', initInsightsCockpit);

@@ -7,6 +7,7 @@ function role_access_modules(): array
 {
     return [
         'dashboard' => 'nav.dashboard',
+        'insights' => 'nav.insights',
         'clients' => 'nav.clients',
         'lawyers' => 'nav.lawyers',
         'cases' => 'nav.cases',
@@ -72,17 +73,17 @@ function role_access_default_permissions(): array
             'read_only' => false,
         ],
         'manager' => [
-            'modules' => ['dashboard', 'clients', 'lawyers', 'cases', 'appointments', 'court', 'notifications', 'ai', 'profile'],
+            'modules' => ['dashboard', 'insights', 'clients', 'lawyers', 'cases', 'appointments', 'court', 'notifications', 'ai', 'profile'],
             'assigned_cases' => false,
             'read_only' => false,
         ],
         'staff' => [
-            'modules' => ['dashboard', 'clients', 'cases', 'appointments', 'court', 'notifications', 'profile'],
+            'modules' => ['dashboard', 'insights', 'clients', 'cases', 'appointments', 'court', 'notifications', 'profile'],
             'assigned_cases' => true,
             'read_only' => false,
         ],
         'viewer' => [
-            'modules' => ['dashboard', 'clients', 'cases', 'appointments', 'court', 'notifications', 'profile'],
+            'modules' => ['dashboard', 'insights', 'clients', 'cases', 'appointments', 'court', 'notifications', 'profile'],
             'assigned_cases' => true,
             'read_only' => true,
         ],
