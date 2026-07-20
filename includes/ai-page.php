@@ -8,14 +8,66 @@ function render_ai_page(string $portal): void
     $pdo = db();
     $user = current_user();
     $company = get_setting($pdo, 'company_name', app_config('name'));
+    $aiBase = app_config('url') . "/{$portal}/ai.php";
+
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        verify_csrf();
+        $fa = post('form_action');
+        $sid = (int) post('session_id');
+        $own = $pdo->prepare('SELECT id FROM ai_chat_sessions WHERE id = ? AND user_id = ? AND portal = ?');
+        $own->execute([$sid, $user['id'], $portal]);
+        if (!$own->fetch()) {
+            flash('error', __('ai.session_not_found'));
+            redirect($aiBase);
+        }
+
+        if ($fa === 'rename_session') {
+            $title = trim((string) post('title'));
+            if ($title === '') {
+                $title = __('ai.new_chat');
+            }
+            $pdo->prepare('UPDATE ai_chat_sessions SET title = ?, updated_at = NOW() WHERE id = ? AND user_id = ?')
+                ->execute([function_exists('mb_substr') ? mb_substr($title, 0, 120) : substr($title, 0, 120), $sid, $user['id']]);
+            flash('success', __('ai.session_renamed'));
+            redirect($aiBase . '?session=' . $sid . '&library=1');
+        }
+
+        if ($fa === 'delete_session') {
+            $pdo->prepare('DELETE FROM ai_chat_sessions WHERE id = ? AND user_id = ?')->execute([$sid, $user['id']]);
+            $next = $pdo->prepare('SELECT id FROM ai_chat_sessions WHERE user_id = ? AND portal = ? ORDER BY updated_at DESC LIMIT 1');
+            $next->execute([$user['id'], $portal]);
+            $nextId = (int) ($next->fetchColumn() ?: 0);
+            flash('success', __('ai.session_deleted'));
+            if ($nextId) {
+                redirect($aiBase . '?session=' . $nextId . '&library=1');
+            }
+            redirect($aiBase . '?new=1&library=1');
+        }
+    }
 
     if (isset($_GET['new'])) {
         $stmt = $pdo->prepare('INSERT INTO ai_chat_sessions (user_id, portal, title) VALUES (?, ?, ?)');
         $stmt->execute([$user['id'], $portal, __('ai.new_chat')]);
-        redirect(app_config('url') . "/{$portal}/ai.php?session=" . $pdo->lastInsertId());
+        $qs = ['session' => $pdo->lastInsertId()];
+        if (isset($_GET['library'])) {
+            $qs['library'] = '1';
+        }
+        redirect($aiBase . '?' . http_build_query($qs));
     }
 
-    $sessions = $pdo->prepare('SELECT * FROM ai_chat_sessions WHERE user_id = ? AND portal = ? ORDER BY updated_at DESC');
+    $sessions = $pdo->prepare(
+        'SELECT s.*,
+            (
+                SELECT m.content
+                FROM ai_chat_messages m
+                WHERE m.session_id = s.id
+                ORDER BY m.id DESC
+                LIMIT 1
+            ) AS preview
+         FROM ai_chat_sessions s
+         WHERE s.user_id = ? AND s.portal = ?
+         ORDER BY s.updated_at DESC'
+    );
     $sessions->execute([$user['id'], $portal]);
     $sessions = $sessions->fetchAll();
 
@@ -24,10 +76,24 @@ function render_ai_page(string $portal): void
         $stmt = $pdo->prepare('INSERT INTO ai_chat_sessions (user_id, portal, title) VALUES (?, ?, ?)');
         $stmt->execute([$user['id'], $portal, __('ai.new_chat')]);
         $sessionId = (int) $pdo->lastInsertId();
-        $sessions = $pdo->prepare('SELECT * FROM ai_chat_sessions WHERE user_id = ? AND portal = ? ORDER BY updated_at DESC');
+        $sessions = $pdo->prepare(
+            'SELECT s.*,
+                (
+                    SELECT m.content
+                    FROM ai_chat_messages m
+                    WHERE m.session_id = s.id
+                    ORDER BY m.id DESC
+                    LIMIT 1
+                ) AS preview
+             FROM ai_chat_sessions s
+             WHERE s.user_id = ? AND s.portal = ?
+             ORDER BY s.updated_at DESC'
+        );
         $sessions->execute([$user['id'], $portal]);
         $sessions = $sessions->fetchAll();
     }
+
+    $libraryOpen = get('library', '') === '1';
 
     $msgs = $pdo->prepare('SELECT * FROM ai_chat_messages WHERE session_id = ? ORDER BY id ASC');
     $msgs->execute([$sessionId]);
@@ -113,33 +179,74 @@ function render_ai_page(string $portal): void
         };
     };
     ?>
-    <div class="ai-workspace" id="ai-workspace" data-prompts='<?= e(json_encode(array_map(static fn($p) => ['label' => $p[0], 'prompt' => $p[1], 'icon' => $p[2]], $prompts), JSON_UNESCAPED_UNICODE)) ?>'>
+    <div class="ai-workspace<?= $libraryOpen ? ' is-library-open' : '' ?>" id="ai-workspace" data-prompts='<?= e(json_encode(array_map(static fn($p) => ['label' => $p[0], 'prompt' => $p[1], 'icon' => $p[2]], $prompts), JSON_UNESCAPED_UNICODE)) ?>'>
+        <aside class="ai-library" id="ai-library"<?= $libraryOpen ? '' : ' hidden' ?>>
+            <div class="ai-library-head">
+                <strong><?= __e('ai.library') ?></strong>
+                <button type="button" class="ai-library-close" id="ai-library-close" aria-label="<?= __e('ai.close_library') ?>">×</button>
+            </div>
+            <div class="ai-library-list" id="ai-library-list">
+                <?php if (!$sessions): ?>
+                    <div class="ai-library-empty"><?= __e('ai.library_empty') ?></div>
+                <?php else: ?>
+                    <?php foreach ($sessions as $index => $s):
+                        $preview = trim((string) ($s['preview'] ?? ''));
+                        if ($preview === '') {
+                            $preview = __('ai.library_no_messages');
+                        } elseif (function_exists('mb_strlen') && mb_strlen($preview) > 72) {
+                            $preview = mb_substr($preview, 0, 72) . '…';
+                        } elseif (strlen($preview) > 72) {
+                            $preview = substr($preview, 0, 72) . '…';
+                        }
+                        $dateLabel = format_date($s['updated_at'] ?? null, 'j M');
+                        ?>
+                        <article class="ai-library-item<?= (int) $s['id'] === $sessionId ? ' is-active' : '' ?>" data-library-page-row data-session-id="<?= (int) $s['id'] ?>"<?= $index >= 8 ? ' hidden' : '' ?>>
+                            <a class="ai-library-item-main" href="?session=<?= (int) $s['id'] ?>&library=1">
+                                <strong><?= e($s['title'] ?: __('ai.new_chat')) ?></strong>
+                                <p><?= e($preview) ?></p>
+                                <span class="ai-library-date"><?= e($dateLabel) ?></span>
+                            </a>
+                            <div class="ai-library-item-actions">
+                                <button type="button" class="ai-library-icon-btn" data-rename-session="<?= (int) $s['id'] ?>" data-current-title="<?= e($s['title'] ?: __('ai.new_chat')) ?>" title="<?= __e('common.edit') ?>" aria-label="<?= __e('common.edit') ?>">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+                                </button>
+                                <form method="post" data-confirm="<?= __e('ai.confirm_delete_session') ?>">
+                                    <?= csrf_field() ?>
+                                    <input type="hidden" name="form_action" value="delete_session">
+                                    <input type="hidden" name="session_id" value="<?= (int) $s['id'] ?>">
+                                    <button type="submit" class="ai-library-icon-btn is-danger" title="<?= __e('common.delete') ?>" aria-label="<?= __e('common.delete') ?>">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/></svg>
+                                    </button>
+                                </form>
+                            </div>
+                        </article>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
+            <form method="post" id="ai-rename-form" class="ai-rename-form" hidden>
+                <?= csrf_field() ?>
+                <input type="hidden" name="form_action" value="rename_session">
+                <input type="hidden" name="session_id" id="ai-rename-session-id" value="">
+                <input type="hidden" name="title" id="ai-rename-title" value="">
+            </form>
+            <div class="ai-library-pager" id="ai-library-pager"<?= count($sessions) <= 8 ? ' hidden' : '' ?>>
+                <button type="button" class="ai-pager-btn" id="ai-library-prev" aria-label="<?= __e('ai.prev') ?>">‹</button>
+                <span id="ai-library-page-label">1 / <?= max(1, (int) ceil(count($sessions) / 8)) ?></span>
+                <button type="button" class="ai-pager-btn" id="ai-library-next" aria-label="<?= __e('ai.next') ?>">›</button>
+            </div>
+        </aside>
+
         <section class="ai-main">
             <div class="ai-toolbar">
                 <h2><?= __e('ai.toolbar_title') ?></h2>
                 <div class="ai-toolbar-actions">
-                    <button class="btn btn-outline-brand btn-sm" type="button" id="ai-library-toggle">
+                    <button class="btn btn-outline-brand btn-sm" type="button" id="ai-library-toggle" aria-expanded="<?= $libraryOpen ? 'true' : 'false' ?>">
                         <span class="ai-btn-icon" aria-hidden="true">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 5h7v14H4zM13 5h7v14h-7z"/></svg>
                         </span>
                         <?= __e('ai.library') ?>
                     </button>
-                    <a class="btn btn-outline-brand btn-sm" href="?new=1"><?= __e('ai.new_chat_btn') ?></a>
-                </div>
-            </div>
-
-            <div class="ai-library" id="ai-library" hidden>
-                <div class="ai-library-head">
-                    <strong><?= __e('ai.chat_library') ?></strong>
-                    <button type="button" class="ai-library-close" id="ai-library-close" aria-label="<?= __e('ai.close_library') ?>">×</button>
-                </div>
-                <div class="ai-library-list">
-                    <?php foreach ($sessions as $s): ?>
-                        <a class="ai-session-link <?= (int) $s['id'] === $sessionId ? 'active' : '' ?>" href="?session=<?= (int) $s['id'] ?>">
-                            <span><?= e($s['title']) ?></span>
-                            <span class="muted"><?= e(format_datetime($s['updated_at'])) ?></span>
-                        </a>
-                    <?php endforeach; ?>
+                    <a class="btn btn-outline-brand btn-sm" href="?new=1<?= $libraryOpen ? '&library=1' : '' ?>"><?= __e('ai.new_chat_btn') ?></a>
                 </div>
             </div>
 

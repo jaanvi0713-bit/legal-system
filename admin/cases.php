@@ -4,6 +4,12 @@ require_role(['admin', 'staff']);
 $pdo = db();
 $action = get('action', 'list');
 $id = (int) get('id', 0);
+$hasAssignedAdminColumn = false;
+try {
+    $hasAssignedAdminColumn = (bool) $pdo->query("SHOW COLUMNS FROM cases LIKE 'assigned_admin_id'")->fetch();
+} catch (Throwable $e) {
+    $hasAssignedAdminColumn = false;
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
@@ -13,7 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $editId = (int) post('id');
         $clientId = (int) post('client_id');
         $lawyerId = post('lawyer_id') !== '' ? (int) post('lawyer_id') : null;
-        $assignedAdminId = post('assigned_admin_id') !== '' ? (int) post('assigned_admin_id') : null;
+        $assignedAdminId = $hasAssignedAdminColumn && post('assigned_admin_id') !== '' ? (int) post('assigned_admin_id') : null;
         $title = trim((string) post('title'));
         $description = trim((string) post('description'));
         $clientInstructions = trim((string) post('client_instructions'));
@@ -25,25 +31,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect($editId ? ('cases.php?action=edit&id=' . $editId) : 'cases.php?action=create');
         }
         if ($editId) {
-            $pdo->prepare(
-                'UPDATE cases SET title=?, description=?, client_instructions=?, case_type=?, status=?, priority=?, client_id=?, lawyer_id=?, assigned_admin_id=?, court_name=?, court_location=?, filing_date=?, next_hearing_date=?, closed_at=IF(?="closed", COALESCE(closed_at, NOW()), NULL) WHERE id=?'
-            )->execute([
-                $title, $description ?: null, $clientInstructions ?: null, $caseType, $status, $priority,
-                $clientId, $lawyerId, $assignedAdminId, post('court_name'), post('court_location'),
-                post('filing_date') ?: null, post('next_hearing_date') ?: null, $status, $editId,
-            ]);
+            if ($hasAssignedAdminColumn) {
+                $pdo->prepare(
+                    'UPDATE cases SET title=?, description=?, client_instructions=?, case_type=?, status=?, priority=?, client_id=?, lawyer_id=?, assigned_admin_id=?, court_name=?, court_location=?, filing_date=?, next_hearing_date=?, closed_at=IF(?="closed", COALESCE(closed_at, NOW()), NULL) WHERE id=?'
+                )->execute([
+                    $title, $description ?: null, $clientInstructions ?: null, $caseType, $status, $priority,
+                    $clientId, $lawyerId, $assignedAdminId, post('court_name'), post('court_location'),
+                    post('filing_date') ?: null, post('next_hearing_date') ?: null, $status, $editId,
+                ]);
+            } else {
+                $pdo->prepare(
+                    'UPDATE cases SET title=?, description=?, client_instructions=?, case_type=?, status=?, priority=?, client_id=?, lawyer_id=?, court_name=?, court_location=?, filing_date=?, next_hearing_date=?, closed_at=IF(?="closed", COALESCE(closed_at, NOW()), NULL) WHERE id=?'
+                )->execute([
+                    $title, $description ?: null, $clientInstructions ?: null, $caseType, $status, $priority,
+                    $clientId, $lawyerId, post('court_name'), post('court_location'),
+                    post('filing_date') ?: null, post('next_hearing_date') ?: null, $status, $editId,
+                ]);
+            }
             flash('success', __('flash.case.updated'));
             $caseId = $editId;
         } else {
             $caseNumber = generate_case_number($pdo);
-            $pdo->prepare(
-                'INSERT INTO cases (case_number, title, description, client_instructions, case_type, status, priority, client_id, lawyer_id, assigned_admin_id, court_name, court_location, filing_date, next_hearing_date, created_by)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
-            )->execute([
-                $caseNumber, $title, $description ?: null, $clientInstructions ?: null, $caseType, $status, $priority,
-                $clientId, $lawyerId, $assignedAdminId, post('court_name'), post('court_location'),
-                post('filing_date') ?: date('Y-m-d'), post('next_hearing_date') ?: null, current_user()['id'],
-            ]);
+            if ($hasAssignedAdminColumn) {
+                $pdo->prepare(
+                    'INSERT INTO cases (case_number, title, description, client_instructions, case_type, status, priority, client_id, lawyer_id, assigned_admin_id, court_name, court_location, filing_date, next_hearing_date, created_by)
+                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
+                )->execute([
+                    $caseNumber, $title, $description ?: null, $clientInstructions ?: null, $caseType, $status, $priority,
+                    $clientId, $lawyerId, $assignedAdminId, post('court_name'), post('court_location'),
+                    post('filing_date') ?: date('Y-m-d'), post('next_hearing_date') ?: null, current_user()['id'],
+                ]);
+            } else {
+                $pdo->prepare(
+                    'INSERT INTO cases (case_number, title, description, client_instructions, case_type, status, priority, client_id, lawyer_id, court_name, court_location, filing_date, next_hearing_date, created_by)
+                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
+                )->execute([
+                    $caseNumber, $title, $description ?: null, $clientInstructions ?: null, $caseType, $status, $priority,
+                    $clientId, $lawyerId, post('court_name'), post('court_location'),
+                    post('filing_date') ?: date('Y-m-d'), post('next_hearing_date') ?: null, current_user()['id'],
+                ]);
+            }
             $caseId = (int) $pdo->lastInsertId();
             flash('success', __('flash.case.created', ['number' => $caseNumber]));
             if ($lawyerId) {
@@ -411,6 +438,7 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
                         </select>
                         <a class="case-create-link" href="clients.php?action=create"><?= __e('cases.form.add_client_link') ?></a>
                     </div>
+                    <?php if ($hasAssignedAdminColumn): ?>
                     <div class="form-group">
                         <label for="assigned_admin_id"><?= __e('cases.hub.assigned_admin') ?></label>
                         <select id="assigned_admin_id" name="assigned_admin_id">
@@ -420,6 +448,7 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
                             <?php endforeach; ?>
                         </select>
                     </div>
+                    <?php endif; ?>
                 </div>
                 <?php if ($isEdit): ?>
                 <div class="case-create-grid-2" style="margin-top:0.85rem;">
@@ -621,7 +650,18 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
 }
 
 if ($action === 'view' && $id) {
-    $stmt = $pdo->prepare('SELECT c.*, cl.first_name AS client_first, cl.last_name AS client_last, cl.email AS client_email, cl.company_name AS client_company, cl.phone AS client_phone, CONCAT(lw.first_name," ",lw.last_name) AS lawyer_name, CONCAT(cb.first_name," ",cb.last_name) AS created_by_name, CONCAT(aa.first_name," ",aa.last_name) AS assigned_admin_name FROM cases c JOIN users cl ON cl.id=c.client_id LEFT JOIN users lw ON lw.id=c.lawyer_id LEFT JOIN users cb ON cb.id=c.created_by LEFT JOIN users aa ON aa.id=c.assigned_admin_id WHERE c.id=?');
+    $viewSql = 'SELECT c.*, cl.first_name AS client_first, cl.last_name AS client_last, cl.email AS client_email, cl.company_name AS client_company, cl.phone AS client_phone, CONCAT(lw.first_name," ",lw.last_name) AS lawyer_name, CONCAT(cb.first_name," ",cb.last_name) AS created_by_name';
+    if ($hasAssignedAdminColumn) {
+        $viewSql .= ', CONCAT(aa.first_name," ",aa.last_name) AS assigned_admin_name';
+    } else {
+        $viewSql .= ', NULL AS assigned_admin_name';
+    }
+    $viewSql .= ' FROM cases c JOIN users cl ON cl.id=c.client_id LEFT JOIN users lw ON lw.id=c.lawyer_id LEFT JOIN users cb ON cb.id=c.created_by';
+    if ($hasAssignedAdminColumn) {
+        $viewSql .= ' LEFT JOIN users aa ON aa.id=c.assigned_admin_id';
+    }
+    $viewSql .= ' WHERE c.id=?';
+    $stmt = $pdo->prepare($viewSql);
     $stmt->execute([$id]);
     $case = $stmt->fetch();
     if (!$case) { flash('error', __('flash.case.not_found')); redirect('cases.php'); }

@@ -257,7 +257,6 @@ $gradInfo = "linear-gradient(135deg, {$accent} 0%, {$accentDeep} 100%)";
                     <div class="topbar-menu-panel">
                         <?php if ($portal === 'admin'): ?>
                             <a href="<?= e($portalBase) ?>/settings.php"><?= __e('common.settings') ?></a>
-                            <a href="<?= e($portalBase) ?>/users.php"><?= __e('common.users') ?></a>
                         <?php elseif ($portal === 'lawyer' || $portal === 'client'): ?>
                             <a href="<?= e($portalBase) ?>/settings.php"><?= __e('common.settings') ?></a>
                         <?php endif; ?>

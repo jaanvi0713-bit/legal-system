@@ -37,6 +37,7 @@ window.LEXORA_I18N = <?= json_encode([
     'no_response' => __('ai.no_response'),
     'service_error' => __('ai.service_error'),
     'attach_disabled' => __('ai.attach_disabled'),
+    'rename_chat' => __('ai.rename_chat'),
     'chart_cases_opened' => __('chart.cases_opened'),
     'chart_cases_closed' => __('chart.cases_closed'),
     'finance_revenue' => __('finance.revenue'),

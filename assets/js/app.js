@@ -484,16 +484,75 @@ function initAiAssistantUi() {
   const library = document.getElementById('ai-library');
   const libraryToggle = document.getElementById('ai-library-toggle');
   const libraryClose = document.getElementById('ai-library-close');
+  const setLibraryOpen = (open) => {
+    if (!library) return;
+    library.hidden = !open;
+    workspace.classList.toggle('is-library-open', open);
+    if (libraryToggle) libraryToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    try {
+      const url = new URL(window.location.href);
+      if (open) url.searchParams.set('library', '1');
+      else url.searchParams.delete('library');
+      window.history.replaceState({}, '', url.toString());
+    } catch (e) { /* ignore */ }
+  };
   if (libraryToggle && library) {
     libraryToggle.addEventListener('click', () => {
-      library.hidden = !library.hidden;
+      setLibraryOpen(library.hidden);
     });
   }
   if (libraryClose && library) {
     libraryClose.addEventListener('click', () => {
-      library.hidden = true;
+      setLibraryOpen(false);
     });
   }
+
+  const renameForm = document.getElementById('ai-rename-form');
+  const renameSessionInput = document.getElementById('ai-rename-session-id');
+  const renameTitleInput = document.getElementById('ai-rename-title');
+  document.querySelectorAll('[data-rename-session]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const i18n = window.LEXORA_I18N || {};
+      const current = btn.getAttribute('data-current-title') || '';
+      const next = window.prompt(i18n.rename_chat || 'Rename chat', current);
+      if (next === null) return;
+      const title = String(next).trim();
+      if (!title || !renameForm || !renameSessionInput || !renameTitleInput) return;
+      renameSessionInput.value = btn.getAttribute('data-rename-session') || '';
+      renameTitleInput.value = title;
+      renameForm.submit();
+    });
+  });
+
+  const libraryRows = Array.from(document.querySelectorAll('[data-library-page-row]'));
+  const libraryPager = document.getElementById('ai-library-pager');
+  const libraryPrev = document.getElementById('ai-library-prev');
+  const libraryNext = document.getElementById('ai-library-next');
+  const libraryLabel = document.getElementById('ai-library-page-label');
+  const libraryPerPage = 8;
+  let libraryPage = 0;
+  const libraryPages = Math.max(1, Math.ceil(libraryRows.length / libraryPerPage));
+  const renderLibraryPage = () => {
+    libraryRows.forEach((row, index) => {
+      const rowPage = Math.floor(index / libraryPerPage);
+      row.hidden = rowPage !== libraryPage;
+    });
+    if (libraryLabel) libraryLabel.textContent = `${libraryPage + 1} / ${libraryPages}`;
+    if (libraryPager) libraryPager.hidden = libraryRows.length <= libraryPerPage;
+  };
+  if (libraryPrev) {
+    libraryPrev.addEventListener('click', () => {
+      libraryPage = (libraryPage - 1 + libraryPages) % libraryPages;
+      renderLibraryPage();
+    });
+  }
+  if (libraryNext) {
+    libraryNext.addEventListener('click', () => {
+      libraryPage = (libraryPage + 1) % libraryPages;
+      renderLibraryPage();
+    });
+  }
+  if (libraryRows.length) renderLibraryPage();
 
   const attachBtn = document.querySelector('.ai-attach');
   if (attachBtn) {
