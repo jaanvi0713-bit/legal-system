@@ -69,6 +69,8 @@ function render_insights_page(string $portal): void
     $tabs = $data['tabs'];
     $panels = $data['panels'];
     $lists = $data['lists'] ?? [];
+    $tables = $data['tables'] ?? ['invoices' => [], 'receipts' => []];
+    $links = $data['links'] ?? [];
     $updated = date('H:i:s');
     $monthLabel = date('F Y');
     $topAlerts = array_slice($alerts, 0, 2);
@@ -125,6 +127,24 @@ function render_insights_page(string $portal): void
         echo '</ul>';
     };
 
+    $renderBillingRows = static function (array $rows): void {
+        if (!$rows) {
+            echo '<p class="muted ih-empty">' . __e('insights.tables.empty') . '</p>';
+            return;
+        }
+        echo '<ul class="ih-billing-list">';
+        foreach ($rows as $row) {
+            $inner = '<div class="ih-billing-main"><strong>' . e($row['label']) . '</strong><span>' . e($row['meta'] ?? '') . '</span></div>'
+                . '<div class="ih-billing-side"><em>' . e($row['value']) . '</em><small>' . e($row['status'] ?? '') . '</small></div>';
+            if (!empty($row['url'])) {
+                echo '<li><a class="ih-billing-row" href="' . e($row['url']) . '">' . $inner . '</a></li>';
+            } else {
+                echo '<li><div class="ih-billing-row">' . $inner . '</div></li>';
+            }
+        }
+        echo '</ul>';
+    };
+
     $shellOpen = static function (string $eyebrow, string $title, string $note = ''): void {
         echo '<div class="ih-shell">';
         echo '<div class="ih-shell-head"><div><p class="ih-eyebrow">' . e($eyebrow) . '</p>';
@@ -168,35 +188,47 @@ function render_insights_page(string $portal): void
 
         <div class="ih-panels">
             <section class="ih-panel is-active" id="ih-panel-overview" data-ih-panel="overview" role="tabpanel" aria-labelledby="ih-tab-overview">
-                <div class="ih-hero">
-                    <div class="ih-card ih-health">
-                        <div class="ih-health-gauge">
-                            <?= insights_health_ring((int) $health['score']) ?>
-                            <div class="ih-health-center"><strong><?= (int) $health['score'] ?></strong></div>
+                <div class="ih-overview">
+                    <div class="ih-hero">
+                        <div class="ih-card ih-health">
+                            <div class="ih-health-gauge">
+                                <?= insights_health_ring((int) $health['score']) ?>
+                                <div class="ih-health-center"><strong><?= (int) $health['score'] ?></strong></div>
+                            </div>
+                            <span class="ih-pill ih-pill--<?= e($health['tone']) ?>"><?= e($health['label']) ?></span>
+                            <h2><?= __e('insights.health.title') ?></h2>
+                            <p><?= e($health['caption']) ?></p>
+                            <div class="ih-health-foot">
+                                <span><?= __e('insights.health.updated') ?> <?= e($updated) ?></span>
+                            </div>
                         </div>
-                        <span class="ih-pill ih-pill--<?= e($health['tone']) ?>"><?= e($health['label']) ?></span>
-                        <h2><?= __e('insights.health.title') ?></h2>
-                        <p><?= e($health['caption']) ?></p>
-                        <div class="ih-health-foot">
-                            <span><?= __e('insights.health.updated') ?> <?= e($updated) ?></span>
+                        <div class="ih-card ih-overview-side">
+                            <div class="ih-overview-block">
+                                <p class="ih-eyebrow"><?= __e('insights.overview.snapshot') ?></p>
+                                <?php $renderMetrics($panels['overview']); ?>
+                            </div>
+                            <div class="ih-overview-block ih-overview-alerts">
+                                <p class="ih-eyebrow"><?= __e('insights.alerts.title') ?></p>
+                                <?php $renderAlerts($topAlerts); ?>
+                            </div>
+                            <?php if (!empty($lists['overview'])): ?>
+                            <div class="ih-overview-block ih-overview-mix">
+                                <p class="ih-eyebrow"><?= __e('insights.overview.mix') ?></p>
+                                <?php $renderList(array_slice($lists['overview'], 0, 3)); ?>
+                            </div>
+                            <?php endif; ?>
                         </div>
                     </div>
-                    <div class="ih-card ih-overview-side">
-                        <div class="ih-overview-block">
-                            <p class="ih-eyebrow"><?= __e('insights.overview.snapshot') ?></p>
-                            <?php $renderMetrics($panels['overview']); ?>
-                        </div>
-                        <div class="ih-overview-block ih-overview-alerts">
-                            <p class="ih-eyebrow"><?= __e('insights.alerts.title') ?></p>
-                            <?php $renderAlerts($topAlerts); ?>
-                        </div>
-                        <?php if (!empty($lists['overview'])): ?>
-                        <div class="ih-overview-block">
-                            <p class="ih-eyebrow"><?= __e('insights.overview.mix') ?></p>
-                            <?php $renderList($lists['overview']); ?>
-                        </div>
-                        <?php endif; ?>
+                    <?php if ($links): ?>
+                    <div class="ih-card ih-jump-bar">
+                        <p class="ih-eyebrow"><?= __e('insights.links.title') ?></p>
+                        <nav class="ih-jump-links" aria-label="<?= __e('insights.links.title') ?>">
+                            <?php foreach ($links as $link): ?>
+                            <a href="<?= e($link['url']) ?>"><?= e($link['label']) ?></a>
+                            <?php endforeach; ?>
+                        </nav>
                     </div>
+                    <?php endif; ?>
                 </div>
             </section>
 
@@ -231,6 +263,18 @@ function render_insights_page(string $portal): void
                             <?php endif; ?>
                             <?php endforeach; ?>
                         </div>
+                        <?php if (!empty($tables['invoices']) || !empty($tables['receipts'])): ?>
+                        <div class="ih-billing-grid">
+                            <div>
+                                <p class="ih-eyebrow"><?= __e('insights.tables.invoices') ?></p>
+                                <?php $renderBillingRows($tables['invoices'] ?? []); ?>
+                            </div>
+                            <div>
+                                <p class="ih-eyebrow"><?= __e('insights.tables.receipts') ?></p>
+                                <?php $renderBillingRows($tables['receipts'] ?? []); ?>
+                            </div>
+                        </div>
+                        <?php endif; ?>
                     </div>
                     <div class="ih-forecast-foot ih-shell-foot">
                         <p><?= e($forecast['sync']) ?></p>
@@ -384,6 +428,151 @@ function insights_build_forecast_series(float $mtd, float $prev, int $days = 30)
     ];
 }
 
+function insights_billing_tables_admin(PDO $pdo): array
+{
+    $invoices = $pdo->query("
+        SELECT i.id, i.invoice_number, i.total, i.status, i.due_date, i.case_id,
+               COALESCE(NULLIF(TRIM(u.company_name),''), CONCAT(u.first_name,' ',u.last_name)) AS client_name
+        FROM invoices i
+        JOIN users u ON u.id = i.client_id
+        WHERE i.status IN ('sent','partial','overdue','paid')
+        ORDER BY FIELD(i.status,'overdue','partial','sent','paid'), i.due_date IS NULL, i.due_date ASC, i.id DESC
+        LIMIT 3
+    ")->fetchAll();
+
+    $receipts = $pdo->query("
+        SELECT p.id, p.receipt_number, p.amount, p.paid_at, p.payment_method, p.invoice_id, i.case_id,
+               COALESCE(i.invoice_number, CONCAT('#', p.invoice_id)) AS invoice_number
+        FROM payments p
+        LEFT JOIN invoices i ON i.id = p.invoice_id
+        ORDER BY p.paid_at DESC, p.id DESC
+        LIMIT 3
+    ")->fetchAll();
+
+    return [
+        'invoices' => array_map(static function ($r) {
+            $caseId = (int) ($r['case_id'] ?? 0);
+            return [
+                'label' => (string) $r['invoice_number'],
+                'meta' => (string) $r['client_name'],
+                'value' => money((float) $r['total']),
+                'status' => translate_status((string) $r['status']),
+                'url' => $caseId > 0
+                    ? 'cases.php?action=view&id=' . $caseId . '&tab=invoices'
+                    : 'invoice.php?id=' . (int) $r['id'],
+            ];
+        }, $invoices),
+        'receipts' => array_map(static function ($r) {
+            $caseId = (int) ($r['case_id'] ?? 0);
+            return [
+                'label' => (string) ($r['receipt_number'] ?: ('#' . $r['id'])),
+                'meta' => (string) $r['invoice_number'] . ' · ' . format_date($r['paid_at'], 'M j'),
+                'value' => money((float) $r['amount']),
+                'status' => (string) ($r['payment_method'] ?? ''),
+                'url' => $caseId > 0
+                    ? 'cases.php?action=view&id=' . $caseId . '&tab=receipts'
+                    : 'receipt.php?id=' . (int) $r['id'],
+            ];
+        }, $receipts),
+    ];
+}
+
+function insights_billing_tables_client(PDO $pdo, int $uid): array
+{
+    $invStmt = $pdo->prepare("
+        SELECT i.id, i.invoice_number, i.total, i.status, i.due_date, i.case_id
+        FROM invoices i
+        WHERE i.client_id = ? AND i.status IN ('sent','partial','overdue','paid')
+        ORDER BY FIELD(i.status,'overdue','partial','sent','paid'), i.due_date IS NULL, i.due_date ASC, i.id DESC
+        LIMIT 3
+    ");
+    $invStmt->execute([$uid]);
+    $invoices = $invStmt->fetchAll();
+
+    $rcpStmt = $pdo->prepare("
+        SELECT p.id, p.receipt_number, p.amount, p.paid_at, p.payment_method,
+               COALESCE(i.invoice_number, CONCAT('#', p.invoice_id)) AS invoice_number
+        FROM payments p
+        LEFT JOIN invoices i ON i.id = p.invoice_id
+        WHERE p.client_id = ?
+        ORDER BY p.paid_at DESC, p.id DESC
+        LIMIT 3
+    ");
+    $rcpStmt->execute([$uid]);
+    $receipts = $rcpStmt->fetchAll();
+
+    return [
+        'invoices' => array_map(static function ($r) {
+            return [
+                'label' => (string) $r['invoice_number'],
+                'meta' => translate_status((string) $r['status']),
+                'value' => money((float) $r['total']),
+                'status' => !empty($r['due_date']) ? format_date($r['due_date'], 'M j') : '—',
+                'url' => 'payments.php',
+            ];
+        }, $invoices),
+        'receipts' => array_map(static function ($r) {
+            return [
+                'label' => (string) ($r['receipt_number'] ?: ('#' . $r['id'])),
+                'meta' => (string) $r['invoice_number'] . ' · ' . format_date($r['paid_at'], 'M j'),
+                'value' => money((float) $r['amount']),
+                'status' => (string) ($r['payment_method'] ?? ''),
+                'url' => 'receipt.php?id=' . (int) $r['id'],
+            ];
+        }, $receipts),
+    ];
+}
+
+function insights_billing_tables_lawyer(PDO $pdo, int $uid): array
+{
+    $invStmt = $pdo->prepare("
+        SELECT i.id, i.invoice_number, i.total, i.status, i.case_id,
+               COALESCE(NULLIF(TRIM(u.company_name),''), CONCAT(u.first_name,' ',u.last_name)) AS client_name
+        FROM invoices i
+        JOIN cases c ON c.id = i.case_id
+        JOIN users u ON u.id = i.client_id
+        WHERE c.lawyer_id = ? AND i.status IN ('sent','partial','overdue','paid')
+        ORDER BY FIELD(i.status,'overdue','partial','sent','paid'), i.id DESC
+        LIMIT 3
+    ");
+    $invStmt->execute([$uid]);
+    $invoices = $invStmt->fetchAll();
+
+    $rcpStmt = $pdo->prepare("
+        SELECT p.id, p.receipt_number, p.amount, p.paid_at, p.payment_method, i.case_id,
+               COALESCE(i.invoice_number, CONCAT('#', p.invoice_id)) AS invoice_number
+        FROM payments p
+        JOIN invoices i ON i.id = p.invoice_id
+        JOIN cases c ON c.id = i.case_id
+        WHERE c.lawyer_id = ?
+        ORDER BY p.paid_at DESC, p.id DESC
+        LIMIT 3
+    ");
+    $rcpStmt->execute([$uid]);
+    $receipts = $rcpStmt->fetchAll();
+
+    return [
+        'invoices' => array_map(static function ($r) {
+            return [
+                'label' => (string) $r['invoice_number'],
+                'meta' => (string) $r['client_name'],
+                'value' => money((float) $r['total']),
+                'status' => translate_status((string) $r['status']),
+                'url' => 'cases.php?action=view&id=' . (int) $r['case_id'],
+            ];
+        }, $invoices),
+        'receipts' => array_map(static function ($r) {
+            return [
+                'label' => (string) ($r['receipt_number'] ?: ('#' . $r['id'])),
+                'meta' => (string) $r['invoice_number'] . ' · ' . format_date($r['paid_at'], 'M j'),
+                'value' => money((float) $r['amount']),
+                'status' => (string) ($r['payment_method'] ?? ''),
+                'url' => 'cases.php?action=view&id=' . (int) $r['case_id'],
+            ];
+        }, $receipts),
+    ];
+}
+
 function insights_hub_tabs(string $portal): array
 {
     if ($portal === 'client') {
@@ -467,7 +656,7 @@ function insights_hub_admin(PDO $pdo, array $months6): array
             'icon' => 'alert',
             'title' => __('insights.alert.overdue.title'),
             'text' => __('insights.alert.overdue.text', ['count' => $overdue]),
-            'url' => 'cases.php',
+            'url' => 'cases.php?filter=outstanding',
         ];
     }
     if ($priority > 0) {
@@ -485,7 +674,7 @@ function insights_hub_admin(PDO $pdo, array $months6): array
             'icon' => 'coin',
             'title' => __('insights.alert.collection.title'),
             'text' => __('insights.alert.collection.text', ['pct' => number_format($collection, 0)]),
-            'url' => 'cases.php',
+            'url' => 'cases.php?filter=outstanding',
         ];
     }
     if ($delta >= 20) {
@@ -520,7 +709,7 @@ function insights_hub_admin(PDO $pdo, array $months6): array
         ];
     }
 
-    $typeRows = $pdo->query("SELECT COALESCE(NULLIF(TRIM(case_type),''),'Other') label, COUNT(*) c FROM cases GROUP BY label ORDER BY c DESC LIMIT 5")->fetchAll();
+    $typeRows = $pdo->query("SELECT COALESCE(NULLIF(TRIM(case_type),''),'Other') label, COUNT(*) c FROM cases GROUP BY label ORDER BY c DESC LIMIT 3")->fetchAll();
     $statusRows = $pdo->query('SELECT status label, COUNT(*) c FROM cases GROUP BY status ORDER BY c DESC')->fetchAll();
     $typeTotal = max(1, (int) array_sum(array_map(static fn($r) => (int) $r['c'], $typeRows)));
     $statusTotal = max(1, (int) array_sum(array_map(static fn($r) => (int) $r['c'], $statusRows)));
@@ -582,9 +771,9 @@ function insights_hub_admin(PDO $pdo, array $months6): array
                 'worst' => $series['worst'],
             ],
             'kpis' => [
-                ['label' => __('insights.kpi.mtd'), 'value' => money($mtd), 'tone' => 'teal', 'url' => 'finance.php'],
+                ['label' => __('insights.kpi.mtd'), 'value' => money($mtd), 'tone' => 'teal', 'url' => 'cases.php?filter=outstanding'],
                 ['label' => __('insights.kpi.active'), 'value' => (string) $active, 'tone' => 'blue', 'url' => 'cases.php'],
-                ['label' => __('insights.kpi.collection'), 'value' => number_format($collection, 1) . '%', 'tone' => 'cyan', 'url' => 'finance.php'],
+                ['label' => __('insights.kpi.collection'), 'value' => number_format($collection, 1) . '%', 'tone' => 'cyan', 'url' => 'cases.php?filter=outstanding'],
             ],
             'sync' => __('insights.forecast.sync.admin', ['cases' => $active, 'amount' => money($mtd)]),
             'badge' => $badge,
@@ -593,9 +782,9 @@ function insights_hub_admin(PDO $pdo, array $months6): array
         'alerts' => array_slice($alerts, 0, 5),
         'panels' => [
             'overview' => [
-                ['label' => __('insights.kpi.mtd'), 'value' => money($mtd), 'tone' => 'teal', 'hint' => __('insights.hint.this_month'), 'url' => 'finance.php'],
+                ['label' => __('insights.kpi.mtd'), 'value' => money($mtd), 'tone' => 'teal', 'hint' => __('insights.hint.this_month'), 'url' => 'cases.php?filter=outstanding'],
                 ['label' => __('insights.kpi.active'), 'value' => (string) $active, 'tone' => 'blue', 'hint' => __('insights.hint.open_matters'), 'url' => 'cases.php'],
-                ['label' => __('insights.kpi.collection'), 'value' => number_format($collection, 1) . '%', 'tone' => 'cyan', 'hint' => __('insights.hint.paid_share'), 'url' => 'finance.php'],
+                ['label' => __('insights.kpi.collection'), 'value' => number_format($collection, 1) . '%', 'tone' => 'cyan', 'hint' => __('insights.hint.paid_share'), 'url' => 'cases.php?filter=outstanding'],
             ],
             'cases' => [
                 ['label' => __('insights.kpi.active'), 'value' => (string) $active, 'tone' => 'teal', 'url' => 'cases.php'],
@@ -604,14 +793,21 @@ function insights_hub_admin(PDO $pdo, array $months6): array
             ],
             'clients' => [
                 ['label' => __('insights.kpi.clients'), 'value' => (string) $clients, 'tone' => 'teal', 'url' => 'clients.php'],
-                ['label' => __('insights.kpi.open_invoices'), 'value' => (string) $openInv, 'tone' => 'orange', 'url' => 'finance.php'],
-                ['label' => __('insights.kpi.due'), 'value' => money($outstandingAmt), 'tone' => 'purple', 'url' => 'finance.php'],
+                ['label' => __('insights.kpi.open_invoices'), 'value' => (string) $openInv, 'tone' => 'orange', 'url' => 'cases.php?filter=outstanding'],
+                ['label' => __('insights.kpi.due'), 'value' => money($outstandingAmt), 'tone' => 'purple', 'url' => 'cases.php?filter=outstanding'],
             ],
             'appointments' => [
                 ['label' => __('insights.kpi.meetings'), 'value' => (string) $appts, 'tone' => 'teal', 'url' => 'appointments.php'],
                 ['label' => __('insights.kpi.hearings'), 'value' => (string) $hearings, 'tone' => 'blue', 'url' => 'court.php'],
                 ['label' => __('insights.kpi.upcoming'), 'value' => (string) ($appts + $hearings), 'tone' => 'cyan', 'url' => 'appointments.php'],
             ],
+        ],
+        'tables' => insights_billing_tables_admin($pdo),
+        'links' => [
+            ['label' => __('nav.cases'), 'url' => 'cases.php'],
+            ['label' => __('nav.clients'), 'url' => 'clients.php'],
+            ['label' => __('nav.appointments'), 'url' => 'appointments.php'],
+            ['label' => __('nav.court'), 'url' => 'court.php'],
         ],
         'lists' => [
             'overview' => array_map(static fn($r) => [
@@ -802,8 +998,15 @@ function insights_hub_lawyer(PDO $pdo, int $uid, array $months6): array
                 ['label' => __('insights.kpi.hearings'), 'value' => (string) $hearings, 'tone' => 'cyan', 'url' => 'court.php'],
             ],
         ],
+        'tables' => insights_billing_tables_lawyer($pdo, $uid),
+        'links' => [
+            ['label' => __('nav.cases'), 'url' => 'cases.php'],
+            ['label' => __('nav.clients'), 'url' => 'clients.php'],
+            ['label' => __('nav.appointments'), 'url' => 'appointments.php'],
+            ['label' => __('nav.court'), 'url' => 'court.php'],
+        ],
         'lists' => (static function () use ($pdo, $uid, $active, $closed, $priority): array {
-            $typeStmt = $pdo->prepare("SELECT COALESCE(NULLIF(TRIM(case_type),''),'Other') label, COUNT(*) c FROM cases WHERE lawyer_id=? GROUP BY label ORDER BY c DESC LIMIT 5");
+            $typeStmt = $pdo->prepare("SELECT COALESCE(NULLIF(TRIM(case_type),''),'Other') label, COUNT(*) c FROM cases WHERE lawyer_id=? GROUP BY label ORDER BY c DESC LIMIT 3");
             $typeStmt->execute([$uid]);
             $types = $typeStmt->fetchAll();
             $typeTotal = max(1, (int) array_sum(array_map(static fn($r) => (int) $r['c'], $types)));
@@ -993,6 +1196,13 @@ function insights_hub_client(PDO $pdo, int $uid, array $months6): array
                 ['label' => __('insights.kpi.documents'), 'value' => (string) $docs, 'tone' => 'blue', 'url' => 'documents.php'],
                 ['label' => __('insights.kpi.due'), 'value' => money($outstanding), 'tone' => 'orange', 'url' => 'payments.php'],
             ],
+        ],
+        'tables' => insights_billing_tables_client($pdo, $uid),
+        'links' => [
+            ['label' => __('nav.cases'), 'url' => 'cases.php'],
+            ['label' => __('nav.payments'), 'url' => 'payments.php'],
+            ['label' => __('nav.appointments'), 'url' => 'appointments.php'],
+            ['label' => __('nav.documents'), 'url' => 'documents.php'],
         ],
         'lists' => (static function () use ($pdo, $uid, $docs, $outstanding, $overdue, $active): array {
             $statusStmt = $pdo->prepare('SELECT status label, COUNT(*) c FROM cases WHERE client_id=? GROUP BY status ORDER BY c DESC');
