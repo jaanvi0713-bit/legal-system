@@ -3,6 +3,10 @@ require_once __DIR__ . '/../includes/auth.php';
 require_role(['admin', 'staff']);
 $pdo = db();
 $user = current_user();
+$base = app_config('url');
+$portalBase = $base . '/admin';
+
+handle_notification_open($pdo, $user, $portalBase, $base, $portalBase . '/notifications.php');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
@@ -24,91 +28,79 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         redirect('notifications.php');
     }
-    if ($fa === 'read') {
-        $pdo->prepare('UPDATE notifications SET is_read=1 WHERE id=? AND user_id=?')->execute([(int) post('id'), $user['id']]);
-        redirect('notifications.php');
-    }
-    if ($fa === 'read_all') {
-        $pdo->prepare('UPDATE notifications SET is_read=1 WHERE user_id=?')->execute([$user['id']]);
-        flash('success', __('flash.notifications.marked_read'));
-        redirect('notifications.php');
+}
+
+handle_notification_post($pdo, $user, 'notifications.php', true);
+
+$users = $pdo->query("SELECT id, first_name, last_name, role FROM users WHERE is_active=1 ORDER BY first_name, last_name")->fetchAll();
+$recipientLawyers = [];
+$recipientClients = [];
+$recipientUsers = [];
+foreach ($users as $u) {
+    if ($u['role'] === 'lawyer') {
+        $recipientLawyers[] = $u;
+    } elseif ($u['role'] === 'client') {
+        $recipientClients[] = $u;
+    } else {
+        $recipientUsers[] = $u;
     }
 }
 
-$users = $pdo->query("SELECT id, first_name, last_name, role FROM users WHERE is_active=1 ORDER BY role, first_name")->fetchAll();
-$mine = $pdo->prepare('SELECT * FROM notifications WHERE user_id=? ORDER BY created_at DESC LIMIT 50');
-$mine->execute([$user['id']]);
-$mine = $mine->fetchAll();
-$unreadCount = 0;
-foreach ($mine as $n) {
-    if (!(int) $n['is_read']) {
-        $unreadCount++;
-    }
+$perPage = 10;
+$listPage = max(1, (int) get('page', 1));
+$totalCount = (int) $pdo->query('SELECT COUNT(*) FROM notifications')->fetchColumn();
+$listUnread = (int) $pdo->query('SELECT COUNT(*) FROM notifications WHERE is_read=0')->fetchColumn();
+$totalPages = max(1, (int) ceil($totalCount / $perPage));
+if ($listPage > $totalPages) {
+    $listPage = $totalPages;
 }
-$history = $pdo->query('SELECT n.*, CONCAT(u.first_name," ",u.last_name) AS recipient FROM notifications n JOIN users u ON u.id=n.user_id ORDER BY n.created_at DESC LIMIT 40')->fetchAll();
-
-$typeIcons = [
-    'info' => 'i',
-    'success' => 'OK',
-    'case' => 'C',
-    'appointment' => 'A',
-    'payment' => 'P',
-    'document' => 'D',
-    'reminder' => 'R',
-];
+$offset = ($listPage - 1) * $perPage;
+$listStmt = $pdo->prepare('SELECT n.*, CONCAT(u.first_name," ",u.last_name) AS recipient FROM notifications n JOIN users u ON u.id=n.user_id ORDER BY n.created_at DESC LIMIT ? OFFSET ?');
+$listStmt->bindValue(1, $perPage, PDO::PARAM_INT);
+$listStmt->bindValue(2, $offset, PDO::PARAM_INT);
+$listStmt->execute();
+$rows = $listStmt->fetchAll();
+$shownFrom = $totalCount === 0 ? 0 : $offset + 1;
+$shownTo = min($offset + count($rows), $totalCount);
+$userUnread = unread_notifications($pdo, (int) $user['id']);
 
 $pageTitle = __('page.notifications');
-$pageSubtitle = __('notifications.subtitle');
+$pageSubtitle = $userUnread
+    ? __('notifications.subtitle_unread', ['count' => $userUnread])
+    : __('notifications.history_help');
 $portal = 'admin';
 $activeNav = 'notifications';
 $bodyClass = 'page-notifications';
 require __DIR__ . '/../includes/header.php';
 ?>
 <div class="notify-page">
-    <section class="notify-hero panel">
-        <div class="notify-hero-copy">
-            <span class="notify-kicker"><?= __e('common.inbox') ?></span>
-            <h2><?= __e('page.notifications') ?></h2>
-            <p><?= __e('notifications.hero_help') ?></p>
-        </div>
-        <div class="notify-hero-stats">
-            <div class="notify-stat">
-                <strong><?= (int) $unreadCount ?></strong>
-                <span><?= __e('notifications.unread') ?></span>
+    <section class="panel notify-compose" id="send">
+        <div class="notify-board-banner">
+            <div class="notify-board-banner-copy">
+                <h2><?= __e('notifications.send') ?></h2>
+                <p><?= __e('notifications.send_help') ?></p>
             </div>
-            <div class="notify-stat">
-                <strong><?= count($mine) ?></strong>
-                <span><?= __e('notifications.in_inbox') ?></span>
-            </div>
-            <div class="notify-stat">
-                <strong><?= count($history) ?></strong>
-                <span><?= __e('notifications.recent_sent') ?></span>
+            <div class="notify-board-banner-actions notify-compose-tools row-actions">
+                <button type="button" class="btn btn-row-open btn-sm" id="notifyComposeCopy"><?= __e('common.copy') ?></button>
+                <button type="button" class="btn btn-row-edit btn-sm" id="notifyComposeEdit"><?= __e('common.edit') ?></button>
             </div>
         </div>
-    </section>
-
-    <div class="notify-grid">
-        <section class="panel notify-compose">
-            <div class="notify-card-head">
-                <div>
-                    <h2><?= __e('notifications.send') ?></h2>
-                    <p class="muted"><?= __e('notifications.send_help') ?></p>
-                </div>
+        <form method="post" class="form-grid notify-form entity-inline-form notify-compose-body" id="notifyComposeForm">
+            <?= csrf_field() ?><input type="hidden" name="form_action" value="send">
+            <div class="form-group full">
+                <label><?= __e('common.recipient') ?></label>
+                <?php
+                $recipientPickerId = 'notifyRecipientPicker';
+                $recipientPickerLawyers = $recipientLawyers;
+                $recipientPickerClients = $recipientClients;
+                $recipientPickerUsers = $recipientUsers;
+                require __DIR__ . '/../includes/recipient-picker.php';
+                ?>
             </div>
-            <form method="post" class="form-grid notify-form">
-                <?= csrf_field() ?><input type="hidden" name="form_action" value="send">
-                <div class="form-group full">
-                    <label><?= __e('common.recipient') ?></label>
-                    <select name="user_id" required>
-                        <option value="all"><?= __e('form.all_users') ?></option>
-                        <?php foreach ($users as $u): ?>
-                            <option value="<?= (int)$u['id'] ?>"><?= e(full_name($u).' ('.translate_role($u['role']).')') ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
+            <div class="entity-field-row entity-field-row--2">
                 <div class="form-group">
                     <label><?= __e('common.type') ?></label>
-                    <select name="type">
+                    <select name="type" id="notifyComposeType">
                         <?php foreach (['info','success','case','appointment','payment','document','reminder'] as $t): ?>
                             <option value="<?= $t ?>"><?= e(__('notification.type.' . $t)) ?></option>
                         <?php endforeach; ?>
@@ -116,107 +108,70 @@ require __DIR__ . '/../includes/header.php';
                 </div>
                 <div class="form-group">
                     <label><?= __e('notifications.title_field') ?></label>
-                    <input name="title" required placeholder="<?= __e('notifications.title_ph') ?>">
+                    <input name="title" id="notifyComposeTitle" required placeholder="<?= __e('notifications.title_ph') ?>">
                 </div>
-                <div class="form-group full">
-                    <label><?= __e('common.message') ?></label>
-                    <textarea name="message" required rows="5" placeholder="<?= __e('notifications.message_ph') ?>"></textarea>
-                </div>
-                <div class="form-actions full">
-                    <button class="btn btn-primary" type="submit"><?= __e('common.send') ?></button>
-                </div>
-            </form>
-        </section>
-
-        <section class="panel notify-inbox">
-            <div class="panel-header notify-card-head">
-                <div>
-                    <h2><?= __e('common.inbox') ?></h2>
-                    <p class="muted"><?= __e('notifications.inbox_help') ?></p>
-                </div>
-                <?php if ($unreadCount > 0): ?>
-                <form method="post">
-                    <?= csrf_field() ?>
-                    <input type="hidden" name="form_action" value="read_all">
-                    <button class="btn btn-secondary btn-sm" type="submit"><?= __e('common.mark_all_read') ?></button>
-                </form>
-                <?php endif; ?>
             </div>
-            <div class="notify-list">
-                <?php foreach ($mine as $n):
-                    $type = $n['type'] ?: 'info';
-                    $icon = $typeIcons[$type] ?? '•';
-                    $isUnread = !(int) $n['is_read'];
-                ?>
-                    <article class="notify-item <?= $isUnread ? 'is-unread' : 'is-read' ?>">
-                        <div class="notify-item-icon tone-<?= e($type) ?>" aria-hidden="true"><?= e($icon) ?></div>
-                        <div class="notify-item-body">
-                            <div class="notify-item-top">
-                                <strong><?= e(t_stored($n['title'])) ?></strong>
-                                <?php if ($isUnread): ?>
-                                    <span class="notify-pill"><?= __e('notifications.new') ?></span>
-                                <?php endif; ?>
-                            </div>
-                            <p><?= e(t_stored($n['message'])) ?></p>
-                            <div class="notify-item-meta">
-                                <span class="notify-type"><?= e(__('notification.type.' . $type)) ?></span>
-                                <span><?= e(format_datetime($n['created_at'])) ?></span>
-                            </div>
-                        </div>
-                        <?php if ($isUnread): ?>
-                        <form method="post" class="notify-item-actions">
-                            <?= csrf_field() ?>
-                            <input type="hidden" name="form_action" value="read">
-                            <input type="hidden" name="id" value="<?= (int)$n['id'] ?>">
-                            <button class="btn btn-row-edit btn-sm" type="submit"><?= __e('common.mark_read') ?></button>
-                        </form>
-                        <?php endif; ?>
-                    </article>
-                <?php endforeach; ?>
-                <?php if (!$mine): ?>
-                    <div class="notify-empty"><?= __e('common.no_notifications') ?></div>
-                <?php endif; ?>
+            <div class="form-group full">
+                <label><?= __e('common.message') ?></label>
+                <textarea name="message" id="notifyComposeMessage" required rows="5" placeholder="<?= __e('notifications.message_ph') ?>"></textarea>
             </div>
-        </section>
-    </div>
-
-    <section class="panel notify-history">
-        <div class="notify-card-head">
-            <div>
-                <h2><?= __e('notifications.history') ?></h2>
-                <p class="muted"><?= __e('notifications.history_help') ?></p>
+            <div class="form-actions full">
+                <button class="btn btn-primary" type="submit"><?= __e('common.send') ?></button>
             </div>
-        </div>
-        <div class="table-wrap">
-            <table class="notify-table">
-                <thead>
-                    <tr>
-                        <th><?= __e('common.when') ?></th>
-                        <th><?= __e('common.recipient') ?></th>
-                        <th><?= __e('notifications.title_field') ?></th>
-                        <th><?= __e('common.type') ?></th>
-                    </tr>
-                </thead>
-                <tbody>
-                <?php foreach ($history as $h):
-                    $type = $h['type'] ?: 'info';
-                ?>
-                    <tr>
-                        <td class="notify-when"><?= e(format_datetime($h['created_at'])) ?></td>
-                        <td><?= e($h['recipient']) ?></td>
-                        <td>
-                            <strong><?= e(t_stored($h['title'])) ?></strong>
-                            <div class="muted"><?= e(t_stored($h['message'])) ?></div>
-                        </td>
-                        <td><span class="notify-type-chip tone-<?= e($type) ?>"><?= e(__('notification.type.' . $type)) ?></span></td>
-                    </tr>
-                <?php endforeach; ?>
-                <?php if (!$history): ?>
-                    <tr><td colspan="4" class="muted"><?= __e('common.no_notifications') ?></td></tr>
-                <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
+        </form>
     </section>
+    <script>
+    (function () {
+      var form = document.getElementById('notifyComposeForm');
+      var title = document.getElementById('notifyComposeTitle');
+      var message = document.getElementById('notifyComposeMessage');
+      var copyBtn = document.getElementById('notifyComposeCopy');
+      var editBtn = document.getElementById('notifyComposeEdit');
+      if (!form || !title || !message) return;
+      if (copyBtn) {
+        copyBtn.addEventListener('click', async function () {
+          var text = (title.value || '').trim();
+          var body = (message.value || '').trim();
+          if (body) text = text ? (text + '\n\n' + body) : body;
+          if (!text) return;
+          try {
+            await navigator.clipboard.writeText(text);
+            var prev = copyBtn.textContent;
+            copyBtn.textContent = <?= json_encode(__('contact.copied')) ?>;
+            setTimeout(function () { copyBtn.textContent = prev; }, 1400);
+          } catch (e) {
+            window.prompt(<?= json_encode(__('contact.copy_prompt')) ?>, text);
+          }
+        });
+      }
+      if (editBtn) {
+        editBtn.addEventListener('click', function () {
+          form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          (message.value ? message : title).focus();
+        });
+      }
+    })();
+    </script>
+
+    <?php
+    $notifyBoardItems = $rows;
+    $notifyBoardTitle = __('notifications.tab.history');
+    $notifyBoardTotal = $totalCount;
+    $notifyBoardUnread = $listUnread;
+    $notifyBoardActionUnread = $userUnread;
+    $notifyBoardPostUrl = 'notifications.php';
+    $notifyBoardMode = 'history';
+    $notifyBoardPreferencesUrl = 'settings.php?tab=notifications';
+    $notifyBoardShowMarkAll = true;
+    $notifyBoardAllowDeleteAny = true;
+    $notifyBoardId = 'notifyHistoryBoard';
+    $notifyBoardPagerPage = $listPage;
+    $notifyBoardPagerTotalPages = $totalPages;
+    $notifyBoardPagerShownFrom = $shownFrom;
+    $notifyBoardPagerShownTo = $shownTo;
+    $notifyBoardAllowEdit = false;
+    $notifyBoardReturnPage = $listPage;
+    require __DIR__ . '/../includes/notifications-alerts-board.php';
+    ?>
 </div>
 <?php require __DIR__ . '/../includes/footer.php'; ?>

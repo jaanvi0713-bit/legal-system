@@ -79,7 +79,7 @@ require __DIR__ . '/../includes/header.php';
     </div>
     <div class="panel">
         <h2><?= __e('payments.record') ?></h2>
-        <form method="post" class="form-grid" id="clientPayForm">
+        <form method="post" class="form-grid entity-inline-form" id="clientPayForm">
             <?= csrf_field() ?><input type="hidden" name="form_action" value="record">
             <div class="form-group full"><label><?= __e('finance.invoices') ?></label>
                 <select name="invoice_id" id="clientPayInvoice" required>
@@ -90,13 +90,15 @@ require __DIR__ . '/../includes/header.php';
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="form-group"><label><?= __e('common.amount') ?></label><input type="number" step="0.01" name="amount" required></div>
-            <div class="form-group"><label><?= __e('finance.method') ?></label>
-                <select name="payment_method" id="clientPayMethod">
-                    <?php foreach (['bank_transfer','card','online','cash'] as $m): ?>
-                        <option value="<?= $m ?>"><?= e(__('payment.method.' . $m)) ?></option>
-                    <?php endforeach; ?>
-                </select>
+            <div class="entity-field-row entity-field-row--2">
+                <div class="form-group"><label><?= __e('common.amount') ?></label><input type="number" step="0.01" name="amount" required></div>
+                <div class="form-group"><label><?= __e('finance.method') ?></label>
+                    <select name="payment_method" id="clientPayMethod">
+                        <?php foreach (['bank_transfer','card','online','cash'] as $m): ?>
+                            <option value="<?= $m ?>"><?= e(__('payment.method.' . $m)) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
             </div>
             <div class="form-group full"><label><?= __e('common.reference') ?></label><input name="reference_number"></div>
             <div class="form-group full" id="clientBankBox" hidden>
@@ -146,8 +148,10 @@ require __DIR__ . '/../includes/header.php';
     if (bank.bank) rows.push('<p><span><?= e(__('settings.payments.bank_name')) ?></span> ' + bank.bank + '</p>');
     if (bank.account_name) rows.push('<p><span><?= e(__('settings.payments.account_name')) ?></span> ' + bank.account_name + '</p>');
     if (bank.account_number) rows.push('<p><span><?= e(__('settings.payments.account_number')) ?></span> ' + bank.account_number + '</p>');
+    if (bank.sort_code) rows.push('<p><span><?= e(__('settings.payments.sort_code')) ?></span> ' + bank.sort_code + '</p>');
     if (bank.iban) rows.push('<p><span><?= e(__('settings.payments.iban')) ?></span> ' + bank.iban + '</p>');
     if (bank.swift) rows.push('<p><span><?= e(__('settings.payments.swift')) ?></span> ' + bank.swift + '</p>');
+    if (bank.reference) rows.push('<p><span><?= e(__('settings.payments.reference')) ?></span> ' + bank.reference + '</p>');
     details.innerHTML = rows.join('');
   }
   inv.addEventListener('change', render);

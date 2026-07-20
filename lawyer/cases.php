@@ -65,32 +65,38 @@ if ($id) {
             <?= status_badge($case['status']) ?>
         </div>
         <p><?= nl2br(e($case['description'] ? t_content($case['description']) : '')) ?></p>
-        <form method="post" class="form-grid" style="margin-top:1rem;">
+        <form method="post" class="form-grid entity-inline-form" style="margin-top:1rem;">
             <?= csrf_field() ?><input type="hidden" name="form_action" value="status"><input type="hidden" name="case_id" value="<?= $id ?>">
-            <div class="form-group"><label><?= __e('lawyer.cases.change_status') ?></label>
-                <select name="status"><?php foreach (['open','active','pending','on_hold','closed','reopened'] as $s): ?><option value="<?= $s ?>" <?= $case['status']===$s?'selected':'' ?>><?= e(translate_status($s)) ?></option><?php endforeach; ?></select>
+            <div class="entity-field-row entity-field-row--2">
+                <div class="form-group"><label><?= __e('lawyer.cases.change_status') ?></label>
+                    <select name="status"><?php foreach (['open','active','pending','on_hold','closed','reopened'] as $s): ?><option value="<?= $s ?>" <?= $case['status']===$s?'selected':'' ?>><?= e(translate_status($s)) ?></option><?php endforeach; ?></select>
+                </div>
+                <div class="form-group"><button class="btn btn-primary" type="submit"><?= __e('lawyer.cases.update_status') ?></button></div>
             </div>
-            <div class="form-group" style="align-self:end;"><button class="btn btn-primary" type="submit"><?= __e('lawyer.cases.update_status') ?></button></div>
         </form>
     </div>
     <div class="grid grid-2">
         <div class="panel">
             <h2><?= __e('lawyer.cases.case_notes') ?></h2>
-            <form method="post" class="form-grid" style="margin-bottom:1rem;">
+            <form method="post" class="form-grid entity-inline-form" style="margin-bottom:1rem;">
                 <?= csrf_field() ?><input type="hidden" name="form_action" value="note"><input type="hidden" name="case_id" value="<?= $id ?>">
-                <div class="form-group full"><textarea name="note" required></textarea></div>
-                <div class="form-group"><label><input type="checkbox" name="is_private" value="1"> <?= __e('lawyer.cases.private') ?></label></div>
-                <div class="form-group"><button class="btn btn-primary btn-sm" type="submit"><?= __e('cases.add_note') ?></button></div>
+                <div class="form-group full"><label><?= __e('cases.add_note') ?></label><textarea name="note" required rows="2"></textarea></div>
+                <div class="entity-field-row entity-field-row--2">
+                    <div class="form-group"><label><input type="checkbox" name="is_private" value="1"> <?= __e('lawyer.cases.private') ?></label></div>
+                    <div class="form-group"><button class="btn btn-primary btn-sm" type="submit"><?= __e('cases.add_note') ?></button></div>
+                </div>
             </form>
             <div class="list-stack"><?php foreach ($notes as $n): ?><div class="list-item"><strong><?= e($n['author']) ?></strong><span class="muted"><?= e(format_datetime($n['created_at'])) ?></span><div><?= nl2br(e(t_content($n['note']))) ?></div></div><?php endforeach; ?></div>
         </div>
         <div class="panel">
             <h2><?= __e('cases.documents') ?></h2>
-            <form method="post" enctype="multipart/form-data" class="form-grid" style="margin-bottom:1rem;">
+            <form method="post" enctype="multipart/form-data" class="form-grid entity-inline-form" style="margin-bottom:1rem;">
                 <?= csrf_field() ?><input type="hidden" name="form_action" value="upload"><input type="hidden" name="case_id" value="<?= $id ?>">
-                <div class="form-group"><input name="title" placeholder="<?= __e('common.title') ?>"></div>
-                <div class="form-group"><select name="category"><?php foreach (['legal','contract','evidence','court','other'] as $c): ?><option value="<?= $c ?>"><?= e(__('doc.category.' . $c)) ?></option><?php endforeach; ?></select></div>
-                <div class="form-group full"><input type="file" name="document" required></div>
+                <div class="entity-field-row entity-field-row--2">
+                    <div class="form-group"><label><?= __e('common.title') ?></label><input name="title" placeholder="<?= __e('common.title') ?>"></div>
+                    <div class="form-group"><label><?= __e('common.category') ?></label><select name="category"><?php foreach (['legal','contract','evidence','court','other'] as $c): ?><option value="<?= $c ?>"><?= e(__('doc.category.' . $c)) ?></option><?php endforeach; ?></select></div>
+                </div>
+                <div class="form-group full"><label><?= __e('common.file') ?></label><input type="file" name="document" required></div>
                 <div class="form-group full"><button class="btn btn-accent btn-sm" type="submit"><?= __e('common.upload') ?></button></div>
             </form>
             <div class="list-stack"><?php foreach ($docs as $d): ?><div class="list-item"><strong><?= e(t_content($d['title'])) ?></strong><a href="../<?= e($d['file_path']) ?>" target="_blank"><?= __e('common.download') ?> / <?= __e('common.review') ?></a></div><?php endforeach; ?></div>

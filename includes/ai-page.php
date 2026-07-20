@@ -198,7 +198,7 @@ function render_ai_page(string $portal): void
                 <p class="muted"><?= __e('ai.quick_prompts_help') ?></p>
             </div>
             <div class="ai-prompt-list" id="ai-prompt-list">
-                <?php foreach (array_slice($prompts, 0, 9) as $p): ?>
+                <?php foreach (array_slice($prompts, 0, 8) as $p): ?>
                     <button type="button" class="ai-prompt-btn" data-prompt="<?= e($p[1]) ?>">
                         <span class="ai-prompt-icon"><?= $iconSvg($p[2]) ?></span>
                         <span class="ai-prompt-label"><?= e($p[0]) ?></span>

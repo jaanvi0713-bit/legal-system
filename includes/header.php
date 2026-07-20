@@ -8,17 +8,16 @@ $user = current_user();
 $appName = get_setting(db(), 'company_name', app_config('name'));
 $brandName = app_config('brand', 'LEGAL PRO');
 $pdoHeader = db();
+ensure_notification_edited_column($pdoHeader);
 $unread = unread_notifications($pdoHeader, (int) $user['id']);
 $flash = get_flash();
 $base = app_config('url');
 $portalBase = $base . '/' . $portal;
-$topbarNotifsStmt = $pdoHeader->prepare('SELECT id, title, message, type, link, is_read, created_at FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 12');
+$topbarNotifsStmt = $pdoHeader->prepare('SELECT id, title, message, type, link, is_read, created_at, edited_at FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 12');
 $topbarNotifsStmt->execute([(int) $user['id']]);
 $topbarNotifs = $topbarNotifsStmt->fetchAll();
-$topbarNotifyIcons = [
-    'info' => 'i', 'success' => 'OK', 'case' => 'C', 'appointment' => 'A',
-    'payment' => 'P', 'document' => 'D', 'reminder' => 'R',
-];
+$companyLogo = trim((string) get_setting(db(), 'company_logo', ''));
+$companyFavicon = trim((string) get_setting(db(), 'company_favicon', ''));
 $themeSetting = get_setting(db(), 'theme', 'light');
 $theme = in_array($themeSetting, ['light', 'dark'], true) ? $themeSetting : 'light';
 $accent = get_setting(db(), 'branding_accent', '#023e8a') ?: '#023e8a';
@@ -47,6 +46,7 @@ $gradInfo = "linear-gradient(135deg, {$accent} 0%, {$accentDeep} 100%)";
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= e($pageTitle ?? __('page.dashboard')) ?> · <?= e($appName) ?></title>
+    <?php if ($companyFavicon !== ''): ?><link rel="icon" href="<?= e($base . '/' . ltrim($companyFavicon, '/')) ?>"><?php endif; ?>
     <script>
         (function () {
             try {
@@ -140,7 +140,7 @@ $gradInfo = "linear-gradient(135deg, {$accent} 0%, {$accentDeep} 100%)";
     <aside class="sidebar">
         <div class="sidebar-brand">
             <div class="brand-left">
-                <div class="brand-mark" aria-hidden="true"><?= nav_icon('logo') ?></div>
+                <div class="brand-mark" aria-hidden="true"><?php if ($companyLogo !== ''): ?><img src="<?= e($base . '/' . ltrim($companyLogo, '/')) ?>" alt=""><?php else: ?><?= nav_icon('logo') ?><?php endif; ?></div>
                 <div class="brand-text">
                     <div class="brand-name"><?= e($brandName) ?></div>
                     <div class="brand-portal"><?= e(__('portal.' . $portal)) ?></div>
@@ -207,7 +207,6 @@ $gradInfo = "linear-gradient(135deg, {$accent} 0%, {$accentDeep} 100%)";
                             <div class="topbar-notify-list">
                                 <?php foreach ($topbarNotifs as $tn):
                                     $tnType = $tn['type'] ?: 'info';
-                                    $tnIcon = $topbarNotifyIcons[$tnType] ?? 'i';
                                     $tnUnread = !(int) $tn['is_read'];
                                     $tnLink = trim((string) ($tn['link'] ?? ''));
                                     if ($tnLink === '') {
@@ -221,10 +220,16 @@ $gradInfo = "linear-gradient(135deg, {$accent} 0%, {$accentDeep} 100%)";
                                     }
                                 ?>
                                     <a class="topbar-notify-item <?= $tnUnread ? 'is-unread' : '' ?>" href="<?= e($tnHref) ?>">
-                                        <span class="topbar-notify-icon tone-<?= e($tnType) ?>" aria-hidden="true"><?= e($tnIcon) ?></span>
+                                        <span class="notify-type-icon-wrap">
+                                            <?php if ($tnUnread): ?><span class="notify-type-icon-badge" aria-hidden="true"></span><?php endif; ?>
+                                            <span class="notify-type-icon topbar-notify-icon"><?= notification_type_icon_svg($tnType) ?></span>
+                                        </span>
                                         <span class="topbar-notify-body">
                                             <strong><?= e(t_stored($tn['title'])) ?></strong>
                                             <span class="topbar-notify-msg"><?= e(t_stored($tn['message'])) ?></span>
+                                            <?php if (!empty($tn['edited_at'])): ?>
+                                                <span class="topbar-notify-edited"><?= __e('notifications.message_edited') ?></span>
+                                            <?php endif; ?>
                                             <span class="topbar-notify-time"><?= e(format_date($tn['created_at'], 'M j, Y')) ?></span>
                                         </span>
                                     </a>

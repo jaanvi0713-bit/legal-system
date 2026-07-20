@@ -124,6 +124,7 @@ CREATE TABLE appointments (
 CREATE TABLE court_hearings (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     case_id INT UNSIGNED NOT NULL,
+    lawyer_id INT UNSIGNED DEFAULT NULL,
     hearing_date DATETIME NOT NULL,
     court_name VARCHAR(191) NOT NULL,
     court_location VARCHAR(191) DEFAULT NULL,
@@ -135,7 +136,8 @@ CREATE TABLE court_hearings (
     created_by INT UNSIGNED DEFAULT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+    FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+    FOREIGN KEY (lawyer_id) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE invoices (
@@ -197,6 +199,9 @@ CREATE TABLE messages (
     body TEXT NOT NULL,
     is_read TINYINT(1) NOT NULL DEFAULT 0,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    thread_id INT UNSIGNED DEFAULT NULL,
+    status ENUM('open','closed') NOT NULL DEFAULT 'open',
+    edited_at DATETIME DEFAULT NULL,
     FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (receiver_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE SET NULL
@@ -212,6 +217,7 @@ CREATE TABLE notifications (
     is_read TINYINT(1) NOT NULL DEFAULT 0,
     created_by INT UNSIGNED DEFAULT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    edited_at DATETIME DEFAULT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
@@ -251,4 +257,15 @@ CREATE TABLE ai_chat_messages (
     content TEXT NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (session_id) REFERENCES ai_chat_sessions(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE lawyer_availability_slots (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    lawyer_id INT UNSIGNED NOT NULL,
+    week_start DATE NOT NULL COMMENT 'Monday of the week',
+    day_of_week TINYINT UNSIGNED NOT NULL COMMENT '1=Mon ... 6=Sat',
+    slot_time TIME NOT NULL,
+    UNIQUE KEY uniq_lawyer_week_day_slot (lawyer_id, week_start, day_of_week, slot_time),
+    INDEX idx_lawyer_week (lawyer_id, week_start),
+    FOREIGN KEY (lawyer_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;

@@ -4,6 +4,7 @@ $items = [
     ['tasks.php', 'nav.tasks', 'tasks', 'tasks'],
     ['cases.php', 'nav.my_cases', 'cases', 'cases'],
     ['clients.php', 'nav.my_clients', 'clients', 'clients'],
+    ['contact.php', 'nav.client_messages', 'contact', 'contact'],
     ['appointments.php', 'nav.appointments', 'appointments', 'appointments'],
     ['court.php', 'nav.court', 'court', 'court'],
     ['availability.php', 'nav.availability', 'availability', 'availability'],

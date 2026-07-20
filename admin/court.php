@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../includes/auth.php';
 require_role(['admin', 'staff']);
 $pdo = db();
+ensure_court_hearing_lawyer_column($pdo);
 $action = get('action', 'list');
 $id = (int) get('id', 0);
 $preCase = (int) get('case_id', 0);
@@ -11,19 +12,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $fa = post('form_action');
     if ($fa === 'save') {
         $editId = (int) post('id');
+        $caseId = (int) post('case_id');
+        $lawyerId = resolve_hearing_lawyer_id($pdo, $caseId, post('lawyer_id') ? (int) post('lawyer_id') : null);
+        if (!$lawyerId) {
+            flash('error', __('error.hearing.lawyer_required'));
+            redirect($editId ? 'court.php?action=edit&id=' . $editId : 'court.php?action=create');
+        }
         $vals = [
-            (int) post('case_id'), post('hearing_date'), post('court_name'), post('court_location'),
+            $caseId, $lawyerId, post('hearing_date'), post('court_name'), post('court_location'),
             post('judge_name'), post('hearing_type'), post('outcome'), post('notes'), post('status'),
         ];
         if ($editId) {
             $vals[] = $editId;
-            $pdo->prepare('UPDATE court_hearings SET case_id=?, hearing_date=?, court_name=?, court_location=?, judge_name=?, hearing_type=?, outcome=?, notes=?, status=? WHERE id=?')->execute($vals);
-            flash('success', 'Hearing updated.');
+            $pdo->prepare('UPDATE court_hearings SET case_id=?, lawyer_id=?, hearing_date=?, court_name=?, court_location=?, judge_name=?, hearing_type=?, outcome=?, notes=?, status=? WHERE id=?')->execute($vals);
+            flash('success', __('flash.hearing.updated'));
         } else {
             $vals[] = current_user()['id'];
-            $pdo->prepare('INSERT INTO court_hearings (case_id, hearing_date, court_name, court_location, judge_name, hearing_type, outcome, notes, status, created_by) VALUES (?,?,?,?,?,?,?,?,?,?)')->execute($vals);
-            $pdo->prepare('UPDATE cases SET next_hearing_date = DATE(?) WHERE id=?')->execute([post('hearing_date'), (int) post('case_id')]);
-            flash('success', 'Hearing recorded.');
+            $pdo->prepare('INSERT INTO court_hearings (case_id, lawyer_id, hearing_date, court_name, court_location, judge_name, hearing_type, outcome, notes, status, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)')->execute($vals);
+            $pdo->prepare('UPDATE cases SET next_hearing_date = DATE(?) WHERE id=?')->execute([post('hearing_date'), $caseId]);
+            flash('success', __('flash.hearing.recorded'));
         }
         redirect('court.php');
     }
@@ -34,14 +41,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$cases = $pdo->query('SELECT id, case_number, title FROM cases ORDER BY created_at DESC')->fetchAll();
+$cases = $pdo->query('SELECT id, case_number, title, lawyer_id FROM cases ORDER BY created_at DESC')->fetchAll();
+$lawyers = $pdo->query("SELECT id, first_name, last_name FROM users WHERE role='lawyer' AND is_active=1 ORDER BY first_name")->fetchAll();
 $pageTitle = __('page.court');
-$pageSubtitle = 'Hearings, locations, outcomes, and progress';
+$pageSubtitle = __('page.court.subtitle');
 $portal = 'admin';
 $activeNav = 'court';
 
 if ($action === 'create' || ($action === 'edit' && $id)) {
-    $row = ['id'=>0,'case_id'=>$preCase,'hearing_date'=>date('Y-m-d\TH:i'),'court_name'=>'','court_location'=>'','judge_name'=>'','hearing_type'=>'','outcome'=>'','notes'=>'','status'=>'scheduled'];
+    $row = ['id'=>0,'case_id'=>$preCase,'lawyer_id'=>'','hearing_date'=>date('Y-m-d\TH:i'),'court_name'=>'','court_location'=>'','judge_name'=>'','hearing_type'=>'','outcome'=>'','notes'=>'','status'=>'scheduled'];
+    if ($preCase) {
+        $caseLawyer = $pdo->prepare('SELECT lawyer_id FROM cases WHERE id=?');
+        $caseLawyer->execute([$preCase]);
+        $caseRow = $caseLawyer->fetch();
+        if ($caseRow && !empty($caseRow['lawyer_id'])) {
+            $row['lawyer_id'] = (int) $caseRow['lawyer_id'];
+        }
+    }
     if ($action === 'create') {
         $prefillDate = get('date', '');
         if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $prefillDate)) {
@@ -56,101 +72,19 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
     }
     require __DIR__ . '/../includes/header.php';
     $isEdit = (bool) $id;
-    ?>
-    <div class="entity-form-wrap">
-    <div class="entity-form panel">
-        <div class="entity-form-hero">
-            <div>
-                <p class="entity-form-eyebrow"><?= $isEdit ? 'Court record' : 'Court tracking' ?></p>
-                <h2><?= $isEdit ? 'Edit hearing' : 'Add hearing' ?></h2>
-                <p class="muted"><?= $isEdit ? 'Update hearing schedule, court details, and outcome.' : 'Record an upcoming or completed court hearing.' ?></p>
-            </div>
-            <p class="entity-form-required-note"><span class="req">*</span> Required fields</p>
-        </div>
-        <form method="post">
-            <div class="entity-form-body">
-                <?= csrf_field() ?>
-                <input type="hidden" name="form_action" value="save">
-                <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
-
-                <section class="entity-section">
-                    <div class="entity-section-head">
-                        <h3>Hearing details</h3>
-                        <p>Case link, date, and status.</p>
-                    </div>
-                    <div class="form-grid">
-                        <div class="form-group full">
-                            <label for="case_id">Case <span class="req">*</span></label>
-                            <select id="case_id" name="case_id" required>
-                                <?php foreach ($cases as $c): ?>
-                                    <option value="<?= (int)$c['id'] ?>" <?= (int)$row['case_id']===(int)$c['id']?'selected':'' ?>><?= e($c['case_number'].' — '.$c['title']) ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="hearing_date">Hearing date <span class="req">*</span></label>
-                            <input id="hearing_date" type="datetime-local" name="hearing_date" required value="<?= e($row['hearing_date']) ?>">
-                        </div>
-                        <div class="form-group">
-                            <label for="status">Status <span class="req">*</span></label>
-                            <select id="status" name="status" required>
-                                <?php foreach (hearing_statuses() as $s): ?>
-                                    <option value="<?= $s ?>" <?= $row['status']===$s?'selected':'' ?>><?= e(translate_status($s)) ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="hearing_type">Hearing type</label>
-                            <input id="hearing_type" name="hearing_type" value="<?= e($row['hearing_type']) ?>" placeholder="e.g. Preliminary">
-                        </div>
-                    </div>
-                </section>
-
-                <section class="entity-section">
-                    <div class="entity-section-head">
-                        <h3>Court information</h3>
-                        <p>Venue, judge, outcome, and notes.</p>
-                    </div>
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label for="court_name">Court name <span class="req">*</span></label>
-                            <input id="court_name" name="court_name" required value="<?= e($row['court_name']) ?>">
-                        </div>
-                        <div class="form-group">
-                            <label for="court_location">Location</label>
-                            <input id="court_location" name="court_location" value="<?= e($row['court_location']) ?>">
-                        </div>
-                        <div class="form-group">
-                            <label for="judge_name">Judge</label>
-                            <input id="judge_name" name="judge_name" value="<?= e($row['judge_name']) ?>">
-                        </div>
-                        <div class="form-group full">
-                            <label for="outcome">Outcome</label>
-                            <textarea id="outcome" name="outcome" rows="2"><?= e($row['outcome']) ?></textarea>
-                        </div>
-                        <div class="form-group full">
-                            <label for="notes">Court notes</label>
-                            <textarea id="notes" name="notes" rows="2"><?= e($row['notes']) ?></textarea>
-                        </div>
-                    </div>
-                </section>
-            </div>
-            <div class="entity-form-footer">
-                <a class="btn btn-secondary" href="court.php">Back to court</a>
-                <button class="btn btn-primary" type="submit"><?= $isEdit ? 'Save changes' : 'Add hearing' ?></button>
-            </div>
-        </form>
-    </div>
-    </div>
-    <?php require __DIR__ . '/../includes/footer.php'; exit;
+    $formCancelUrl = 'court.php';
+    require __DIR__ . '/../includes/hearing-form.php';
+    require __DIR__ . '/../includes/footer.php'; exit;
 }
 
 $courtListSql = "
     SELECT h.*, c.case_number, c.title, c.id AS case_id,
-        CONCAT(cl.first_name,' ',cl.last_name) AS client_name
+        CONCAT(cl.first_name,' ',cl.last_name) AS client_name,
+        CONCAT(lw.first_name,' ',lw.last_name) AS lawyer_name
     FROM court_hearings h
     JOIN cases c ON c.id = h.case_id
     JOIN users cl ON cl.id = c.client_id
+    LEFT JOIN users lw ON lw.id = COALESCE(h.lawyer_id, c.lawyer_id)
 ";
 
 $rows = $pdo->query($courtListSql . ' ORDER BY h.hearing_date DESC')->fetchAll();
@@ -181,6 +115,7 @@ foreach ($rows as $r):
     $searchBlob = strtolower(trim(implode(' ', [
         $caseLabel,
         $r['client_name'] ?? '',
+        $r['lawyer_name'] ?? '',
         $r['court_name'] ?? '',
         $r['court_location'] ?? '',
         $r['hearing_type'] ?? '',
@@ -193,13 +128,14 @@ foreach ($rows as $r):
         <strong class="appt-list-title"><?= e(t_content($r['court_name'])) ?></strong>
         <div class="muted"><?= e($r['hearing_type'] ? t_content($r['hearing_type']) : __('common.em_dash')) ?></div>
     </td>
+    <td><?= e($r['lawyer_name'] ?: __('common.em_dash')) ?></td>
     <td><?= e($r['client_name'] ?: __('common.em_dash')) ?></td>
     <td class="appt-list-case"><a class="case-num-link" href="cases.php?action=view&id=<?= (int)$r['case_id'] ?>"><?= e($r['case_number']) ?></a><div class="muted"><?= e($r['title']) ?></div></td>
     <td><?= hearing_list_status_badge($status) ?></td>
     <td>
         <div class="row-actions">
             <a class="btn btn-row-edit btn-sm" href="?action=edit&id=<?= (int)$r['id'] ?>"><?= __e('common.edit') ?></a>
-            <form method="post"><?= csrf_field() ?><input type="hidden" name="form_action" value="delete"><input type="hidden" name="id" value="<?= (int)$r['id'] ?>"><button class="btn btn-row-delete btn-sm" type="submit" data-confirm="<?= __e('court.confirm_delete') ?>"><?= __e('common.delete') ?></button></form>
+            <form method="post" data-confirm="<?= __e('court.confirm_delete') ?>"><?= csrf_field() ?><input type="hidden" name="form_action" value="delete"><input type="hidden" name="id" value="<?= (int)$r['id'] ?>"><button class="btn btn-row-delete btn-sm" type="submit"><?= __e('common.delete') ?></button></form>
         </div>
     </td>
 </tr>
@@ -220,6 +156,7 @@ $listStatusI18nPrefix = 'court.tone.';
 $listColumns = [
     __('court.col.datetime'),
     __('court.col.court_type'),
+    __('common.lawyer'),
     __('common.client'),
     __('common.case'),
     __('common.status'),

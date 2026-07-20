@@ -1,3 +1,126 @@
+(function initLexoraFormFeedback() {
+  function lexoraResolveConfirmMessage(form, submitter) {
+    const i18n = window.LEXORA_I18N || {};
+    const explicit = (submitter && submitter.getAttribute('data-confirm'))
+      || (form && form.getAttribute('data-confirm'));
+    if (explicit) return explicit;
+
+    if (!form || !(form instanceof HTMLFormElement)) return null;
+
+    const faInput = form.querySelector('input[name="form_action"]');
+    const fa = faInput ? faInput.value : '';
+    const statusInput = form.querySelector('input[name="status"]');
+    const status = statusInput ? statusInput.value : '';
+
+    if (fa === 'respond' && status === 'cancelled') {
+      return i18n.confirmRejectAppointment || i18n.confirm;
+    }
+    if (fa === 'toggle' && submitter && submitter.classList.contains('btn-row-delete')) {
+      return i18n.confirmDeactivateUser || i18n.confirm;
+    }
+
+    const actionMessages = {
+      cancel: i18n.confirmCancelAppointment,
+      reset: i18n.confirmResetPassword,
+    };
+    if (actionMessages[fa]) return actionMessages[fa];
+
+    if (submitter && submitter.classList.contains('btn-row-delete')) {
+      return i18n.confirm || 'Are you sure?';
+    }
+
+    return null;
+  }
+
+  function lexoraSavingLabel(form) {
+    const i18n = window.LEXORA_I18N || {};
+    return (form && form.getAttribute('data-saving-label')) || i18n.saving || 'Saving…';
+  }
+
+  function lexoraDisableSubmitButtons(form) {
+    if (!form) return;
+    form.querySelectorAll('button[type="submit"], input[type="submit"]').forEach((btn) => {
+      btn.disabled = true;
+    });
+  }
+
+  window.lexoraShowSaving = function lexoraShowSaving(message) {
+    const overlay = document.getElementById('lexoraSavingBuffer');
+    if (!overlay) return;
+    if (overlay.parentElement !== document.body) {
+      document.body.appendChild(overlay);
+    }
+    const label = document.getElementById('lexoraSavingLabel');
+    const i18n = window.LEXORA_I18N || {};
+    if (label) label.textContent = message || i18n.saving || 'Saving…';
+    overlay.hidden = false;
+    overlay.setAttribute('aria-hidden', 'false');
+    overlay.setAttribute('aria-busy', 'true');
+    document.body.classList.add('lexora-saving-open');
+  };
+
+  window.lexoraHideSaving = function lexoraHideSaving() {
+    const overlay = document.getElementById('lexoraSavingBuffer');
+    if (!overlay) return;
+    overlay.hidden = true;
+    overlay.setAttribute('aria-hidden', 'true');
+    overlay.setAttribute('aria-busy', 'false');
+    document.body.classList.remove('lexora-saving-open');
+  };
+
+  document.addEventListener('submit', (e) => {
+    const form = e.target;
+    if (!(form instanceof HTMLFormElement)) return;
+    if (form.dataset.noSaving === '1') return;
+    const method = (form.getAttribute('method') || 'get').toLowerCase();
+    if (method === 'get') return;
+
+    if (form.dataset.confirmed === '1') {
+      delete form.dataset.confirmed;
+      return;
+    }
+
+    const submitter = e.submitter || form.querySelector('button[type="submit"], input[type="submit"]');
+    const msg = lexoraResolveConfirmMessage(form, submitter);
+    if (!msg) return;
+
+    e.preventDefault();
+    e.stopImmediatePropagation();
+
+    const proceed = window.lexoraConfirm
+      ? window.lexoraConfirm(msg)
+      : Promise.resolve(window.confirm(msg));
+
+    proceed.then((ok) => {
+      if (!ok) return;
+      form.dataset.confirmed = '1';
+      window.lexoraShowSaving(lexoraSavingLabel(form));
+      lexoraDisableSubmitButtons(form);
+      if (typeof form.requestSubmit === 'function') {
+        form.requestSubmit(submitter || undefined);
+      } else {
+        form.submit();
+      }
+    });
+  }, true);
+
+  document.addEventListener('submit', (e) => {
+    if (e.defaultPrevented) return;
+    const form = e.target;
+    if (!(form instanceof HTMLFormElement)) return;
+    if (form.dataset.noSaving === '1') return;
+    const method = (form.getAttribute('method') || 'get').toLowerCase();
+    if (method === 'get') return;
+
+    window.lexoraShowSaving(lexoraSavingLabel(form));
+    lexoraDisableSubmitButtons(form);
+  });
+
+  window.addEventListener('pageshow', () => {
+    window.lexoraHideSaving();
+  });
+})();
+
 document.addEventListener('DOMContentLoaded', () => {
   const toggle = document.querySelector('.nav-toggle');
   if (toggle) {
@@ -76,14 +199,102 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  document.querySelectorAll('[data-confirm]').forEach((el) => {
-    el.addEventListener('click', (e) => {
-      const i18n = window.LEXORA_I18N || {};
-      if (!confirm(el.getAttribute('data-confirm') || i18n.confirm || 'Are you sure?')) {
-        e.preventDefault();
+  window.lexoraConfirm = function lexoraConfirm(message, options) {
+    const i18n = window.LEXORA_I18N || {};
+    const opts = options || {};
+    const modal = document.getElementById('lexoraConfirmModal');
+
+    if (!modal) {
+      return Promise.resolve(window.confirm(message || i18n.confirm || 'Are you sure?'));
+    }
+
+    return new Promise((resolve) => {
+      const titleEl = document.getElementById('lexoraConfirmTitle');
+      const msgEl = document.getElementById('lexoraConfirmMessage');
+      const acceptBtn = document.getElementById('lexoraConfirmAccept');
+      const cancelBtn = document.getElementById('lexoraConfirmCancel');
+      const dismissEls = modal.querySelectorAll('[data-confirm-dismiss]');
+
+      if (titleEl) titleEl.textContent = opts.title || i18n.confirmTitle || 'Please confirm';
+      if (msgEl) msgEl.textContent = message || i18n.confirm || 'Are you sure?';
+      if (acceptBtn) acceptBtn.textContent = opts.confirmLabel || i18n.confirmProceed || 'Yes, continue';
+      if (cancelBtn) cancelBtn.textContent = opts.cancelLabel || i18n.cancel || 'Cancel';
+
+      modal.hidden = false;
+      modal.setAttribute('aria-hidden', 'false');
+      document.body.classList.add('appt-modal-open');
+
+      function cleanup(result) {
+        modal.hidden = true;
+        modal.setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('appt-modal-open');
+        acceptBtn.removeEventListener('click', onAccept);
+        cancelBtn.removeEventListener('click', onCancel);
+        dismissEls.forEach((el) => el.removeEventListener('click', onCancel));
+        document.removeEventListener('keydown', onKey);
+        resolve(result);
+      }
+
+      function onAccept() { cleanup(true); }
+      function onCancel() { cleanup(false); }
+      function onKey(ev) {
+        if (ev.key === 'Escape') onCancel();
+      }
+
+      acceptBtn.addEventListener('click', onAccept);
+      cancelBtn.addEventListener('click', onCancel);
+      dismissEls.forEach((el) => el.addEventListener('click', onCancel));
+      document.addEventListener('keydown', onKey);
+      cancelBtn.focus();
+    });
+  };
+
+  document.addEventListener('click', (e) => {
+    const el = e.target.closest('[data-confirm]');
+    if (!el) return;
+    if (el.closest('form') && (el.type === 'submit' || (el.tagName === 'BUTTON' && !el.type))) return;
+
+    const i18n = window.LEXORA_I18N || {};
+    const msg = el.getAttribute('data-confirm') || i18n.confirm || 'Are you sure?';
+    e.preventDefault();
+    e.stopPropagation();
+    window.lexoraConfirm(msg).then((ok) => {
+      if (!ok) return;
+      if (el.tagName === 'A' && el.href) {
+        window.location.href = el.getAttribute('href');
+      } else if (typeof el.click === 'function' && el.tagName !== 'A') {
+        el.removeAttribute('data-confirm');
+        el.click();
+        el.setAttribute('data-confirm', msg);
       }
     });
   });
+
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.inv-remove-line');
+    if (!btn) return;
+    const tbody = btn.closest('tbody');
+    if (!tbody) return;
+    const rows = tbody.querySelectorAll('.inv-line');
+    if (rows.length <= 1) {
+      e.preventDefault();
+      return;
+    }
+
+    e.preventDefault();
+    e.stopImmediatePropagation();
+
+    const i18n = window.LEXORA_I18N || {};
+    const msg = btn.getAttribute('data-confirm') || i18n.confirmRemoveLine || i18n.confirm || 'Remove this line?';
+    window.lexoraConfirm(msg).then((ok) => {
+      if (!ok) return;
+      const row = btn.closest('tr');
+      if (row) row.remove();
+      if (typeof window.lexoraInvoiceRecalc === 'function') {
+        window.lexoraInvoiceRecalc();
+      }
+    });
+  }, true);
 
   // Shared search + status filter for appointment / court list panels
   window.lexoraInitListFilter = function (opts) {
@@ -180,6 +391,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     aiForm.addEventListener('submit', async (e) => {
       e.preventDefault();
+      aiForm.dataset.noSaving = '1';
       const input = document.getElementById('ai-message');
       await sendAiMessage(input ? input.value : '');
     });
@@ -187,19 +399,80 @@ document.addEventListener('DOMContentLoaded', () => {
     window.lexoraSendAiMessage = sendAiMessage;
   }
 
+  initSelectWraps();
   initAiAssistantUi();
+  initAvailabilitySchedule();
+  initAppointmentSlotPicker();
   initDashboardCharts();
   initAppointmentsCalendar();
+  initGlassDashPagination();
 });
 
 window.addEventListener('load', () => {
   if (window.LEXORA_DASHBOARD) {
     initDashboardCharts();
     if (typeof window.initGlassOverview === 'function') window.initGlassOverview();
+    initGlassDashPagination();
   }
 });
 
 /* Dashboard overview is initialized from admin/index.php (initGlassOverview). */
+
+function initGlassDashPagination() {
+  document.querySelectorAll('[data-glass-pager-root]').forEach((root) => {
+    if (root.dataset.glassPagerBound === '1') return;
+
+    const perPage = Math.max(1, parseInt(root.dataset.perPage, 10) || 3);
+    const rows = Array.from(root.querySelectorAll('[data-glass-page-row]'));
+    const pagerWrap = root.querySelector('.glass-dash-pager-wrap');
+    if (!rows.length) {
+      if (pagerWrap) pagerWrap.hidden = true;
+      return;
+    }
+
+    const prevBtn = root.querySelector('[data-glass-page="prev"]');
+    const nextBtn = root.querySelector('[data-glass-page="next"]');
+    const labelEl = root.querySelector('.glass-dash-page-label');
+    const pageOfTpl = root.dataset.pageOf || 'Page :page of :pages';
+    let page = 1;
+    const pages = Math.max(1, Math.ceil(rows.length / perPage));
+
+    const render = () => {
+      rows.forEach((row, index) => {
+        const rowPage = Math.floor(index / perPage) + 1;
+        row.hidden = rowPage !== page;
+      });
+      if (labelEl) {
+        labelEl.textContent = pageOfTpl
+          .replace(':page', String(page))
+          .replace(':pages', String(pages));
+      }
+      if (prevBtn) prevBtn.disabled = page <= 1;
+      if (nextBtn) nextBtn.disabled = page >= pages;
+      if (pagerWrap) pagerWrap.hidden = false;
+    };
+
+    if (prevBtn) {
+      prevBtn.addEventListener('click', () => {
+        if (page <= 1) return;
+        page -= 1;
+        render();
+      });
+    }
+    if (nextBtn) {
+      nextBtn.addEventListener('click', () => {
+        if (page >= pages) return;
+        page += 1;
+        render();
+      });
+    }
+
+    root.dataset.glassPagerBound = '1';
+    render();
+  });
+}
+
+window.initGlassDashPagination = initGlassDashPagination;
 
 function initAiAssistantUi() {
   const workspace = document.getElementById('ai-workspace');
@@ -250,7 +523,7 @@ function initAiAssistantUi() {
     prompts = [];
   }
 
-  const perPage = 9;
+  const perPage = 8;
   let page = 0;
   const list = document.getElementById('ai-prompt-list');
   const label = document.getElementById('ai-prompt-page-label');
@@ -1097,6 +1370,11 @@ function initAppointmentsCalendar() {
       const calDateUrl = esc(buildCalDateUrl(year, month, d));
       html += `<div class="${classes}" data-day="${d}" data-date="${dateKey(year, month, d)}" data-col="${colIndex}"><a href="${calDateUrl}" class="appt-cal-day-select" aria-label="${d}${items.length ? `, ${items.length} appointment${items.length > 1 ? 's' : ''}` : ''}"><span class="appt-cal-day-num">${d}</span></a>${renderDayEvents(items)}</div>`;
     }
+    const usedCells = firstDow + daysInMonth;
+    const targetCells = 6 * 7;
+    for (let i = usedCells; i < targetCells; i += 1) {
+      html += '<span class="appt-cal-day is-empty" aria-hidden="true"></span>';
+    }
     daysEl.innerHTML = html;
 
     updateDaySelection();
@@ -1169,4 +1447,243 @@ function initAppointmentsCalendar() {
   } finally {
     root.dataset.calReady = '1';
   }
+}
+
+function initSelectWraps() {
+  document.querySelectorAll('select').forEach((select) => {
+    if (select.closest('.select-wrap')) return;
+    const parent = select.parentElement;
+    if (!parent) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'select-wrap';
+    parent.insertBefore(wrap, select);
+    wrap.appendChild(select);
+  });
+}
+
+function initAvailabilitySchedule() {
+  const form = document.getElementById('availScheduleForm');
+  if (!form) return;
+
+  const i18n = window.LEXORA_I18N || {};
+  const totalEl = document.getElementById('availSelectedTotal');
+  const totalTpl = i18n.availabilitySlotsSelected || ':count slots selected';
+  const dayTpl = i18n.availabilityDayCount || ':count selected';
+
+  function columnInputs(day) {
+    return Array.from(form.querySelectorAll('.avail-slot-input')).filter((input) => {
+      return String(input.value).indexOf(`${day}-`) === 0;
+    });
+  }
+
+  function syncCell(input) {
+    const cell = input.closest('.avail-cell') || input.closest('.avail-slot');
+    if (!cell) return;
+    cell.classList.toggle('is-on', input.checked);
+  }
+
+  function refreshCounts() {
+    let total = 0;
+    form.querySelectorAll('[data-avail-day-count]').forEach((el) => {
+      const day = el.getAttribute('data-avail-day-count');
+      const count = columnInputs(day).filter((input) => input.checked).length;
+      total += count;
+      el.textContent = String(dayTpl).replace(':count', String(count));
+    });
+    if (totalEl) {
+      totalEl.textContent = String(totalTpl).replace(':count', String(total));
+    }
+  }
+
+  form.querySelectorAll('.avail-slot-input').forEach((input) => {
+    syncCell(input);
+    input.addEventListener('change', () => {
+      syncCell(input);
+      refreshCounts();
+    });
+  });
+  refreshCounts();
+
+  form.querySelectorAll('[data-avail-day-toggle]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const col = btn.closest('[data-avail-day]');
+      if (!col) return;
+      const day = col.getAttribute('data-avail-day');
+      const on = btn.getAttribute('data-avail-day-toggle') === 'on';
+      columnInputs(day).forEach((input) => {
+        input.checked = on;
+        syncCell(input);
+      });
+      refreshCounts();
+    });
+  });
+
+  document.querySelectorAll('[data-avail-preset]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const preset = btn.getAttribute('data-avail-preset');
+      form.querySelectorAll('.avail-slot-input').forEach((input) => {
+        const parts = String(input.value).split('-');
+        const day = parseInt(parts[0], 10);
+        const time = parts[1] || '';
+        let on = false;
+        if (preset === 'all') {
+          on = true;
+        } else if (preset === 'clear') {
+          on = false;
+        } else if (preset === 'weekdays') {
+          on = day >= 1 && day <= 5 && time >= '09:00' && time <= '16:30';
+        }
+        input.checked = on;
+        syncCell(input);
+      });
+      refreshCounts();
+    });
+  });
+}
+
+function initAppointmentSlotPicker() {
+  const configEl = document.getElementById('apptSlotPickerConfig');
+  if (!configEl) return;
+
+  const apiUrl = configEl.getAttribute('data-api-url') || '';
+  const editId = parseInt(configEl.getAttribute('data-edit-id') || '0', 10);
+  const hasLawyerSelect = configEl.getAttribute('data-has-lawyer-select') === '1';
+  const lawyerSelect = hasLawyerSelect ? document.getElementById('lawyer_id') : null;
+  const dateInput = document.getElementById('appt_schedule_date');
+  const timeSelect = document.getElementById('appt_schedule_time');
+  const scheduledAtInput = document.getElementById('scheduled_at');
+  const durationInput = document.getElementById('duration_minutes');
+  const warningEl = document.getElementById('apptAvailWarning');
+  if (!dateInput || !timeSelect || !scheduledAtInput) return;
+
+  const i18n = window.LEXORA_I18N || {};
+  let fetchToken = 0;
+  let pendingTime = configEl.getAttribute('data-initial-time') || timeSelect.value || '';
+
+  function getLawyerId() {
+    if (lawyerSelect) {
+      return parseInt(lawyerSelect.value || '0', 10);
+    }
+    return parseInt(configEl.getAttribute('data-lawyer-id') || '0', 10);
+  }
+
+  function syncScheduledAt() {
+    const date = dateInput.value;
+    const time = timeSelect.value;
+    scheduledAtInput.value = date && time ? `${date}T${time}` : '';
+  }
+
+  function setWarning(msg, show) {
+    if (!warningEl) return;
+    warningEl.textContent = msg || '';
+    warningEl.hidden = !show;
+  }
+
+  function refreshSlots() {
+    const lawyerId = getLawyerId();
+    const date = dateInput.value;
+    const duration = parseInt(durationInput && durationInput.value ? durationInput.value : '60', 10) || 60;
+
+    syncScheduledAt();
+
+    if (!lawyerId) {
+      timeSelect.innerHTML = `<option value="">${i18n.apptSelectLawyer || 'Select a lawyer first'}</option>`;
+      timeSelect.disabled = true;
+      setWarning('', false);
+      return;
+    }
+
+    if (!date) {
+      timeSelect.innerHTML = `<option value="">${i18n.apptSelectDate || 'Select a date first'}</option>`;
+      timeSelect.disabled = true;
+      setWarning('', false);
+      return;
+    }
+
+    const token = ++fetchToken;
+    const params = new URLSearchParams({
+      lawyer_id: String(lawyerId),
+      date,
+      duration: String(duration),
+    });
+    if (editId > 0) params.set('exclude', String(editId));
+
+    timeSelect.disabled = true;
+    timeSelect.innerHTML = `<option value="">${i18n.apptLoadingSlots || 'Loading…'}</option>`;
+
+    fetch(`${apiUrl}?${params.toString()}`, {
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' },
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (token !== fetchToken) return;
+        const slots = (data && data.slots) || [];
+        const chooseLabel = i18n.apptChooseTime || 'Choose a time';
+        if (!slots.length) {
+          timeSelect.innerHTML = `<option value="">${i18n.apptNoSlots || 'No available times'}</option>`;
+          timeSelect.disabled = true;
+          pendingTime = '';
+          setWarning(i18n.apptNoSlots || 'No available times on this date.', true);
+          syncScheduledAt();
+          return;
+        }
+
+        timeSelect.disabled = false;
+        setWarning('', false);
+        let html = `<option value="">${chooseLabel}</option>`;
+        slots.forEach((slot) => {
+          const selected = slot.value === pendingTime ? ' selected' : '';
+          html += `<option value="${slot.value}"${selected}>${slot.label}</option>`;
+        });
+        timeSelect.innerHTML = html;
+        if (pendingTime && !slots.some((slot) => slot.value === pendingTime)) {
+          pendingTime = '';
+        }
+        if (pendingTime) {
+          timeSelect.value = pendingTime;
+        }
+        syncScheduledAt();
+      })
+      .catch(() => {
+        if (token !== fetchToken) return;
+        timeSelect.innerHTML = `<option value="">${i18n.apptChooseTime || 'Choose a time'}</option>`;
+        timeSelect.disabled = false;
+      });
+  }
+
+  dateInput.addEventListener('change', () => {
+    pendingTime = '';
+    refreshSlots();
+  });
+  if (durationInput) {
+    durationInput.addEventListener('change', () => {
+      pendingTime = timeSelect.value;
+      refreshSlots();
+    });
+  }
+  if (lawyerSelect) {
+    lawyerSelect.addEventListener('change', () => {
+      pendingTime = '';
+      refreshSlots();
+    });
+  }
+  timeSelect.addEventListener('change', () => {
+    pendingTime = timeSelect.value;
+    syncScheduledAt();
+    setWarning('', false);
+  });
+
+  const form = scheduledAtInput.closest('form');
+  if (form) {
+    form.addEventListener('submit', (event) => {
+      syncScheduledAt();
+      if (!scheduledAtInput.value) {
+        event.preventDefault();
+        setWarning(i18n.apptChooseTime || 'Please choose an available time.', true);
+      }
+    });
+  }
+
+  refreshSlots();
 }

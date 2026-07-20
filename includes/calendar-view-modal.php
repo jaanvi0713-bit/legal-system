@@ -5,6 +5,10 @@
  */
 $viewItem = $viewItem ?? null;
 $calFieldPerson = $calFieldPerson ?? __('common.client');
+$showLawyer = $viewItem && trim((string) ($viewItem['lawyer'] ?? '')) !== '';
+$showHearingType = $viewItem && trim((string) ($viewItem['hearingType'] ?? '')) !== '';
+$showJudge = $viewItem && trim((string) ($viewItem['judge'] ?? '')) !== '';
+$showOutcome = $viewItem && trim((string) ($viewItem['outcome'] ?? '')) !== '';
 ?>
 <div class="appt-view-modal" id="apptViewModal"<?= $viewItem ? '' : ' hidden' ?> aria-hidden="<?= $viewItem ? 'false' : 'true' ?>">
     <div class="appt-view-backdrop" data-appt-close tabindex="-1"></div>
@@ -15,7 +19,9 @@ $calFieldPerson = $calFieldPerson ?? __('common.client');
         <h2 class="appt-view-title" id="apptViewTitle"><?= $viewItem ? e((string) $viewItem['title']) : '' ?></h2>
         <dl class="appt-view-fields">
             <div class="appt-view-field"><dt id="apptViewClientLabel"><?= e($calFieldPerson) ?></dt><dd id="apptViewClient"><?= $viewItem ? e((string) ($viewItem['client'] ?: __('common.em_dash'))) : '' ?></dd></div>
+            <div class="appt-view-field" id="apptViewLawyerRow"<?= $showLawyer ? '' : ' hidden' ?>><dt><?= __e('common.lawyer') ?></dt><dd id="apptViewLawyer"><?= $showLawyer ? e((string) $viewItem['lawyer']) : '' ?></dd></div>
             <div class="appt-view-field"><dt><?= __e('common.case') ?></dt><dd id="apptViewCase"><?= $viewItem ? e((string) ($viewItem['caseLabel'] ?: __('common.em_dash'))) : '' ?></dd></div>
+            <div class="appt-view-field" id="apptViewHearingTypeRow"<?= $showHearingType ? '' : ' hidden' ?>><dt><?= __e('form.hearing_type') ?></dt><dd id="apptViewHearingType"><?= $showHearingType ? e((string) $viewItem['hearingType']) : '' ?></dd></div>
             <div class="appt-view-field"><dt><?= __e('common.when') ?></dt><dd id="apptViewWhen"><?php
                 if ($viewItem) {
                     $startTs = strtotime((string) $viewItem['scheduledAt']);
@@ -26,7 +32,9 @@ $calFieldPerson = $calFieldPerson ?? __('common.client');
                 }
             ?></dd></div>
             <div class="appt-view-field"><dt><?= __e('common.location') ?></dt><dd id="apptViewLocation"><?= $viewItem ? e((string) ($viewItem['location'] ?: __('common.em_dash'))) : '' ?></dd></div>
+            <div class="appt-view-field" id="apptViewJudgeRow"<?= $showJudge ? '' : ' hidden' ?>><dt><?= __e('form.judge') ?></dt><dd id="apptViewJudge"><?= $showJudge ? e((string) $viewItem['judge']) : '' ?></dd></div>
             <div class="appt-view-field"><dt><?= __e('common.status') ?></dt><dd id="apptViewStatus"><?= $viewItem ? e((string) ($viewItem['statusLabel'] ?? $viewItem['status'] ?: __('common.em_dash'))) : '' ?></dd></div>
+            <div class="appt-view-field" id="apptViewOutcomeRow"<?= $showOutcome ? '' : ' hidden' ?>><dt><?= __e('form.outcome') ?></dt><dd id="apptViewOutcome"><?= $showOutcome ? e((string) $viewItem['outcome']) : '' ?></dd></div>
             <div class="appt-view-field"><dt><?= __e('common.notes') ?></dt><dd id="apptViewNotes"><?= $viewItem ? e((string) ($viewItem['description'] ?: __('common.em_dash'))) : '' ?></dd></div>
         </dl>
         <div class="appt-view-export">

@@ -63,6 +63,14 @@ $g = hexdec(substr($accent, 3, 2));
 $b = hexdec(substr($accent, 5, 2));
 $accentDark = sprintf('#%02x%02x%02x', max(0, $r - 30), max(0, $g - 30), max(0, $b - 30));
 
+$companyLogo = '';
+$companyFavicon = '';
+try {
+    $companyLogo = trim((string) get_setting(db(), 'company_logo', ''));
+    $companyFavicon = trim((string) get_setting(db(), 'company_favicon', ''));
+} catch (Throwable $e) {
+}
+
 $base = app_config('url');
 $cssVer = @filemtime(__DIR__ . '/assets/css/login.css') ?: time();
 $uiLang = current_lang();
@@ -73,6 +81,7 @@ $uiLang = current_lang();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= e($appName) ?> · <?= __e('login.title') ?></title>
+    <?php if ($companyFavicon !== ''): ?><link rel="icon" href="<?= e($base . '/' . ltrim($companyFavicon, '/')) ?>"><?php endif; ?>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -101,7 +110,7 @@ $uiLang = current_lang();
             <div class="login-plate">
                 <div class="glass-card">
                     <div class="card-head">
-                        <div class="brand-badge" aria-hidden="true">L</div>
+                        <div class="brand-badge<?= $companyLogo !== '' ? ' brand-badge--logo' : '' ?>" aria-hidden="true"><?php if ($companyLogo !== ''): ?><img src="<?= e($base . '/' . ltrim($companyLogo, '/')) ?>" alt=""><?php else: ?>L<?php endif; ?></div>
                         <div class="company-name"><?= e(strtoupper($brandName)) ?></div>
                     </div>
 

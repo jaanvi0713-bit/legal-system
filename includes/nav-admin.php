@@ -1,4 +1,9 @@
 <?php
+require_once __DIR__ . '/role-access.php';
+$user = current_user();
+$canSeeAll = ($user['role'] ?? '') === 'admin';
+$allowedModules = $canSeeAll ? null : role_access_staff_modules(db(), $user);
+
 $items = [
     ['index.php', 'nav.dashboard', 'dashboard', 'dashboard'],
     ['clients.php', 'nav.clients', 'clients', 'clients'],
@@ -12,6 +17,9 @@ $items = [
     ['users.php', 'nav.users', 'users', 'users'],
 ];
 foreach ($items as [$href, $labelKey, $key, $icon]):
+    if ($allowedModules !== null && !in_array($key, $allowedModules, true)) {
+        continue;
+    }
     $active = ($activeNav ?? '') === $key ? 'active' : '';
 ?>
 <a class="nav-link <?= $active ?>" href="<?= e($portalBase . '/' . $href) ?>">

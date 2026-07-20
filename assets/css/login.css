@@ -158,6 +158,20 @@ body.login-page {
     background: rgba(255, 255, 255, 0.08);
     border: 1px solid rgba(255, 255, 255, 0.16);
     box-shadow: 0 0 24px rgba(var(--lp-accent-rgb), 0.35);
+    overflow: hidden;
+}
+.brand-badge--logo {
+    background: #fff;
+    border-radius: 14px;
+    padding: 5px;
+    border-color: rgba(255, 255, 255, 0.5);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.25);
+}
+.brand-badge--logo img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
 }
 
 .company-name {

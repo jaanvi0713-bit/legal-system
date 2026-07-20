@@ -1,10 +1,23 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/role-access.php';
 require_role(['admin']);
 $pdo = db();
 $action = get('action', 'list');
 $id = (int) get('id', 0);
 $permissionOptions = ['clients', 'lawyers', 'cases', 'appointments', 'court', 'reports', 'notifications'];
+$permissionLabel = static function (string $p): string {
+    $map = [
+        'clients' => 'nav.clients',
+        'lawyers' => 'nav.lawyers',
+        'cases' => 'nav.cases',
+        'appointments' => 'nav.appointments',
+        'court' => 'nav.court',
+        'reports' => 'page.reports',
+        'notifications' => 'nav.notifications',
+    ];
+    return __($map[$p] ?? $p);
+};
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
@@ -12,9 +25,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($fa === 'save') {
         $editId = (int) post('id');
         $role = post('role', 'client');
-        $perms = $role === 'staff'
-            ? json_encode(array_values($_POST['permissions'] ?? []))
-            : null;
+        $perms = null;
+        if ($role === 'staff') {
+            $accessRole = post('staff_access_role', 'staff');
+            $config = role_access_load($pdo);
+            $perm = $config['permissions'][$accessRole] ?? role_access_default_permissions()['staff'];
+            $perms = json_encode([
+                'access_role' => $accessRole,
+                'modules' => array_values($perm['modules'] ?? []),
+                'assigned_cases' => !empty($perm['assigned_cases']),
+                'read_only' => !empty($perm['read_only']),
+            ], JSON_UNESCAPED_UNICODE);
+        }
 
         if ($editId) {
             $pdo->prepare('UPDATE users SET first_name=?, last_name=?, username=?, email=?, phone=?, role=?, permissions=?, is_active=? WHERE id=?')
@@ -33,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->prepare('UPDATE users SET password=? WHERE id=?')
                     ->execute([password_hash(post('password'), PASSWORD_DEFAULT), $editId]);
             }
-            flash('success', 'User updated.');
+            flash('success', __('flash.user.updated'));
         } else {
             $pdo->prepare('INSERT INTO users (role, first_name, last_name, username, email, password, phone, permissions, is_active) VALUES (?,?,?,?,?,?,?,?,?)')
                 ->execute([
@@ -47,30 +69,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $perms,
                     (int) (post('is_active') === '1'),
                 ]);
-            flash('success', 'User created.');
+            flash('success', __('flash.user.created'));
         }
         redirect('users.php');
     }
     if ($fa === 'toggle') {
         $pdo->prepare('UPDATE users SET is_active = IF(is_active=1,0,1) WHERE id=?')->execute([(int) post('id')]);
-        flash('success', 'Account status updated.');
+        flash('success', __('flash.user.status'));
         redirect('users.php');
     }
     if ($fa === 'reset') {
         $pdo->prepare('UPDATE users SET password=? WHERE id=?')
             ->execute([password_hash('password123', PASSWORD_DEFAULT), (int) post('id')]);
-        flash('success', 'Password reset to password123.');
+        flash('success', __('flash.user.password_reset'));
         redirect('users.php');
     }
     if ($fa === 'delete') {
         $pdo->prepare('DELETE FROM users WHERE id=? AND role="staff"')->execute([(int) post('id')]);
-        flash('success', 'Staff member removed.');
+        flash('success', __('flash.staff.removed'));
         redirect('users.php');
     }
 }
 
 $pageTitle = __('page.users');
-$pageSubtitle = 'Accounts, roles, staff permissions, and access control';
+$pageSubtitle = __('page.users.subtitle');
 $portal = 'admin';
 $activeNav = 'users';
 
@@ -91,7 +113,12 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
         $stmt->execute([$id]);
         $row = $stmt->fetch() ?: $row;
     }
-    $selectedPerms = json_decode($row['permissions'] ?: '[]', true) ?: [];
+    $permData = json_decode($row['permissions'] ?: '{}', true);
+    if (!is_array($permData)) {
+        $permData = [];
+    }
+    $selectedAccessRole = (string) ($permData['access_role'] ?? 'staff');
+    $roleAccessConfig = role_access_load($pdo);
     require __DIR__ . '/../includes/header.php';
     $isEdit = (bool) $id;
     ?>
@@ -99,11 +126,11 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
     <div class="entity-form panel">
         <div class="entity-form-hero">
             <div>
-                <p class="entity-form-eyebrow"><?= $isEdit ? 'User account' : 'New account' ?></p>
-                <h2><?= $isEdit ? 'Edit user' : 'Create user' ?></h2>
-                <p class="muted"><?= $isEdit ? 'Update profile, role, and access status.' : 'Create a portal account for admin, staff, lawyer, or client.' ?></p>
+                <p class="entity-form-eyebrow"><?= $isEdit ? __e('users.eyebrow.edit') : __e('users.eyebrow.create') ?></p>
+                <h2><?= $isEdit ? __e('users.edit') : __e('users.create') ?></h2>
+                <p class="muted"><?= $isEdit ? __e('users.form.help.edit') : __e('users.form.help.create') ?></p>
             </div>
-            <p class="entity-form-required-note"><span class="req">*</span> Required fields</p>
+            <p class="entity-form-required-note"><span class="req">*</span> <?= __e('form.required_fields') ?></p>
         </div>
         <form method="post" id="user-form">
             <div class="entity-form-body">
@@ -113,77 +140,84 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
 
                 <section class="entity-section">
                     <div class="entity-section-head">
-                        <h3>Profile</h3>
-                        <p>Basic identity and contact details.</p>
+                        <h3><?= __e('form.section.profile') ?></h3>
+                        <p><?= __e('users.section.profile_help') ?></p>
                     </div>
                     <div class="form-grid">
-                        <div class="form-group">
-                            <label for="first_name">First name <span class="req">*</span></label>
-                            <input id="first_name" name="first_name" required value="<?= e($row['first_name']) ?>">
+                        <div class="entity-field-row entity-field-row--2">
+                            <div class="form-group">
+                                <label for="first_name"><?= __e('form.first_name') ?> <span class="req">*</span></label>
+                                <input id="first_name" name="first_name" required value="<?= e($row['first_name']) ?>">
+                            </div>
+                            <div class="form-group">
+                                <label for="last_name"><?= __e('form.last_name') ?> <span class="req">*</span></label>
+                                <input id="last_name" name="last_name" required value="<?= e($row['last_name']) ?>">
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label for="last_name">Last name <span class="req">*</span></label>
-                            <input id="last_name" name="last_name" required value="<?= e($row['last_name']) ?>">
-                        </div>
-                        <div class="form-group">
-                            <label for="email">Email <span class="req">*</span></label>
-                            <input id="email" type="email" name="email" required value="<?= e($row['email']) ?>">
-                        </div>
-                        <div class="form-group">
-                            <label for="phone">Phone</label>
-                            <input id="phone" name="phone" value="<?= e($row['phone']) ?>">
+                        <div class="entity-field-row entity-field-row--2">
+                            <div class="form-group">
+                                <label for="email"><?= __e('common.email') ?> <span class="req">*</span></label>
+                                <input id="email" type="email" name="email" required value="<?= e($row['email']) ?>">
+                            </div>
+                            <div class="form-group">
+                                <label for="phone"><?= __e('common.phone') ?></label>
+                                <input id="phone" name="phone" value="<?= e($row['phone']) ?>">
+                            </div>
                         </div>
                     </div>
                 </section>
 
                 <section class="entity-section">
                     <div class="entity-section-head">
-                        <h3>Access</h3>
-                        <p>Login credentials, role, and activation.</p>
+                        <h3><?= __e('form.section.access') ?></h3>
+                        <p><?= __e('users.section.access_help') ?></p>
                     </div>
                     <div class="form-grid">
-                        <div class="form-group">
-                            <label for="username">Username <span class="req">*</span></label>
-                            <input id="username" name="username" required value="<?= e($row['username']) ?>">
+                        <div class="entity-field-row">
+                            <div class="form-group">
+                                <label for="username"><?= __e('form.username') ?> <span class="req">*</span></label>
+                                <input id="username" name="username" required value="<?= e($row['username']) ?>">
+                            </div>
+                            <div class="form-group">
+                                <label for="password"><?= $isEdit ? __e('form.new_password') : __e('form.password') ?><?= $isEdit ? '' : ' <span class="req">*</span>' ?></label>
+                                <input id="password" name="password" placeholder="<?= $isEdit ? __e('form.password_keep') : __e('form.password_default') ?>">
+                            </div>
+                            <div class="form-group">
+                                <label for="user-role"><?= __e('common.role') ?> <span class="req">*</span></label>
+                                <select name="role" id="user-role" required>
+                                    <?php foreach (['admin', 'staff', 'lawyer', 'client'] as $r): ?>
+                                        <option value="<?= e($r) ?>" <?= $row['role'] === $r ? 'selected' : '' ?>><?= e(translate_role($r)) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label for="password"><?= $isEdit ? 'New password' : 'Password' ?><?= $isEdit ? '' : ' <span class="req">*</span>' ?></label>
-                            <input id="password" name="password" placeholder="<?= $isEdit ? 'Leave blank to keep current' : 'Defaults to password123' ?>" <?= $isEdit ? '' : '' ?>>
-                            <span class="field-hint"><?= $isEdit ? 'Optional — leave blank to keep the current password.' : 'Optional — defaults to password123 if empty.' ?></span>
+                        <div class="entity-field-row entity-field-row--2">
+                            <div class="form-group">
+                                <label for="is_active"><?= __e('common.status') ?> <span class="req">*</span></label>
+                                <select id="is_active" name="is_active" required>
+                                    <option value="1" <?= $row['is_active'] ? 'selected' : '' ?>><?= __e('status.active') ?></option>
+                                    <option value="0" <?= !$row['is_active'] ? 'selected' : '' ?>><?= __e('users.status.deactivated') ?></option>
+                                </select>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label for="user-role">Role <span class="req">*</span></label>
-                            <select name="role" id="user-role" required>
-                                <?php foreach (['admin', 'staff', 'lawyer', 'client'] as $r): ?>
-                                    <option value="<?= e($r) ?>" <?= $row['role'] === $r ? 'selected' : '' ?>><?= e(ucfirst($r)) ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="is_active">Status <span class="req">*</span></label>
-                            <select id="is_active" name="is_active" required>
-                                <option value="1" <?= $row['is_active'] ? 'selected' : '' ?>>Active</option>
-                                <option value="0" <?= !$row['is_active'] ? 'selected' : '' ?>>Deactivated</option>
-                            </select>
+                        <div class="form-group full entity-field-notes">
+                            <span class="field-hint"><?= $isEdit ? __e('form.hint.password_keep') : __e('form.hint.password_default') ?></span>
                         </div>
                         <div class="form-group full" id="staff-permissions" hidden>
-                            <label>Staff module permissions</label>
-                            <div class="quick-links">
-                                <?php foreach ($permissionOptions as $p): ?>
-                                    <label class="chip">
-                                        <input type="checkbox" name="permissions[]" value="<?= e($p) ?>" <?= in_array($p, $selectedPerms, true) ? 'checked' : '' ?>>
-                                        <?= e(ucfirst($p)) ?>
-                                    </label>
+                            <label for="staff_access_role"><?= __e('users.staff_access_role') ?></label>
+                            <select id="staff_access_role" name="staff_access_role">
+                                <?php foreach ($roleAccessConfig['roles'] as $accessRole): ?>
+                                    <option value="<?= e($accessRole['id']) ?>" <?= $selectedAccessRole === $accessRole['id'] ? 'selected' : '' ?>><?= e($accessRole['name']) ?></option>
                                 <?php endforeach; ?>
-                            </div>
-                            <span class="field-hint">Only applies when the role is Staff.</span>
+                            </select>
+                            <span class="field-hint"><?= __e('users.staff_access_role_help') ?> <a href="settings.php?tab=roles"><?= __e('settings.tab.roles') ?></a></span>
                         </div>
                     </div>
                 </section>
             </div>
             <div class="entity-form-footer">
-                <a class="btn btn-secondary" href="users.php">Back to users</a>
-                <button class="btn btn-primary" type="submit"><?= $isEdit ? 'Save changes' : 'Create user' ?></button>
+                <a class="btn btn-secondary" href="users.php"><?= __e('common.cancel') ?></a>
+                <button class="btn btn-primary" type="submit"><?= $isEdit ? __e('common.save_changes') : __e('users.create') ?></button>
             </div>
         </form>
     </div>
@@ -224,12 +258,18 @@ require __DIR__ . '/../includes/header.php';
 ?>
 <div class="panel">
     <div class="panel-header">
-        <h2>Users &amp; staff</h2>
-        <a class="btn btn-primary btn-sm" href="?action=create">Create user</a>
+        <h2><?= __e('users.list') ?></h2>
+        <a class="btn btn-primary btn-sm" href="?action=create"><?= __e('users.create') ?></a>
     </div>
     <div class="quick-links" style="margin-bottom:1rem;">
         <?php
-        $filters = ['' => 'All', 'admin' => 'Admin', 'staff' => 'Staff', 'lawyer' => 'Lawyer', 'client' => 'Client'];
+        $filters = [
+            '' => __('users.filter.all'),
+            'admin' => __('users.filter.admin'),
+            'staff' => __('users.filter.staff'),
+            'lawyer' => __('users.filter.lawyer'),
+            'client' => __('users.filter.client'),
+        ];
         foreach ($filters as $key => $label):
             $href = $key === '' ? 'users.php' : 'users.php?role=' . urlencode($key);
         ?>
@@ -239,7 +279,7 @@ require __DIR__ . '/../includes/header.php';
     <div class="table-wrap">
         <table>
             <thead>
-                <tr><th>User</th><th>Role</th><th>Access</th><th>Last login</th><th>Status</th><th>Actions</th></tr>
+                <tr><th><?= __e('users.col.user') ?></th><th><?= __e('common.role') ?></th><th><?= __e('common.access') ?></th><th><?= __e('common.last_login') ?></th><th><?= __e('common.status') ?></th><th><?= __e('common.actions') ?></th></tr>
             </thead>
             <tbody>
             <?php foreach ($users as $u):
@@ -250,39 +290,39 @@ require __DIR__ . '/../includes/header.php';
                         <strong><?= e(full_name($u)) ?></strong>
                         <div class="muted"><?= e($u['username']) ?> · <?= e($u['email']) ?></div>
                     </td>
-                    <td><?= e(ucfirst($u['role'])) ?></td>
+                    <td><?= e(translate_role($u['role'])) ?></td>
                     <td>
                         <?php if ($u['role'] === 'staff'): ?>
-                            <?= e($perms ? implode(', ', $perms) : 'No modules assigned') ?>
+                            <?= e($perms ? implode(', ', array_map($permissionLabel, $perms)) : __('users.access.no_modules')) ?>
                         <?php elseif ($u['role'] === 'admin'): ?>
-                            Full access
+                            <?= __e('users.access.full') ?>
                         <?php else: ?>
-                            Portal role
+                            <?= __e('users.access.portal') ?>
                         <?php endif; ?>
                     </td>
                     <td><?= e(format_datetime($u['last_login'])) ?></td>
                     <td><?= status_badge($u['is_active'] ? 'active' : 'unavailable') ?></td>
                     <td class="col-actions">
                         <div class="row-actions">
-                            <a class="btn btn-row-edit btn-sm" href="?action=edit&id=<?= (int) $u['id'] ?>">Edit</a>
-                            <form method="post">
+                            <a class="btn btn-row-edit btn-sm" href="?action=edit&id=<?= (int) $u['id'] ?>"><?= __e('common.edit') ?></a>
+                            <form method="post"<?= $u['is_active'] ? ' data-confirm="' . __e('confirm.deactivate_user') . '"' : '' ?>>
                                 <?= csrf_field() ?>
                                 <input type="hidden" name="form_action" value="toggle">
                                 <input type="hidden" name="id" value="<?= (int) $u['id'] ?>">
-                                <button class="btn btn-sm <?= $u['is_active'] ? 'btn-row-delete' : 'btn-row-approve' ?>" type="submit"><?= $u['is_active'] ? 'Deactivate' : 'Activate' ?></button>
+                                <button class="btn btn-sm <?= $u['is_active'] ? 'btn-row-delete' : 'btn-row-approve' ?>" type="submit"><?= $u['is_active'] ? __e('common.deactivate') : __e('common.activate') ?></button>
                             </form>
-                            <form method="post" onsubmit="return confirm('Reset password to password123?')">
+                            <form method="post" data-confirm="<?= __e('confirm.reset_password') ?>">
                                 <?= csrf_field() ?>
                                 <input type="hidden" name="form_action" value="reset">
                                 <input type="hidden" name="id" value="<?= (int) $u['id'] ?>">
-                                <button class="btn btn-row-edit btn-sm" type="submit">Reset PW</button>
+                                <button class="btn btn-row-edit btn-sm" type="submit"><?= __e('common.reset_pw') ?></button>
                             </form>
                             <?php if ($u['role'] === 'staff'): ?>
-                                <form method="post" onsubmit="return confirm('Remove this staff member?')">
+                                <form method="post" data-confirm="<?= __e('confirm.remove_staff') ?>">
                                     <?= csrf_field() ?>
                                     <input type="hidden" name="form_action" value="delete">
                                     <input type="hidden" name="id" value="<?= (int) $u['id'] ?>">
-                                    <button class="btn btn-row-delete btn-sm" type="submit">Remove</button>
+                                    <button class="btn btn-row-delete btn-sm" type="submit"><?= __e('common.remove') ?></button>
                                 </form>
                             <?php endif; ?>
                         </div>

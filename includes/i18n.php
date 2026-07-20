@@ -91,8 +91,11 @@ function __(string $key, array $replace = []): string
 {
     $strings = lang_strings();
     $text = $strings[$key] ?? $key;
-    foreach ($replace as $name => $value) {
-        $text = str_replace(':' . $name, (string) $value, $text);
+    if ($replace) {
+        uksort($replace, static fn (string $a, string $b): int => strlen($b) <=> strlen($a));
+        foreach ($replace as $name => $value) {
+            $text = str_replace(':' . $name, (string) $value, $text);
+        }
     }
     return $text;
 }

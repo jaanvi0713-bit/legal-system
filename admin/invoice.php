@@ -37,8 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $notes = trim((string) post('description'));
         $bankAccountId = (int) post('bank_account_id');
         if ($bankAccountId < 1 || $bankAccountId > 3 || !get_bank_account($pdo, $bankAccountId)) {
-            $configured = get_configured_bank_accounts($pdo);
-            $bankAccountId = $configured ? (int) array_key_first($configured) : null;
+            $bankAccountId = get_default_bank_account_id($pdo);
         }
 
         $descriptions = $_POST['item_description'] ?? [];
@@ -213,54 +212,58 @@ if ($action === 'generate') {
             <h2><?= __e('finance.generate_invoice') ?></h2>
             <a class="btn btn-secondary btn-sm" href="<?= e($genReturn) ?>"><?= __e('common.back') ?></a>
         </div>
-        <form method="post" class="form-grid" id="invoiceGenerateForm">
+        <form method="post" class="form-grid entity-inline-form" id="invoiceGenerateForm">
             <?= csrf_field() ?>
             <input type="hidden" name="form_action" value="generate">
             <input type="hidden" name="return_to" value="<?= e($genReturn) ?>">
-            <div class="form-group">
-                <label><?= __e('finance.client') ?></label>
-                <select name="client_id" id="invClient" required>
-                    <option value=""><?= __e('finance.select_client') ?></option>
-                    <?php foreach ($clients as $c): ?>
-                        <option value="<?= (int) $c['id'] ?>" <?= $preClientId === (int) $c['id'] ? 'selected' : '' ?>><?= e(full_name($c)) ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            <div class="form-group">
-                <label><?= __e('nav.cases') ?></label>
-                <select name="case_id" id="invCase">
-                    <option value=""><?= __e('common.em_dash') ?></option>
-                    <?php foreach ($cases as $c): ?>
-                        <option value="<?= (int) $c['id'] ?>" data-client="<?= (int) $c['client_id'] ?>" <?= $preCaseId === (int) $c['id'] ? 'selected' : '' ?>><?= e($c['case_number'] . ' · ' . $c['title']) ?></option>
-                    <?php endforeach; ?>
-                </select>
+            <div class="entity-field-row entity-field-row--2">
+                <div class="form-group">
+                    <label><?= __e('finance.client') ?></label>
+                    <select name="client_id" id="invClient" required>
+                        <option value=""><?= __e('finance.select_client') ?></option>
+                        <?php foreach ($clients as $c): ?>
+                            <option value="<?= (int) $c['id'] ?>" <?= $preClientId === (int) $c['id'] ? 'selected' : '' ?>><?= e(full_name($c)) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label><?= __e('nav.cases') ?></label>
+                    <select name="case_id" id="invCase">
+                        <option value=""><?= __e('common.em_dash') ?></option>
+                        <?php foreach ($cases as $c): ?>
+                            <option value="<?= (int) $c['id'] ?>" data-client="<?= (int) $c['client_id'] ?>" <?= $preCaseId === (int) $c['id'] ? 'selected' : '' ?>><?= e($c['case_number'] . ' · ' . $c['title']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
             </div>
             <div class="form-group full">
                 <label><?= __e('finance.invoice_title') ?></label>
                 <input name="title" value="Professional services" required>
             </div>
-            <div class="form-group">
-                <label><?= __e('form.issued') ?></label>
-                <input type="date" name="issued_at" value="<?= e(date('Y-m-d')) ?>" required>
+            <div class="entity-field-row">
+                <div class="form-group">
+                    <label><?= __e('form.issued') ?></label>
+                    <input type="date" name="issued_at" value="<?= e(date('Y-m-d')) ?>" required>
+                </div>
+                <div class="form-group">
+                    <label><?= __e('finance.due_date') ?></label>
+                    <input type="date" name="due_date" value="<?= e(date('Y-m-d', strtotime('+14 days'))) ?>">
+                </div>
+                <div class="form-group">
+                    <label><?= __e('common.status') ?></label>
+                    <select name="status">
+                        <?php foreach (['sent', 'draft', 'partial', 'paid', 'overdue'] as $s): ?>
+                            <option value="<?= e($s) ?>"><?= e(translate_status($s)) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
             </div>
-            <div class="form-group">
-                <label><?= __e('finance.due_date') ?></label>
-                <input type="date" name="due_date" value="<?= e(date('Y-m-d', strtotime('+14 days'))) ?>">
-            </div>
-            <div class="form-group">
-                <label><?= __e('common.status') ?></label>
-                <select name="status">
-                    <?php foreach (['sent', 'draft', 'partial', 'paid', 'overdue'] as $s): ?>
-                        <option value="<?= e($s) ?>"><?= e(translate_status($s)) ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            <div class="form-group">
+            <div class="form-group full">
                 <label><?= __e('finance.pay_to_bank') ?></label>
-                <?php if ($bankOptions): ?>
+                <?php if ($bankOptions): $defaultBankId = get_default_bank_account_id($pdo); ?>
                     <select name="bank_account_id" required>
                         <?php foreach ($bankOptions as $ba): ?>
-                            <option value="<?= (int) $ba['id'] ?>"><?= e($ba['label'] . ($ba['bank'] ? ' · ' . $ba['bank'] : '') . ($ba['account_number'] ? ' · ' . $ba['account_number'] : '')) ?></option>
+                            <option value="<?= (int) $ba['id'] ?>" <?= (int) $ba['id'] === (int) $defaultBankId ? 'selected' : '' ?>><?= e($ba['label'] . ($ba['bank'] ? ' · ' . $ba['bank'] : '') . ($ba['account_number'] ? ' · ' . $ba['account_number'] : '')) ?></option>
                         <?php endforeach; ?>
                     </select>
                 <?php else: ?>
@@ -342,20 +345,13 @@ if ($action === 'generate') {
         document.getElementById('invVatTotal').textContent = vat.toFixed(2);
         document.getElementById('invGrand').textContent = (sub + vat).toFixed(2);
       }
+      window.lexoraInvoiceRecalc = recalc;
       addBtn.addEventListener('click', function () {
         tbody.insertAdjacentHTML('beforeend', rowHtml());
         recalc();
       });
       tbody.addEventListener('input', function (e) {
         if (e.target.matches('.inv-qty, .inv-price, .inv-vat')) recalc();
-      });
-      tbody.addEventListener('click', function (e) {
-        var btn = e.target.closest('.inv-remove-line');
-        if (!btn) return;
-        var rows = tbody.querySelectorAll('.inv-line');
-        if (rows.length <= 1) return;
-        btn.closest('tr').remove();
-        recalc();
       });
       recalc();
     })();
@@ -552,8 +548,10 @@ $mailtoHref = 'mailto:' . rawurlencode((string) $invoice['email'])
                     <?php if ($selectedBank['bank']): ?><p><span><?= __e('settings.payments.bank_name') ?></span> <?= e($selectedBank['bank']) ?></p><?php endif; ?>
                     <?php if ($selectedBank['account_name']): ?><p><span><?= __e('settings.payments.account_name') ?></span> <?= e($selectedBank['account_name']) ?></p><?php endif; ?>
                     <?php if ($selectedBank['account_number']): ?><p><span><?= __e('settings.payments.account_number') ?></span> <?= e($selectedBank['account_number']) ?></p><?php endif; ?>
+                    <?php if (!empty($selectedBank['sort_code'])): ?><p><span><?= __e('settings.payments.sort_code') ?></span> <?= e($selectedBank['sort_code']) ?></p><?php endif; ?>
                     <?php if ($selectedBank['iban']): ?><p><span><?= __e('settings.payments.iban') ?></span> <?= e($selectedBank['iban']) ?></p><?php endif; ?>
                     <?php if ($selectedBank['swift']): ?><p><span><?= __e('settings.payments.swift') ?></span> <?= e($selectedBank['swift']) ?></p><?php endif; ?>
+                    <?php if (!empty($selectedBank['reference'])): ?><p><span><?= __e('settings.payments.reference') ?></span> <?= e($selectedBank['reference']) ?></p><?php endif; ?>
                 </div>
             <?php else: ?>
                 <p class="muted no-print"><?= __e('finance.no_bank_on_invoice') ?></p>

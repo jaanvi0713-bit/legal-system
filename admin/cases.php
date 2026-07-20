@@ -125,7 +125,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $clients = $pdo->query("SELECT id, first_name, last_name FROM users WHERE role='client' ORDER BY first_name")->fetchAll();
 $lawyers = $pdo->query("SELECT id, first_name, last_name FROM users WHERE role='lawyer' AND is_active=1 ORDER BY first_name")->fetchAll();
 $pageTitle = __('page.cases');
-$pageSubtitle = 'Full control over every matter in the firm';
+$pageSubtitle = __('page.cases.subtitle');
 $portal = 'admin';
 $activeNav = 'cases';
 
@@ -146,11 +146,11 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
     <div class="entity-form panel">
         <div class="entity-form-hero">
             <div>
-                <p class="entity-form-eyebrow"><?= $isEdit ? 'Case record' : 'New matter' ?></p>
-                <h2><?= $isEdit ? 'Edit case' : 'Open case' ?></h2>
-                <p class="muted"><?= $isEdit ? 'Update parties, court details, and case status.' : 'Open a new matter and assign client and lawyer.' ?></p>
+                <p class="entity-form-eyebrow"><?= $isEdit ? __e('cases.eyebrow.edit') : __e('cases.eyebrow.create') ?></p>
+                <h2><?= $isEdit ? __e('cases.edit') : __e('cases.save_open') ?></h2>
+                <p class="muted"><?= $isEdit ? __e('cases.form.help.edit') : __e('cases.form.help.create') ?></p>
             </div>
-            <p class="entity-form-required-note"><span class="req">*</span> Required fields</p>
+            <p class="entity-form-required-note"><span class="req">*</span> <?= __e('form.required_fields') ?></p>
         </div>
         <form method="post">
             <div class="entity-form-body">
@@ -160,96 +160,104 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
 
                 <section class="entity-section">
                     <div class="entity-section-head">
-                        <h3>Case details</h3>
-                        <p>Title, type, priority, and status for this matter.</p>
+                        <h3><?= __e('form.section.case_details') ?></h3>
+                        <p><?= __e('form.section.case_details_help') ?></p>
                     </div>
                     <div class="form-grid">
                         <div class="form-group full">
-                            <label for="title">Title <span class="req">*</span></label>
-                            <input id="title" name="title" required value="<?= e($case['title']) ?>" placeholder="Short case title">
+                            <label for="title"><?= __e('common.title') ?> <span class="req">*</span></label>
+                            <input id="title" name="title" required value="<?= e($case['title']) ?>" placeholder="<?= __e('form.placeholder.case_title') ?>">
                         </div>
-                        <div class="form-group">
-                            <label for="case_type">Type</label>
-                            <input id="case_type" name="case_type" value="<?= e($case['case_type']) ?>" placeholder="e.g. Commercial">
+                        <div class="entity-field-row">
+                            <div class="form-group">
+                                <label for="case_type"><?= __e('common.type') ?></label>
+                                <input id="case_type" name="case_type" value="<?= e($case['case_type']) ?>" placeholder="<?= __e('form.placeholder.case_type') ?>">
+                            </div>
+                            <div class="form-group">
+                                <label for="priority"><?= __e('common.priority') ?> <span class="req">*</span></label>
+                                <select id="priority" name="priority" required>
+                                    <?php foreach (['low','medium','high','urgent'] as $p): ?>
+                                        <option value="<?= $p ?>" <?= $case['priority']===$p?'selected':'' ?>><?= e(translate_status($p)) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="status"><?= __e('common.status') ?> <span class="req">*</span></label>
+                                <select id="status" name="status" required>
+                                    <?php foreach (['open','active','pending','on_hold','closed','reopened'] as $s): ?>
+                                        <option value="<?= $s ?>" <?= $case['status']===$s?'selected':'' ?>><?= e(translate_status($s)) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label for="priority">Priority <span class="req">*</span></label>
-                            <select id="priority" name="priority" required>
-                                <?php foreach (['low','medium','high','urgent'] as $p): ?>
-                                    <option value="<?= $p ?>" <?= $case['priority']===$p?'selected':'' ?>><?= ucfirst($p) ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="status">Status <span class="req">*</span></label>
-                            <select id="status" name="status" required>
-                                <?php foreach (['open','active','pending','on_hold','closed','reopened'] as $s): ?>
-                                    <option value="<?= $s ?>" <?= $case['status']===$s?'selected':'' ?>><?= ucwords(str_replace('_',' ',$s)) ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <div class="form-group full">
-                            <label for="description">Description / contract notes</label>
-                            <textarea id="description" name="description" rows="3" placeholder="Summary, contract notes, or intake details…"><?= e($case['description']) ?></textarea>
+                        <div class="form-group full<?= !$isEdit ? ' instruction-field' : '' ?>">
+                            <label for="description"><?= __e('form.description_contract') ?></label>
+                            <textarea id="description" name="description" rows="3" placeholder="<?= __e('form.placeholder.case_description') ?>"><?= e($case['description']) ?></textarea>
                         </div>
                     </div>
                 </section>
 
                 <section class="entity-section">
                     <div class="entity-section-head">
-                        <h3>Parties</h3>
-                        <p>Client and assigned lawyer for this case.</p>
+                        <h3><?= __e('form.section.parties') ?></h3>
+                        <p><?= __e('form.section.parties_help') ?></p>
                     </div>
                     <div class="form-grid">
-                        <div class="form-group">
-                            <label for="client_id">Client <span class="req">*</span></label>
-                            <select id="client_id" name="client_id" required>
-                                <option value="">Select…</option>
-                                <?php foreach ($clients as $c): ?>
-                                    <option value="<?= (int)$c['id'] ?>" <?= (int)$case['client_id']===(int)$c['id']?'selected':'' ?>><?= e(full_name($c)) ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="lawyer_id">Lawyer</label>
-                            <select id="lawyer_id" name="lawyer_id">
-                                <option value="">Unassigned</option>
-                                <?php foreach ($lawyers as $l): ?>
-                                    <option value="<?= (int)$l['id'] ?>" <?= (int)$case['lawyer_id']===(int)$l['id']?'selected':'' ?>><?= e(full_name($l)) ?></option>
-                                <?php endforeach; ?>
-                            </select>
+                        <div class="entity-field-row entity-field-row--2">
+                            <div class="form-group">
+                                <label for="client_id"><?= __e('common.client') ?> <span class="req">*</span></label>
+                                <select id="client_id" name="client_id" required>
+                                    <option value=""><?= __e('form.select') ?></option>
+                                    <?php foreach ($clients as $c): ?>
+                                        <option value="<?= (int)$c['id'] ?>" <?= (int)$case['client_id']===(int)$c['id']?'selected':'' ?>><?= e(full_name($c)) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="lawyer_id"><?= __e('common.lawyer') ?></label>
+                                <select id="lawyer_id" name="lawyer_id">
+                                    <option value=""><?= __e('form.unassigned_simple') ?></option>
+                                    <?php foreach ($lawyers as $l): ?>
+                                        <option value="<?= (int)$l['id'] ?>" <?= (int)$case['lawyer_id']===(int)$l['id']?'selected':'' ?>><?= e(full_name($l)) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
                         </div>
                     </div>
                 </section>
 
                 <section class="entity-section">
                     <div class="entity-section-head">
-                        <h3>Court &amp; dates</h3>
-                        <p>Filing and hearing schedule information.</p>
+                        <h3><?= __e('form.section.court_dates') ?></h3>
+                        <p><?= __e('form.section.court_dates_help') ?></p>
                     </div>
                     <div class="form-grid">
-                        <div class="form-group">
-                            <label for="court_name">Court name</label>
-                            <input id="court_name" name="court_name" value="<?= e($case['court_name']) ?>">
+                        <div class="entity-field-row entity-field-row--2">
+                            <div class="form-group">
+                                <label for="court_name"><?= __e('form.court_name') ?></label>
+                                <input id="court_name" name="court_name" value="<?= e($case['court_name']) ?>">
+                            </div>
+                            <div class="form-group">
+                                <label for="court_location"><?= __e('form.court_location') ?></label>
+                                <input id="court_location" name="court_location" value="<?= e($case['court_location']) ?>">
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label for="court_location">Court location</label>
-                            <input id="court_location" name="court_location" value="<?= e($case['court_location']) ?>">
-                        </div>
-                        <div class="form-group">
-                            <label for="filing_date">Filing date</label>
-                            <input id="filing_date" type="date" name="filing_date" value="<?= e($case['filing_date']) ?>">
-                        </div>
-                        <div class="form-group">
-                            <label for="next_hearing_date">Next hearing</label>
-                            <input id="next_hearing_date" type="date" name="next_hearing_date" value="<?= e($case['next_hearing_date']) ?>">
+                        <div class="entity-field-row entity-field-row--2">
+                            <div class="form-group">
+                                <label for="filing_date"><?= __e('form.filing_date') ?></label>
+                                <input id="filing_date" type="date" name="filing_date" value="<?= e($case['filing_date']) ?>">
+                            </div>
+                            <div class="form-group">
+                                <label for="next_hearing_date"><?= __e('form.next_hearing') ?></label>
+                                <input id="next_hearing_date" type="date" name="next_hearing_date" value="<?= e($case['next_hearing_date']) ?>">
+                            </div>
                         </div>
                     </div>
                 </section>
             </div>
             <div class="entity-form-footer">
-                <a class="btn btn-secondary" href="cases.php">Back to cases</a>
-                <button class="btn btn-primary" type="submit"><?= $isEdit ? 'Save changes' : 'Open case' ?></button>
+                <a class="btn btn-secondary" href="cases.php"><?= __e('common.cancel') ?></a>
+                <button class="btn btn-primary" type="submit"><?= $isEdit ? __e('common.save_changes') : __e('cases.save_open') ?></button>
             </div>
         </form>
     </div>
@@ -261,7 +269,7 @@ if ($action === 'view' && $id) {
     $stmt = $pdo->prepare('SELECT c.*, cl.first_name AS client_first, cl.last_name AS client_last, cl.email AS client_email, cl.company_name AS client_company, cl.phone AS client_phone, CONCAT(lw.first_name," ",lw.last_name) AS lawyer_name, CONCAT(cb.first_name," ",cb.last_name) AS created_by_name FROM cases c JOIN users cl ON cl.id=c.client_id LEFT JOIN users lw ON lw.id=c.lawyer_id LEFT JOIN users cb ON cb.id=c.created_by WHERE c.id=?');
     $stmt->execute([$id]);
     $case = $stmt->fetch();
-    if (!$case) { flash('error', 'Case not found.'); redirect('cases.php'); }
+    if (!$case) { flash('error', __('flash.case.not_found')); redirect('cases.php'); }
     $clientName = trim(($case['client_first'] ?? '') . ' ' . ($case['client_last'] ?? ''));
 
     $notes = $pdo->prepare('SELECT n.*, CONCAT(u.first_name," ",u.last_name) AS author FROM case_notes n JOIN users u ON u.id=n.user_id WHERE n.case_id=? ORDER BY n.created_at DESC');
@@ -286,34 +294,34 @@ if ($action === 'view' && $id) {
 
     $activity = [];
     foreach ($docs as $d) {
-        $activity[] = ['type' => 'document', 'title' => 'Document uploaded', 'ref' => $d['title'], 'at' => $d['created_at']];
+        $activity[] = ['type' => 'document', 'title' => __('cases.activity.document'), 'ref' => $d['title'], 'at' => $d['created_at']];
     }
     foreach ($invoicesAll as $i) {
-        $activity[] = ['type' => $i['status'] === 'draft' ? 'quote' : 'invoice', 'title' => $i['status'] === 'draft' ? 'Quotation created' : 'Invoice generated', 'ref' => $i['invoice_number'], 'at' => $i['created_at']];
+        $activity[] = ['type' => $i['status'] === 'draft' ? 'quote' : 'invoice', 'title' => __($i['status'] === 'draft' ? 'cases.activity.quotation' : 'cases.activity.invoice'), 'ref' => $i['invoice_number'], 'at' => $i['created_at']];
     }
     foreach ($payments as $p) {
-        $activity[] = ['type' => 'payment', 'title' => 'Payment received', 'ref' => $p['receipt_number'], 'at' => $p['paid_at']];
+        $activity[] = ['type' => 'payment', 'title' => __('cases.activity.payment'), 'ref' => $p['receipt_number'], 'at' => $p['paid_at']];
     }
     foreach ($notes as $n) {
-        $activity[] = ['type' => 'note', 'title' => 'Note added', 'ref' => $n['author'], 'at' => $n['created_at']];
+        $activity[] = ['type' => 'note', 'title' => __('cases.activity.note'), 'ref' => $n['author'], 'at' => $n['created_at']];
     }
     foreach ($hearings as $h) {
-        $activity[] = ['type' => 'hearing', 'title' => 'Hearing scheduled', 'ref' => $h['court_name'] ?: 'Court', 'at' => $h['hearing_date']];
+        $activity[] = ['type' => 'hearing', 'title' => __('cases.activity.hearing'), 'ref' => $h['court_name'] ?: __('common.court'), 'at' => $h['hearing_date']];
     }
-    $activity[] = ['type' => 'case', 'title' => 'Case created', 'ref' => $case['case_number'], 'at' => $case['created_at']];
+    $activity[] = ['type' => 'case', 'title' => __('cases.activity.created'), 'ref' => $case['case_number'], 'at' => $case['created_at']];
     usort($activity, static fn($a, $b) => strtotime($b['at']) <=> strtotime($a['at']));
     $activity = array_slice($activity, 0, 12);
 
     $tabs = [
-        'overview' => 'Overview',
-        'documents' => 'Documents',
-        'quotations' => 'Quotations',
-        'invoices' => 'Invoices',
-        'receipts' => 'Receipts',
-        'checklist' => 'Checklist',
-        'deadlines' => 'Deadlines',
-        'notes' => 'Notes',
-        'activity' => 'Activity',
+        'overview' => __('cases.tab.overview'),
+        'documents' => __('cases.tab.documents'),
+        'quotations' => __('cases.tab.quotations'),
+        'invoices' => __('cases.tab.invoices'),
+        'receipts' => __('cases.tab.receipts'),
+        'checklist' => __('cases.tab.checklist'),
+        'deadlines' => __('cases.tab.deadlines'),
+        'notes' => __('cases.tab.notes'),
+        'activity' => __('cases.tab.activity'),
     ];
     $tab = get('tab', 'overview');
     if (!isset($tabs[$tab])) {
@@ -322,35 +330,35 @@ if ($action === 'view' && $id) {
     $compose = get('compose', '');
 
     $checklist = [
-        ['Client details complete', !empty($case['client_email'])],
-        ['Lawyer assigned', !empty($case['lawyer_id'])],
-        ['Case description added', !empty(trim((string) $case['description']))],
-        ['At least one document uploaded', count($docs) > 0],
-        ['Quotation or invoice issued', count($invoicesAll) > 0],
-        ['Payment / receipt recorded', count($payments) > 0],
-        ['Hearing / deadline set', !empty($case['next_hearing_date']) || count($hearings) > 0],
+        [__('cases.checklist.client_details'), !empty($case['client_email'])],
+        [__('cases.checklist.lawyer_assigned'), !empty($case['lawyer_id'])],
+        [__('cases.checklist.description'), !empty(trim((string) $case['description']))],
+        [__('cases.checklist.document'), count($docs) > 0],
+        [__('cases.checklist.invoice'), count($invoicesAll) > 0],
+        [__('cases.checklist.payment'), count($payments) > 0],
+        [__('cases.checklist.hearing'), !empty($case['next_hearing_date']) || count($hearings) > 0],
     ];
 
-    $pageTitle = 'Cases';
-    $pageSubtitle = 'Case details and billing';
+    $pageTitle = __('page.cases');
+    $pageSubtitle = __('cases.hub.subtitle');
     require __DIR__ . '/../includes/header.php';
     $tabUrl = static fn(string $t) => '?action=view&id=' . $id . '&tab=' . $t;
     ?>
     <div class="case-hub">
         <div class="case-hub-top">
-            <a class="case-hub-back" href="cases.php">← Cases</a>
+            <a class="case-hub-back" href="cases.php"><?= __e('cases.back') ?></a>
             <div class="case-hub-actions">
-                <a class="btn btn-secondary btn-sm" href="?action=edit&id=<?= $id ?>">Edit</a>
+                <a class="btn btn-secondary btn-sm" href="?action=edit&id=<?= $id ?>"><?= __e('common.edit') ?></a>
                 <details class="case-hub-menu">
-                    <summary class="btn btn-primary btn-sm">Quick Actions ▾</summary>
+                    <summary class="btn btn-primary btn-sm"><?= __e('cases.quick_actions') ?></summary>
                     <div class="case-hub-menu-panel">
-                        <a href="<?= e($tabUrl('quotations')) ?>&compose=quotation">New quotation</a>
-                        <a href="invoice.php?action=generate&case_id=<?= $id ?>&client_id=<?= (int) $case['client_id'] ?>&from=<?= e(urlencode('cases.php?action=view&id=' . $id . '&tab=invoices')) ?>">Generate invoice</a>
-                        <a href="<?= e($tabUrl('receipts')) ?>&compose=payment">Record payment / receipt</a>
-                        <a href="<?= e($tabUrl('documents')) ?>">Upload document</a>
-                        <a href="court.php?action=create&case_id=<?= $id ?>">Add hearing</a>
+                        <a href="<?= e($tabUrl('quotations')) ?>&compose=quotation"><?= __e('cases.action.new_quotation') ?></a>
+                        <a href="invoice.php?action=generate&case_id=<?= $id ?>&client_id=<?= (int) $case['client_id'] ?>&from=<?= e(urlencode('cases.php?action=view&id=' . $id . '&tab=invoices')) ?>"><?= __e('cases.action.generate_invoice') ?></a>
+                        <a href="<?= e($tabUrl('receipts')) ?>&compose=payment"><?= __e('cases.action.record_payment') ?></a>
+                        <a href="<?= e($tabUrl('documents')) ?>"><?= __e('cases.action.upload_document') ?></a>
+                        <a href="court.php?action=create&case_id=<?= $id ?>"><?= __e('cases.action.add_hearing') ?></a>
                         <?php if ($case['status'] === 'closed'): ?>
-                        <form method="post"><?= csrf_field() ?><input type="hidden" name="form_action" value="reopen"><input type="hidden" name="id" value="<?= $id ?>"><button type="submit">Reopen case</button></form>
+                        <form method="post"><?= csrf_field() ?><input type="hidden" name="form_action" value="reopen"><input type="hidden" name="id" value="<?= $id ?>"><button type="submit"><?= __e('cases.action.reopen_case') ?></button></form>
                         <?php endif; ?>
                     </div>
                 </details>
@@ -363,51 +371,51 @@ if ($action === 'view' && $id) {
             <div class="case-hub-badges"><?= status_badge($case['status']) ?> <?= status_badge($case['priority']) ?></div>
         </div>
 
-        <nav class="case-hub-tabs" aria-label="Case sections">
+        <nav class="case-hub-tabs" aria-label="<?= __e('cases.hub.sections_aria') ?>">
             <?php foreach ($tabs as $key => $label): ?>
                 <a class="<?= $tab === $key ? 'active' : '' ?>" href="<?= e($tabUrl($key)) ?>"><?= e($label) ?></a>
             <?php endforeach; ?>
         </nav>
 
         <div class="case-hub-summary">
-            <div class="case-hub-stat"><strong><?= count($docs) ?></strong><span>Documents</span></div>
-            <div class="case-hub-stat"><strong><?= count($invoices) ?></strong><span>Invoices</span></div>
-            <div class="case-hub-stat"><strong><?= count($payments) ?></strong><span>Receipts</span></div>
-            <div class="case-hub-stat"><strong><?= count($quotations) ?></strong><span>Quotations</span></div>
+            <div class="case-hub-stat"><strong><?= count($docs) ?></strong><span><?= __e('cases.tab.documents') ?></span></div>
+            <div class="case-hub-stat"><strong><?= count($invoices) ?></strong><span><?= __e('cases.tab.invoices') ?></span></div>
+            <div class="case-hub-stat"><strong><?= count($payments) ?></strong><span><?= __e('cases.tab.receipts') ?></span></div>
+            <div class="case-hub-stat"><strong><?= count($quotations) ?></strong><span><?= __e('cases.tab.quotations') ?></span></div>
         </div>
 
         <?php if ($tab === 'overview'): ?>
         <div class="case-hub-grid">
             <section class="panel case-hub-card">
-                <h2>Case details</h2>
+                <h2><?= __e('cases.hub.case_details') ?></h2>
                 <div class="case-hub-meta-grid">
                     <div>
-                        <span class="case-hub-label">Client</span>
+                        <span class="case-hub-label"><?= __e('common.client') ?></span>
                         <strong><?= e($clientName) ?></strong>
-                        <span class="muted"><?= e($case['client_company'] ?: 'Individual client') ?></span>
+                        <span class="muted"><?= e($case['client_company'] ?: __('clients.individual')) ?></span>
                     </div>
                     <div>
-                        <span class="case-hub-label">Email</span>
-                        <strong><?= e($case['client_email'] ?: '—') ?></strong>
+                        <span class="case-hub-label"><?= __e('common.email') ?></span>
+                        <strong><?= e($case['client_email'] ?: __('common.em_dash')) ?></strong>
                         <span class="muted"><?= e($case['client_phone'] ?: '') ?></span>
                     </div>
                     <div>
-                        <span class="case-hub-label">Assigned lawyer</span>
-                        <strong><?= e($case['lawyer_name'] ?: 'Unassigned') ?></strong>
-                        <span class="muted"><?= e($case['created_by_name'] ? 'Opened by ' . $case['created_by_name'] : '') ?></span>
+                        <span class="case-hub-label"><?= __e('cases.hub.assigned_lawyer') ?></span>
+                        <strong><?= e($case['lawyer_name'] ?: __('common.unassigned')) ?></strong>
+                        <span class="muted"><?= e($case['created_by_name'] ? __('cases.hub.opened_by', ['name' => $case['created_by_name']]) : '') ?></span>
                     </div>
                 </div>
 
                 <div class="case-hub-service">
-                    <h3>Service &amp; fees</h3>
+                    <h3><?= __e('cases.hub.service_fees') ?></h3>
                     <div class="table-wrap">
                         <table>
-                            <thead><tr><th>Service</th><th>Net</th><th>Tax</th><th>Total</th></tr></thead>
+                            <thead><tr><th><?= __e('common.service') ?></th><th><?= __e('common.net') ?></th><th><?= __e('common.tax') ?></th><th><?= __e('common.total') ?></th></tr></thead>
                             <tbody>
                             <?php if ($invoicesAll): ?>
                                 <?php foreach ($invoicesAll as $i): ?>
                                     <tr>
-                                        <td><strong><?= e($i['title']) ?></strong><div class="muted"><?= e($i['invoice_number']) ?> · <?= e(ucfirst($i['status'])) ?></div></td>
+                                        <td><strong><?= e($i['title']) ?></strong><div class="muted"><?= e($i['invoice_number']) ?> · <?= e(translate_status($i['status'])) ?></div></td>
                                         <td><?= e(money($i['amount'])) ?></td>
                                         <td><?= e(money($i['tax'])) ?></td>
                                         <td><?= e(money($i['total'])) ?></td>
@@ -415,34 +423,38 @@ if ($action === 'view' && $id) {
                                 <?php endforeach; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td><strong><?= e($case['case_type'] ?: 'Legal service') ?></strong><div class="muted">No invoice yet</div></td>
-                                    <td>—</td><td>—</td><td>—</td>
+                                    <td><strong><?= e($case['case_type'] ?: __('cases.hub.legal_service')) ?></strong><div class="muted"><?= __e('cases.hub.no_invoice') ?></div></td>
+                                    <td><?= __e('common.em_dash') ?></td><td><?= __e('common.em_dash') ?></td><td><?= __e('common.em_dash') ?></td>
                                 </tr>
                             <?php endif; ?>
                             </tbody>
                         </table>
                     </div>
                     <div class="case-hub-total">
-                        <span>Total fee</span>
+                        <span><?= __e('cases.hub.total_fee') ?></span>
                         <strong><?= e(money($feeTotal)) ?></strong>
                     </div>
                     <div class="case-hub-foot-meta">
-                        <div><span class="case-hub-label">Created</span><?= e(format_datetime($case['created_at'])) ?></div>
-                        <div><span class="case-hub-label">Last updated</span><?= e(format_datetime($case['updated_at'])) ?></div>
-                        <div><span class="case-hub-label">Paid to date</span><?= e(money($paidTotal)) ?></div>
+                        <div><span class="case-hub-label"><?= __e('common.created') ?></span><?= e(format_datetime($case['created_at'])) ?></div>
+                        <div><span class="case-hub-label"><?= __e('common.last_updated') ?></span><?= e(format_datetime($case['updated_at'])) ?></div>
+                        <div><span class="case-hub-label"><?= __e('cases.hub.paid_to_date') ?></span><?= e(money($paidTotal)) ?></div>
                     </div>
                 </div>
 
-                <?php if ($case['description']): ?>
-                <div class="case-hub-desc">
-                    <span class="case-hub-label">Description</span>
-                    <p><?= nl2br(e($case['description'])) ?></p>
+                <div class="instruction-field instruction-field--display">
+                    <span class="instruction-field-label"><?= __e('form.description_contract') ?></span>
+                    <div class="instruction-field-body<?= trim((string) ($case['description'] ?? '')) === '' ? ' is-empty' : '' ?>">
+                        <?php if (trim((string) ($case['description'] ?? '')) !== ''): ?>
+                            <p><?= nl2br(e(t_content($case['description']))) ?></p>
+                        <?php else: ?>
+                            <p><?= __e('form.placeholder.case_description') ?></p>
+                        <?php endif; ?>
+                    </div>
                 </div>
-                <?php endif; ?>
             </section>
 
             <aside class="panel case-hub-card">
-                <h2>Recent activity</h2>
+                <h2><?= __e('cases.hub.recent_activity') ?></h2>
                 <div class="case-hub-timeline">
                     <?php foreach ($activity as $a): ?>
                         <div class="case-hub-timeline-item type-<?= e($a['type']) ?>">
@@ -457,29 +469,31 @@ if ($action === 'view' && $id) {
 
         <?php elseif ($tab === 'documents'): ?>
         <section class="panel case-hub-card">
-            <div class="panel-header"><h2>Documents</h2></div>
+            <div class="panel-header"><h2><?= __e('cases.tab.documents') ?></h2></div>
             <form method="post" enctype="multipart/form-data" class="form-grid entity-inline-form" style="margin-bottom:1rem;">
                 <?= csrf_field() ?><input type="hidden" name="form_action" value="upload"><input type="hidden" name="case_id" value="<?= $id ?>"><input type="hidden" name="client_id" value="<?= (int)$case['client_id'] ?>">
-                <div class="form-group"><label>Title</label><input name="title" placeholder="Document title"></div>
-                <div class="form-group"><label>Category</label>
-                    <select name="category"><?php foreach (['legal','contract','evidence','court','other'] as $cat): ?><option value="<?= $cat ?>"><?= ucfirst($cat) ?></option><?php endforeach; ?></select>
+                <div class="entity-field-row entity-field-row--2">
+                    <div class="form-group"><label><?= __e('common.title') ?></label><input name="title" placeholder="<?= __e('form.placeholder.document_title') ?>"></div>
+                    <div class="form-group"><label><?= __e('common.category') ?></label>
+                        <select name="category"><?php foreach (['legal','contract','evidence','court','other'] as $cat): ?><option value="<?= $cat ?>"><?= e(__('doc.category.' . $cat)) ?></option><?php endforeach; ?></select>
+                    </div>
                 </div>
-                <div class="form-group full"><label>File <span class="req">*</span></label><input type="file" name="document" required></div>
-                <div class="form-actions full"><button class="btn btn-primary btn-sm" type="submit">Upload</button></div>
+                <div class="form-group full"><label><?= __e('common.file') ?> <span class="req">*</span></label><input type="file" name="document" required></div>
+                <div class="form-actions full"><button class="btn btn-primary btn-sm" type="submit"><?= __e('common.upload') ?></button></div>
             </form>
             <div class="table-wrap">
                 <table>
-                    <thead><tr><th>Title</th><th>Category</th><th>Uploaded</th><th></th></tr></thead>
+                    <thead><tr><th><?= __e('common.title') ?></th><th><?= __e('common.category') ?></th><th><?= __e('cases.doc.uploaded') ?></th><th></th></tr></thead>
                     <tbody>
                     <?php foreach ($docs as $d): ?>
                         <tr>
                             <td><strong><?= e($d['title']) ?></strong></td>
-                            <td><?= e(ucfirst($d['category'])) ?></td>
+                            <td><?= e(__('doc.category.' . ($d['category'] ?: 'other'))) ?></td>
                             <td><?= e(format_datetime($d['created_at'])) ?></td>
-                            <td><a class="btn btn-secondary btn-sm" href="../<?= e($d['file_path']) ?>" target="_blank">Download</a></td>
+                            <td><a class="btn btn-secondary btn-sm" href="../<?= e($d['file_path']) ?>" target="_blank"><?= __e('common.download') ?></a></td>
                         </tr>
                     <?php endforeach; ?>
-                    <?php if (!$docs): ?><tr><td colspan="4" class="muted">No documents yet.</td></tr><?php endif; ?>
+                    <?php if (!$docs): ?><tr><td colspan="4" class="muted"><?= __e('cases.no_documents') ?></td></tr><?php endif; ?>
                     </tbody>
                 </table>
             </div>
@@ -488,29 +502,31 @@ if ($action === 'view' && $id) {
         <?php elseif ($tab === 'quotations'): ?>
         <section class="panel case-hub-card">
             <div class="panel-header">
-                <h2>Quotations</h2>
-                <a class="btn btn-primary btn-sm" href="<?= e($tabUrl('quotations')) ?>&compose=quotation">+ New quotation</a>
+                <h2><?= __e('cases.tab.quotations') ?></h2>
+                <a class="btn btn-primary btn-sm" href="<?= e($tabUrl('quotations')) ?>&compose=quotation"><?= __e('cases.new_quotation') ?></a>
             </div>
-            <p class="muted" style="margin-top:0;">Draft fee proposals before issuing a formal invoice.</p>
+            <p class="muted" style="margin-top:0;"><?= __e('cases.quotations_help') ?></p>
             <?php if ($compose === 'quotation'): ?>
             <form method="post" class="form-grid entity-inline-form" style="margin:1rem 0;">
                 <?= csrf_field() ?>
                 <input type="hidden" name="form_action" value="quotation">
                 <input type="hidden" name="case_id" value="<?= $id ?>">
                 <input type="hidden" name="client_id" value="<?= (int)$case['client_id'] ?>">
-                <div class="form-group full"><label>Title <span class="req">*</span></label><input name="title" required value="Quotation — <?= e($case['case_number']) ?>"></div>
-                <div class="form-group"><label>Amount (Rs) <span class="req">*</span></label><input type="number" step="0.01" name="amount" required></div>
-                <div class="form-group"><label>Tax (Rs)</label><input type="number" step="0.01" name="tax" value="0"></div>
-                <div class="form-group full"><label>Description</label><textarea name="description" rows="2" placeholder="Proposed services…"></textarea></div>
+                <div class="form-group full"><label><?= __e('common.title') ?> <span class="req">*</span></label><input name="title" required value="<?= e(__('cases.quotation_title_default', ['number' => $case['case_number']])) ?>"></div>
+                <div class="entity-field-row entity-field-row--2">
+                    <div class="form-group"><label><?= __e('cases.amount_rs') ?> <span class="req">*</span></label><input type="number" step="0.01" name="amount" required></div>
+                    <div class="form-group"><label><?= __e('cases.tax_rs') ?></label><input type="number" step="0.01" name="tax" value="0"></div>
+                </div>
+                <div class="form-group full"><label><?= __e('common.description') ?></label><textarea name="description" rows="2" placeholder="<?= __e('form.placeholder.proposed_services') ?>"></textarea></div>
                 <div class="form-actions full">
-                    <button class="btn btn-primary" type="submit">Save quotation</button>
-                    <a class="btn btn-secondary" href="<?= e($tabUrl('quotations')) ?>">Cancel</a>
+                    <button class="btn btn-primary" type="submit"><?= __e('cases.save_quotation') ?></button>
+                    <a class="btn btn-secondary" href="<?= e($tabUrl('quotations')) ?>"><?= __e('common.cancel') ?></a>
                 </div>
             </form>
             <?php endif; ?>
             <div class="table-wrap">
                 <table>
-                    <thead><tr><th>Quotation</th><th>Total</th><th>Created</th></tr></thead>
+                    <thead><tr><th><?= __e('common.quotation') ?></th><th><?= __e('common.total') ?></th><th><?= __e('common.created') ?></th></tr></thead>
                     <tbody>
                     <?php foreach ($quotations as $q): ?>
                         <tr>
@@ -519,7 +535,7 @@ if ($action === 'view' && $id) {
                             <td><?= e(format_date($q['created_at'])) ?></td>
                         </tr>
                     <?php endforeach; ?>
-                    <?php if (!$quotations): ?><tr><td colspan="3" class="muted">No quotations yet.</td></tr><?php endif; ?>
+                    <?php if (!$quotations): ?><tr><td colspan="3" class="muted"><?= __e('cases.no_quotations') ?></td></tr><?php endif; ?>
                     </tbody>
                 </table>
             </div>
@@ -589,7 +605,7 @@ if ($action === 'view' && $id) {
                             <td class="col-actions">
                                 <div class="row-actions">
                                     <a class="btn btn-row-open btn-sm" href="invoice.php?id=<?= (int) $i['id'] ?>&from=<?= e(urlencode($caseInvReturn)) ?>"><?= __e('common.view') ?></a>
-                                    <form method="post" action="invoice.php" onsubmit="return confirm('<?= e(__('finance.delete_confirm', ['number' => $i['invoice_number']])) ?>');">
+                                    <form method="post" action="invoice.php" data-confirm="<?= __e('finance.delete_confirm', ['number' => $i['invoice_number']]) ?>">
                                         <?= csrf_field() ?>
                                         <input type="hidden" name="form_action" value="delete_invoice">
                                         <input type="hidden" name="invoice_id" value="<?= (int) $i['id'] ?>">
@@ -622,19 +638,23 @@ if ($action === 'view' && $id) {
                 <input type="hidden" name="form_action" value="payment">
                 <input type="hidden" name="case_id" value="<?= $id ?>">
                 <input type="hidden" name="client_id" value="<?= (int)$case['client_id'] ?>">
-                <div class="form-group"><label><?= __e('finance.invoice_number') ?> <span class="req">*</span></label>
+                <div class="form-group full"><label><?= __e('finance.invoice_number') ?> <span class="req">*</span></label>
                     <select name="invoice_id" required>
                         <option value=""><?= __e('common.em_dash') ?></option>
                         <?php foreach ($invoices as $i): ?>
                             <option value="<?= (int)$i['id'] ?>" <?= $preselectPayInvoice === (int) $i['id'] ? 'selected' : '' ?>><?= e($i['invoice_number'] . ' · ' . money($i['total'])) ?></option>
                         <?php endforeach; ?>
                     </select>
-                    <?php if (!$invoices): ?><p class="field-hint">Generate an invoice first, then record the payment receipt.</p><?php endif; ?>
                 </div>
-                <div class="form-group"><label><?= __e('common.amount') ?> <span class="req">*</span></label><input type="number" step="0.01" name="amount" required></div>
-                <div class="form-group"><label><?= __e('finance.method') ?></label><select name="payment_method"><?php foreach (['bank_transfer','card','cash','cheque','online','other'] as $m): ?><option value="<?= $m ?>"><?= e(__('payment.method.' . $m)) ?></option><?php endforeach; ?></select></div>
-                <div class="form-group"><label><?= __e('common.reference') ?></label><input name="reference_number"></div>
-                <div class="form-group"><label><?= __e('form.paid_at') ?></label><input type="datetime-local" name="paid_at" value="<?= date('Y-m-d\TH:i') ?>"></div>
+                <?php if (!$invoices): ?>
+                <div class="form-group full entity-field-notes"><span class="field-hint">Generate an invoice first, then record the payment receipt.</span></div>
+                <?php endif; ?>
+                <div class="entity-field-row">
+                    <div class="form-group"><label><?= __e('common.amount') ?> <span class="req">*</span></label><input type="number" step="0.01" name="amount" required></div>
+                    <div class="form-group"><label><?= __e('finance.method') ?></label><select name="payment_method"><?php foreach (['bank_transfer','card','cash','cheque','online','other'] as $m): ?><option value="<?= $m ?>"><?= e(__('payment.method.' . $m)) ?></option><?php endforeach; ?></select></div>
+                    <div class="form-group"><label><?= __e('form.paid_at') ?></label><input type="datetime-local" name="paid_at" value="<?= date('Y-m-d\TH:i') ?>"></div>
+                </div>
+                <div class="form-group full"><label><?= __e('common.reference') ?></label><input name="reference_number"></div>
                 <div class="form-group full"><label><?= __e('common.notes') ?></label><textarea name="notes" rows="2"></textarea></div>
                 <div class="form-actions full">
                     <button class="btn btn-primary" type="submit"><?= __e('finance.record_receipt_btn') ?></button>
@@ -678,7 +698,7 @@ if ($action === 'view' && $id) {
 
         <?php elseif ($tab === 'checklist'): ?>
         <section class="panel case-hub-card">
-            <h2>Case checklist</h2>
+            <h2><?= __e('cases.checklist_title') ?></h2>
             <div class="case-hub-checklist">
                 <?php foreach ($checklist as [$label, $done]): ?>
                     <div class="case-hub-check <?= $done ? 'is-done' : '' ?>">
@@ -691,22 +711,22 @@ if ($action === 'view' && $id) {
 
         <?php elseif ($tab === 'deadlines'): ?>
         <section class="panel case-hub-card">
-            <div class="panel-header"><h2>Deadlines &amp; hearings</h2><a class="btn btn-primary btn-sm" href="court.php?action=create&case_id=<?= $id ?>">Add hearing</a></div>
-            <div class="list-item" style="margin-bottom:1rem;"><strong>Next hearing</strong><?= e(format_date($case['next_hearing_date'])) ?></div>
+            <div class="panel-header"><h2><?= __e('cases.deadlines_title') ?></h2><a class="btn btn-primary btn-sm" href="court.php?action=create&case_id=<?= $id ?>"><?= __e('cases.add_hearing') ?></a></div>
+            <div class="list-item" style="margin-bottom:1rem;"><strong><?= __e('form.next_hearing') ?></strong><?= e(format_date($case['next_hearing_date'])) ?></div>
             <div class="table-wrap">
                 <table>
-                    <thead><tr><th>Date</th><th>Court</th><th>Type</th><th>Status</th><th>Outcome</th></tr></thead>
+                    <thead><tr><th><?= __e('common.date') ?></th><th><?= __e('common.court') ?></th><th><?= __e('common.type') ?></th><th><?= __e('common.status') ?></th><th><?= __e('common.outcome') ?></th></tr></thead>
                     <tbody>
                     <?php foreach ($hearings as $h): ?>
                         <tr>
                             <td><?= e(format_datetime($h['hearing_date'])) ?></td>
                             <td><?= e($h['court_name']) ?><div class="muted"><?= e($h['court_location']) ?></div></td>
-                            <td><?= e($h['hearing_type'] ?: '—') ?></td>
+                            <td><?= e($h['hearing_type'] ?: __('common.em_dash')) ?></td>
                             <td><?= status_badge($h['status']) ?></td>
-                            <td><?= e($h['outcome'] ?: '—') ?></td>
+                            <td><?= e($h['outcome'] ?: __('common.em_dash')) ?></td>
                         </tr>
                     <?php endforeach; ?>
-                    <?php if (!$hearings): ?><tr><td colspan="5" class="muted">No hearings recorded.</td></tr><?php endif; ?>
+                    <?php if (!$hearings): ?><tr><td colspan="5" class="muted"><?= __e('cases.no_hearings') ?></td></tr><?php endif; ?>
                     </tbody>
                 </table>
             </div>
@@ -714,24 +734,26 @@ if ($action === 'view' && $id) {
 
         <?php elseif ($tab === 'notes'): ?>
         <section class="panel case-hub-card">
-            <h2>Notes</h2>
+            <h2><?= __e('cases.tab.notes') ?></h2>
             <form method="post" class="form-grid entity-inline-form" style="margin-bottom:1rem;">
                 <?= csrf_field() ?><input type="hidden" name="form_action" value="note"><input type="hidden" name="case_id" value="<?= $id ?>">
-                <div class="form-group full"><textarea name="note" required placeholder="Add progress note…"></textarea></div>
-                <div class="form-group"><label><input type="checkbox" name="is_private" value="1"> Private note</label></div>
-                <div class="form-group"><button class="btn btn-primary btn-sm" type="submit">Add note</button></div>
+                <div class="form-group full"><label><?= __e('cases.add_note') ?></label><textarea name="note" required rows="2" placeholder="<?= __e('cases.add_note_ph') ?>"></textarea></div>
+                <div class="entity-field-row entity-field-row--2">
+                    <div class="form-group"><label><input type="checkbox" name="is_private" value="1"> <?= __e('cases.private_note') ?></label></div>
+                    <div class="form-group"><button class="btn btn-primary btn-sm" type="submit"><?= __e('cases.add_note') ?></button></div>
+                </div>
             </form>
             <div class="list-stack">
                 <?php foreach ($notes as $n): ?>
-                    <div class="list-item"><strong><?= e($n['author']) ?><?= $n['is_private'] ? ' (private)' : '' ?></strong><span class="muted"><?= e(format_datetime($n['created_at'])) ?></span><div><?= nl2br(e($n['note'])) ?></div></div>
+                    <div class="list-item"><strong><?= e($n['author']) ?><?= $n['is_private'] ? ' ' . __('cases.private_suffix') : '' ?></strong><span class="muted"><?= e(format_datetime($n['created_at'])) ?></span><div><?= nl2br(e($n['note'])) ?></div></div>
                 <?php endforeach; ?>
-                <?php if (!$notes): ?><div class="empty-state">No notes yet.</div><?php endif; ?>
+                <?php if (!$notes): ?><div class="empty-state"><?= __e('cases.no_notes') ?></div><?php endif; ?>
             </div>
         </section>
 
         <?php else: ?>
         <section class="panel case-hub-card">
-            <h2>Activity</h2>
+            <h2><?= __e('cases.tab.activity') ?></h2>
             <div class="case-hub-timeline">
                 <?php foreach ($activity as $a): ?>
                     <div class="case-hub-timeline-item type-<?= e($a['type']) ?>">
@@ -777,11 +799,11 @@ if ($filter === 'active') {
 } else {
     $cases = $pdo->query($sql . ' ORDER BY c.updated_at DESC')->fetchAll();
 }
-$listTitle = $filter === 'active' ? 'Active cases' : ($filter === 'outstanding' ? 'Outstanding' : 'Case Management');
-$pageTitle = 'Cases';
+$listTitle = $filter === 'active' ? __('cases.list.active') : ($filter === 'outstanding' ? __('cases.list.outstanding') : __('cases.list.all'));
+$pageTitle = __('page.cases');
 $pageSubtitle = $filter === 'active'
-    ? 'Open and in-progress matters'
-    : ($filter === 'outstanding' ? 'Cases with unpaid invoices' : 'View and manage all legal cases');
+    ? __('cases.list.subtitle_active')
+    : ($filter === 'outstanding' ? __('cases.list.subtitle_outstanding') : __('cases.list.subtitle_all'));
 require __DIR__ . '/../includes/header.php';
 $totalCases = count($cases);
 $perPage = 10;
@@ -794,7 +816,7 @@ $offset = ($page - 1) * $perPage;
 $pageCases = array_slice($cases, $offset, $perPage);
 $shownFrom = $totalCases === 0 ? 0 : $offset + 1;
 $shownTo = min($offset + count($pageCases), $totalCases);
-$amountLabel = $filter === 'outstanding' ? 'Outstanding' : 'Fee';
+$amountLabel = $filter === 'outstanding' ? __('cases.col.outstanding') : __('cases.col.fee');
 $pagerQs = $filter !== '' ? '&filter=' . urlencode($filter) : '';
 ?>
 <div class="panel case-list-panel">
@@ -802,24 +824,24 @@ $pagerQs = $filter !== '' ? '&filter=' . urlencode($filter) : '';
         <div class="case-list-title">
             <h2><?= e($listTitle) ?></h2>
             <?php if ($filter === 'active' || $filter === 'outstanding'): ?>
-                <a class="case-filter-chip" href="cases.php" title="Show all cases">
-                    <?= $filter === 'active' ? 'Active' : 'Unpaid' ?>
+                <a class="case-filter-chip" href="cases.php" title="<?= __e('common.show_all_cases') ?>">
+                    <?= $filter === 'active' ? __e('cases.filter.active') : __e('cases.filter.unpaid') ?>
                     <span aria-hidden="true">×</span>
                 </a>
             <?php endif; ?>
         </div>
-        <a class="btn btn-primary btn-sm" href="?action=create">+ Open case</a>
+        <a class="btn btn-primary btn-sm" href="?action=create"><?= __e('cases.open_case') ?></a>
     </div>
     <div class="table-wrap case-table-wrap">
         <table class="case-table">
             <thead>
                 <tr>
-                    <th>Case #</th>
-                    <th>Title</th>
-                    <th>Client</th>
-                    <th>Status</th>
+                    <th><?= __e('common.case_number') ?></th>
+                    <th><?= __e('common.title') ?></th>
+                    <th><?= __e('common.client') ?></th>
+                    <th><?= __e('common.status') ?></th>
                     <th><?= e($amountLabel) ?></th>
-                    <th class="col-actions">Actions</th>
+                    <th class="col-actions"><?= __e('common.actions') ?></th>
                 </tr>
             </thead>
             <tbody>
@@ -830,20 +852,20 @@ $pagerQs = $filter !== '' ? '&filter=' . urlencode($filter) : '';
                     <td class="case-num-cell"><a class="case-num-link" href="?action=view&id=<?= (int)$c['id'] ?>"><?= e($c['case_number']) ?></a></td>
                     <td class="case-title-cell">
                         <strong><?= e($c['title']) ?></strong>
-                        <span class="muted"><?= e($c['case_type'] ?: ($c['company_name'] ?: '—')) ?></span>
+                        <span class="muted"><?= e($c['case_type'] ?: ($c['company_name'] ?: __('common.em_dash'))) ?></span>
                     </td>
                     <td><?= e($c['client_name']) ?></td>
                     <td><?= status_badge($c['status']) ?></td>
-                    <td class="case-fee-cell"><?= $amount > 0 ? e(money($amount)) : '—' ?></td>
+                    <td class="case-fee-cell"><?= $amount > 0 ? e(money($amount)) : __('common.em_dash') ?></td>
                     <td class="col-actions">
                         <div class="row-actions">
-                            <a class="btn btn-row-open btn-sm" href="?action=view&id=<?= (int)$c['id'] ?><?= $filter === 'outstanding' ? '&tab=invoices' : '' ?>">Open</a>
-                            <a class="btn btn-row-edit btn-sm" href="?action=edit&id=<?= (int)$c['id'] ?>">Edit</a>
-                            <form method="post" onsubmit="return confirm('Delete this case?')">
+                            <a class="btn btn-row-open btn-sm" href="?action=view&id=<?= (int)$c['id'] ?><?= $filter === 'outstanding' ? '&tab=invoices' : '' ?>"><?= __e('cases.list.open') ?></a>
+                            <a class="btn btn-row-edit btn-sm" href="?action=edit&id=<?= (int)$c['id'] ?>"><?= __e('common.edit') ?></a>
+                            <form method="post" data-confirm="<?= __e('confirm.delete_case') ?>">
                                 <?= csrf_field() ?>
                                 <input type="hidden" name="form_action" value="delete">
                                 <input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
-                                <button class="btn btn-row-delete btn-sm" type="submit">Delete</button>
+                                <button class="btn btn-row-delete btn-sm" type="submit"><?= __e('common.delete') ?></button>
                             </form>
                         </div>
                     </td>
@@ -853,11 +875,11 @@ $pagerQs = $filter !== '' ? '&filter=' . urlencode($filter) : '';
                 <tr>
                     <td colspan="6" class="case-empty">
                         <?php if ($filter === 'active'): ?>
-                            No active cases right now.
+                            <?= __e('cases.empty.no_active') ?>
                         <?php elseif ($filter === 'outstanding'): ?>
-                            No cases with outstanding invoices.
+                            <?= __e('cases.empty.no_outstanding') ?>
                         <?php else: ?>
-                            No cases yet. Click <strong>Open case</strong> to create one.
+                            <?= __('cases.empty.none') ?>
                         <?php endif; ?>
                     </td>
                 </tr>
@@ -866,11 +888,11 @@ $pagerQs = $filter !== '' ? '&filter=' . urlencode($filter) : '';
         </table>
     </div>
     <div class="case-list-foot">
-        <p class="case-list-footer muted">Showing <?= (int)$shownFrom ?>–<?= (int)$shownTo ?> of <?= (int)$totalCases ?> case<?= $totalCases === 1 ? '' : 's' ?></p>
+        <p class="case-list-footer muted"><?= e(__($totalCases === 1 ? 'cases.pager.showing_one' : 'cases.pager.showing_many', ['from' => (int)$shownFrom, 'to' => (int)$shownTo, 'total' => (int)$totalCases])) ?></p>
         <?php if ($totalPages > 1): ?>
-        <nav class="case-list-pager" aria-label="Cases pagination">
+        <nav class="case-list-pager" aria-label="<?= __e('cases.pagination.aria') ?>">
             <?php if ($page > 1): ?>
-            <a class="case-page-btn" href="?page=<?= $page - 1 ?><?= e($pagerQs) ?>" aria-label="Previous page">‹</a>
+            <a class="case-page-btn" href="?page=<?= $page - 1 ?><?= e($pagerQs) ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
             <?php else: ?>
             <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
             <?php endif; ?>
@@ -878,7 +900,7 @@ $pagerQs = $filter !== '' ? '&filter=' . urlencode($filter) : '';
             <a class="case-page-btn<?= $p === $page ? ' is-active' : '' ?>" href="?page=<?= $p ?><?= e($pagerQs) ?>"<?= $p === $page ? ' aria-current="page"' : '' ?>><?= $p ?></a>
             <?php endfor; ?>
             <?php if ($page < $totalPages): ?>
-            <a class="case-page-btn" href="?page=<?= $page + 1 ?><?= e($pagerQs) ?>" aria-label="Next page">›</a>
+            <a class="case-page-btn" href="?page=<?= $page + 1 ?><?= e($pagerQs) ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
             <?php else: ?>
             <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
             <?php endif; ?>

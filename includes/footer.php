@@ -5,9 +5,34 @@
         </footer>
     </div>
 </div>
+<?php require __DIR__ . '/confirm-modal.php'; ?>
+<?php require __DIR__ . '/saving-buffer.php'; ?>
 <script>
 window.LEXORA_I18N = <?= json_encode([
     'confirm' => __('common.confirm'),
+    'confirmTitle' => __('confirm.title'),
+    'confirmProceed' => __('confirm.proceed'),
+    'cancel' => __('common.cancel'),
+    'saving' => __('common.saving'),
+    'confirmDeleteClient' => __('confirm.delete_client'),
+    'confirmRemoveLawyer' => __('confirm.remove_lawyer'),
+    'confirmRemoveStaff' => __('confirm.remove_staff'),
+    'confirmResetPassword' => __('confirm.reset_password'),
+    'confirmDeleteCase' => __('confirm.delete_case'),
+    'confirmDeleteHearing' => __('court.confirm_delete'),
+    'confirmCancelAppointment' => __('appointments.confirm_cancel'),
+    'confirmRejectAppointment' => __('confirm.reject_appointment'),
+    'confirmDeactivateUser' => __('confirm.deactivate_user'),
+    'confirmRemoveLine' => __('confirm.remove_line'),
+    'availabilityBookingUnavailable' => __('availability.booking.unavailable'),
+    'availabilityBookingSunday' => __('availability.booking.sunday'),
+    'apptChooseTime' => __('availability.booking.choose_time'),
+    'apptNoSlots' => __('availability.booking.no_slots'),
+    'apptSelectLawyer' => __('availability.booking.select_lawyer'),
+    'apptSelectDate' => __('availability.booking.select_date'),
+    'apptLoadingSlots' => __('availability.booking.loading'),
+    'availabilitySlotsSelected' => __('availability.slots_selected', ['count' => ':count']),
+    'availabilityDayCount' => __('availability.day_count', ['count' => ':count']),
     'thinking' => __('ai.thinking'),
     'no_response' => __('ai.no_response'),
     'service_error' => __('ai.service_error'),

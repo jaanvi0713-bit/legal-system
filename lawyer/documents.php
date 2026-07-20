@@ -38,12 +38,14 @@ require __DIR__ . '/../includes/header.php';
 ?>
 <div class="panel">
     <h2><?= __e('lawyer.documents.upload') ?></h2>
-    <form method="post" enctype="multipart/form-data" class="form-grid">
+    <form method="post" enctype="multipart/form-data" class="form-grid entity-inline-form">
         <?= csrf_field() ?>
-        <div class="form-group"><label><?= __e('common.case') ?></label><select name="case_id" required><?php foreach ($cases as $c): ?><option value="<?= (int)$c['id'] ?>"><?= e($c['case_number'].' — '.$c['title']) ?></option><?php endforeach; ?></select></div>
-        <div class="form-group"><label><?= __e('common.category') ?></label><select name="category"><?php foreach (['evidence','legal','contract','court','other'] as $c): ?><option value="<?= $c ?>"><?= e(__('doc.category.' . $c)) ?></option><?php endforeach; ?></select></div>
-        <div class="form-group"><label><?= __e('common.title') ?></label><input name="title"></div>
-        <div class="form-group"><label><?= __e('common.file') ?></label><input type="file" name="document" required></div>
+        <div class="form-group full"><label><?= __e('common.case') ?></label><select name="case_id" required><?php foreach ($cases as $c): ?><option value="<?= (int)$c['id'] ?>"><?= e($c['case_number'].' — '.$c['title']) ?></option><?php endforeach; ?></select></div>
+        <div class="entity-field-row">
+            <div class="form-group"><label><?= __e('common.category') ?></label><select name="category"><?php foreach (['evidence','legal','contract','court','other'] as $c): ?><option value="<?= $c ?>"><?= e(__('doc.category.' . $c)) ?></option><?php endforeach; ?></select></div>
+            <div class="form-group"><label><?= __e('common.title') ?></label><input name="title"></div>
+            <div class="form-group"><label><?= __e('common.file') ?></label><input type="file" name="document" required></div>
+        </div>
         <div class="form-group full"><label><?= __e('lawyer.documents.notes_ph') ?></label><textarea name="description" placeholder="<?= __e('lawyer.documents.notes_ph') ?>"></textarea></div>
         <div class="form-actions full"><button class="btn btn-primary" type="submit"><?= __e('common.upload') ?></button><a class="btn btn-secondary" href="ai.php"><?= __e('lawyer.documents.generate_ai') ?></a></div>
     </form>

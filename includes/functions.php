@@ -149,9 +149,11 @@ function status_badge(string $status): string
         'high' => 'badge-warning',
         'urgent' => 'badge-danger',
     ];
-    $class = $map[normalize_appointment_status($status)] ?? $map[$status] ?? 'badge-muted';
+    $statusKey = normalize_appointment_status($status);
+    $class = $map[$statusKey] ?? $map[$status] ?? 'badge-muted';
+    $slug = preg_replace('/[^a-z0-9]+/', '-', strtolower(isset($map[$statusKey]) ? $statusKey : $status));
     $label = function_exists('translate_status') ? translate_status($status) : ucwords(str_replace('_', ' ', $status));
-    return '<span class="badge ' . $class . '">' . e($label) . '</span>';
+    return '<span class="badge ' . $class . ' badge-st-' . e($slug) . '">' . e($label) . '</span>';
 }
 
 function generate_case_number(PDO $pdo): string
@@ -162,24 +164,40 @@ function generate_case_number(PDO $pdo): string
     return sprintf('CASE-%s-%03d', $year, $count);
 }
 
+/**
+ * Random alphanumeric code guaranteed to contain at least one letter and one digit.
+ * Uses an unambiguous alphabet (no O/0/I/1) for easy reading.
+ */
+function generate_alnum_code(int $length = 6): string
+{
+    $letters = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    $digits = '23456789';
+    $alphabet = $letters . $digits;
+    $max = strlen($alphabet) - 1;
+    if ($length < 2) {
+        $length = 2;
+    }
+    do {
+        $code = '';
+        for ($i = 0; $i < $length; $i++) {
+            $code .= $alphabet[random_int(0, $max)];
+        }
+    } while (!preg_match('/[A-Z]/', $code) || !preg_match('/[0-9]/', $code));
+    return $code;
+}
+
 function generate_invoice_number(PDO $pdo): string
 {
     $year = date('Y');
-    $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    $max = strlen($alphabet) - 1;
     for ($attempt = 0; $attempt < 24; $attempt++) {
-        $code = '';
-        for ($i = 0; $i < 5; $i++) {
-            $code .= $alphabet[random_int(0, $max)];
-        }
-        $number = sprintf('INV-%s-%s', $year, $code);
+        $number = sprintf('INV-%s-%s', $year, generate_alnum_code(6));
         $check = $pdo->prepare('SELECT 1 FROM invoices WHERE invoice_number = ? LIMIT 1');
         $check->execute([$number]);
         if (!$check->fetchColumn()) {
             return $number;
         }
     }
-    return sprintf('INV-%s-%05d', $year, random_int(10000, 99999));
+    return sprintf('INV-%s-%s', $year, generate_alnum_code(8));
 }
 
 function ensure_invoice_items_table(PDO $pdo): void
@@ -251,11 +269,27 @@ function get_bank_accounts(PDO $pdo): array
             'bank' => trim((string) ($row['bank'] ?? '')),
             'account_name' => trim((string) ($row['account_name'] ?? '')),
             'account_number' => trim((string) ($row['account_number'] ?? '')),
+            'sort_code' => trim((string) ($row['sort_code'] ?? '')),
             'iban' => trim((string) ($row['iban'] ?? '')),
             'swift' => trim((string) ($row['swift'] ?? '')),
+            'reference' => trim((string) ($row['reference'] ?? '')),
         ];
     }
     return $accounts;
+}
+
+/** Returns the configured default bank account id (1-3), falling back to the first configured account. */
+function get_default_bank_account_id(PDO $pdo): ?int
+{
+    $configured = get_configured_bank_accounts($pdo);
+    if (!$configured) {
+        return null;
+    }
+    $default = (int) get_setting($pdo, 'bank_accounts_default', '0');
+    if ($default >= 1 && $default <= 3 && isset($configured[$default])) {
+        return $default;
+    }
+    return (int) array_key_first($configured);
 }
 
 function get_configured_bank_accounts(PDO $pdo): array
@@ -290,8 +324,10 @@ function save_bank_accounts(PDO $pdo, array $posted): void
             'bank' => trim((string) ($posted[$i]['bank'] ?? '')),
             'account_name' => trim((string) ($posted[$i]['account_name'] ?? '')),
             'account_number' => trim((string) ($posted[$i]['account_number'] ?? '')),
+            'sort_code' => trim((string) ($posted[$i]['sort_code'] ?? '')),
             'iban' => trim((string) ($posted[$i]['iban'] ?? '')),
             'swift' => trim((string) ($posted[$i]['swift'] ?? '')),
+            'reference' => trim((string) ($posted[$i]['reference'] ?? '')),
         ];
     }
     set_setting($pdo, 'bank_accounts_json', json_encode($out, JSON_UNESCAPED_UNICODE));
@@ -300,9 +336,15 @@ function save_bank_accounts(PDO $pdo, array $posted): void
 function generate_receipt_number(PDO $pdo): string
 {
     $year = date('Y');
-    $stmt = $pdo->query("SELECT COUNT(*) FROM payments WHERE YEAR(created_at) = YEAR(CURDATE())");
-    $count = (int) $stmt->fetchColumn() + 1;
-    return sprintf('RCP-%s-%03d', $year, $count);
+    for ($attempt = 0; $attempt < 24; $attempt++) {
+        $number = sprintf('RCP-%s-%s', $year, generate_alnum_code(6));
+        $check = $pdo->prepare('SELECT 1 FROM payments WHERE receipt_number = ? LIMIT 1');
+        $check->execute([$number]);
+        if (!$check->fetchColumn()) {
+            return $number;
+        }
+    }
+    return sprintf('RCP-%s-%s', $year, generate_alnum_code(8));
 }
 
 function log_activity(PDO $pdo, ?int $userId, string $action, ?string $entityType = null, ?int $entityId = null, ?string $description = null): void
@@ -318,6 +360,402 @@ function log_activity(PDO $pdo, ?int $userId, string $action, ?string $entityTyp
     ]);
 }
 
+function ensure_notification_edited_column(PDO $pdo): void
+{
+    static $ready = false;
+    if ($ready) {
+        return;
+    }
+    $col = $pdo->query("SHOW COLUMNS FROM notifications LIKE 'edited_at'")->fetch();
+    if (!$col) {
+        $pdo->exec('ALTER TABLE notifications ADD COLUMN edited_at DATETIME DEFAULT NULL AFTER created_at');
+    }
+    $ready = true;
+}
+
+function ensure_contact_message_columns(PDO $pdo): void
+{
+    static $ready = false;
+    if ($ready) {
+        return;
+    }
+    $threadCol = $pdo->query("SHOW COLUMNS FROM messages LIKE 'thread_id'")->fetch();
+    if (!$threadCol) {
+        $pdo->exec('ALTER TABLE messages ADD COLUMN thread_id INT UNSIGNED DEFAULT NULL AFTER created_at');
+    }
+    $statusCol = $pdo->query("SHOW COLUMNS FROM messages LIKE 'status'")->fetch();
+    if (!$statusCol) {
+        $pdo->exec("ALTER TABLE messages ADD COLUMN status ENUM('open','closed') NOT NULL DEFAULT 'open' AFTER thread_id");
+    }
+    $editedCol = $pdo->query("SHOW COLUMNS FROM messages LIKE 'edited_at'")->fetch();
+    if (!$editedCol) {
+        $pdo->exec('ALTER TABLE messages ADD COLUMN edited_at DATETIME DEFAULT NULL AFTER status');
+    }
+    $pdo->exec('UPDATE messages SET thread_id = id WHERE thread_id IS NULL');
+    $ready = true;
+}
+
+function contact_user_in_thread(array $thread, int $userId): bool
+{
+    return in_array($userId, [(int) ($thread['sender_id'] ?? 0), (int) ($thread['receiver_id'] ?? 0)], true);
+}
+
+function contact_lawyer_can_access_thread(PDO $pdo, array $thread, int $lawyerId): bool
+{
+    $clientId = (int) $thread['sender_id'] === $lawyerId ? (int) $thread['receiver_id'] : (int) $thread['sender_id'];
+    return lawyer_can_access_client($pdo, $lawyerId, $clientId);
+}
+
+function contact_edit_message(PDO $pdo, int $messageId, int $userId, string $body): bool
+{
+    ensure_contact_message_columns($pdo);
+    $body = trim($body);
+    if ($body === '') {
+        return false;
+    }
+    $stmt = $pdo->prepare('UPDATE messages SET body=?, edited_at=NOW() WHERE id=? AND sender_id=?');
+    $stmt->execute([$body, $messageId, $userId]);
+    return $stmt->rowCount() > 0;
+}
+
+function resolve_client_lawyer_id(PDO $pdo, int $clientId): ?int
+{
+    $lawyers = contact_fetch_client_lawyers($pdo, $clientId);
+    if (count($lawyers) === 1) {
+        return (int) $lawyers[0]['id'];
+    }
+    $stmt = $pdo->prepare('SELECT assigned_lawyer_id FROM users WHERE id=? AND role="client"');
+    $stmt->execute([$clientId]);
+    $lawyerId = $stmt->fetchColumn();
+    if ($lawyerId) {
+        return (int) $lawyerId;
+    }
+    if ($lawyers) {
+        return (int) $lawyers[0]['id'];
+    }
+    return null;
+}
+
+/** @return list<array{id:int,first_name:string,last_name:string,email:?string,phone:?string,specialization:?string,cases:list<array{id:int,case_number:string,title:?string,status:string}>}> */
+/**
+ * Lawyers a client is currently allowed to contact.
+ * A lawyer is contactable only while the client has at least one open (non-closed)
+ * case with them. Once every shared case is closed, the lawyer drops off the list
+ * until a new case is opened. Brand-new clients with no cases at all fall back to
+ * their assigned lawyer so onboarding contact still works.
+ */
+function contact_fetch_client_lawyers(PDO $pdo, int $clientId): array
+{
+    $byId = [];
+    $stmt = $pdo->prepare(
+        "SELECT c.id AS case_id, c.case_number, c.title, c.status, c.lawyer_id,
+                u.first_name, u.last_name, u.email, u.phone, u.specialization
+         FROM cases c
+         JOIN users u ON u.id = c.lawyer_id AND u.role = 'lawyer'
+         WHERE c.client_id = ? AND c.lawyer_id IS NOT NULL AND c.status <> 'closed'
+         ORDER BY c.case_number"
+    );
+    $stmt->execute([$clientId]);
+    foreach ($stmt->fetchAll() as $row) {
+        $lawyerId = (int) $row['lawyer_id'];
+        if (!isset($byId[$lawyerId])) {
+            $byId[$lawyerId] = [
+                'id' => $lawyerId,
+                'first_name' => $row['first_name'],
+                'last_name' => $row['last_name'],
+                'email' => $row['email'],
+                'phone' => $row['phone'],
+                'specialization' => $row['specialization'],
+                'cases' => [],
+            ];
+        }
+        $byId[$lawyerId]['cases'][] = [
+            'id' => (int) $row['case_id'],
+            'case_number' => $row['case_number'],
+            'title' => $row['title'],
+            'status' => $row['status'],
+        ];
+    }
+
+    // Fallback to the assigned lawyer only for clients who have no cases at all yet.
+    if (!$byId) {
+        $caseCountStmt = $pdo->prepare('SELECT COUNT(*) FROM cases WHERE client_id = ?');
+        $caseCountStmt->execute([$clientId]);
+        $hasAnyCase = (int) $caseCountStmt->fetchColumn() > 0;
+        if (!$hasAnyCase) {
+            $assignedStmt = $pdo->prepare('SELECT assigned_lawyer_id FROM users WHERE id=? AND role="client"');
+            $assignedStmt->execute([$clientId]);
+            $assignedId = (int) ($assignedStmt->fetchColumn() ?: 0);
+            if ($assignedId) {
+                $lawyerStmt = $pdo->prepare('SELECT id, first_name, last_name, email, phone, specialization FROM users WHERE id=? AND role="lawyer"');
+                $lawyerStmt->execute([$assignedId]);
+                if ($lawyer = $lawyerStmt->fetch()) {
+                    $byId[$assignedId] = [
+                        'id' => (int) $lawyer['id'],
+                        'first_name' => $lawyer['first_name'],
+                        'last_name' => $lawyer['last_name'],
+                        'email' => $lawyer['email'],
+                        'phone' => $lawyer['phone'],
+                        'specialization' => $lawyer['specialization'],
+                        'cases' => [],
+                    ];
+                }
+            }
+        }
+    }
+
+    return array_values($byId);
+}
+
+function contact_resolve_send_lawyer(PDO $pdo, int $clientId, ?int $caseId, ?int $lawyerId = null): ?int
+{
+    $lawyers = contact_fetch_client_lawyers($pdo, $clientId);
+    if (!$lawyers) {
+        return null;
+    }
+    if ($caseId) {
+        $stmt = $pdo->prepare("SELECT lawyer_id FROM cases WHERE id=? AND client_id=? AND lawyer_id IS NOT NULL AND status <> 'closed'");
+        $stmt->execute([$caseId, $clientId]);
+        $resolved = $stmt->fetchColumn();
+        return $resolved ? (int) $resolved : null;
+    }
+    if ($lawyerId && client_can_contact_lawyer($pdo, $clientId, $lawyerId)) {
+        return $lawyerId;
+    }
+    if (count($lawyers) === 1) {
+        return (int) $lawyers[0]['id'];
+    }
+    return null;
+}
+
+/** @return list<array{key:string,label:string,case_id:?int,lawyer_id:int}> */
+function contact_fetch_send_targets(PDO $pdo, int $clientId): array
+{
+    $targets = [];
+    foreach (contact_fetch_client_lawyers($pdo, $clientId) as $lawyer) {
+        $lawyerName = full_name($lawyer);
+        if (!empty($lawyer['cases'])) {
+            foreach ($lawyer['cases'] as $case) {
+                $targets[] = [
+                    'key' => 'case-' . $case['id'],
+                    'label' => __('client.contact.case_option', [
+                        'case' => $case['case_number'],
+                        'lawyer' => $lawyerName,
+                    ]),
+                    'case_id' => (int) $case['id'],
+                    'lawyer_id' => (int) $lawyer['id'],
+                ];
+            }
+        } else {
+            $targets[] = [
+                'key' => 'lawyer-' . $lawyer['id'],
+                'label' => __('client.contact.general_option', ['lawyer' => $lawyerName]),
+                'case_id' => null,
+                'lawyer_id' => (int) $lawyer['id'],
+            ];
+        }
+    }
+    return $targets;
+}
+
+function client_can_contact_lawyer(PDO $pdo, int $clientId, int $lawyerId): bool
+{
+    foreach (contact_fetch_client_lawyers($pdo, $clientId) as $lawyer) {
+        if ((int) $lawyer['id'] === $lawyerId) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function lawyer_can_access_client(PDO $pdo, int $lawyerId, int $clientId): bool
+{
+    $stmt = $pdo->prepare("SELECT 1 FROM users u WHERE u.id=? AND u.role='client' AND (u.assigned_lawyer_id=? OR u.id IN (SELECT client_id FROM cases WHERE lawyer_id=?)) LIMIT 1");
+    $stmt->execute([$clientId, $lawyerId, $lawyerId]);
+    return (bool) $stmt->fetchColumn();
+}
+
+function contact_create_thread(PDO $pdo, int $clientId, int $lawyerId, ?int $caseId, string $subject, string $body): int
+{
+    ensure_contact_message_columns($pdo);
+    $pdo->prepare('INSERT INTO messages (sender_id, receiver_id, case_id, subject, body, status) VALUES (?,?,?,?,?,?)')
+        ->execute([$clientId, $lawyerId, $caseId, $subject, $body, 'open']);
+    $threadId = (int) $pdo->lastInsertId();
+    $pdo->prepare('UPDATE messages SET thread_id=? WHERE id=?')->execute([$threadId, $threadId]);
+    return $threadId;
+}
+
+function contact_add_reply(PDO $pdo, int $threadId, int $senderId, int $receiverId, string $body): void
+{
+    ensure_contact_message_columns($pdo);
+    $root = $pdo->prepare('SELECT subject FROM messages WHERE id=? AND thread_id=?');
+    $root->execute([$threadId, $threadId]);
+    $subject = $root->fetchColumn() ?: __('common.message');
+    $replySubject = str_starts_with(strtolower($subject), 're:') ? $subject : 'Re: ' . $subject;
+    $pdo->prepare('INSERT INTO messages (sender_id, receiver_id, case_id, subject, body, thread_id, status) VALUES (?,?,?,?,?,?,?)')
+        ->execute([$senderId, $receiverId, null, $replySubject, $body, $threadId, 'open']);
+    $pdo->prepare("UPDATE messages SET status='open' WHERE id=?")->execute([$threadId]);
+}
+
+function contact_fetch_thread(PDO $pdo, int $threadId): ?array
+{
+    ensure_contact_message_columns($pdo);
+    $stmt = $pdo->prepare('SELECT * FROM messages WHERE id=? AND thread_id=?');
+    $stmt->execute([$threadId, $threadId]);
+    $row = $stmt->fetch();
+    return $row ?: null;
+}
+
+function contact_fetch_thread_messages(PDO $pdo, int $threadId): array
+{
+    ensure_contact_message_columns($pdo);
+    $stmt = $pdo->prepare('SELECT m.*, CONCAT(u.first_name," ",u.last_name) AS sender_name, u.role AS sender_role FROM messages m JOIN users u ON u.id=m.sender_id WHERE m.thread_id=? OR m.id=? ORDER BY m.created_at ASC');
+    $stmt->execute([$threadId, $threadId]);
+    return $stmt->fetchAll();
+}
+
+function contact_mark_thread_read(PDO $pdo, int $threadId, int $userId): void
+{
+    $pdo->prepare('UPDATE messages SET is_read=1 WHERE thread_id=? AND receiver_id=?')->execute([$threadId, $userId]);
+}
+
+function contact_count_threads_for_client(PDO $pdo, int $clientId, int $lawyerId): int
+{
+    ensure_contact_message_columns($pdo);
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM messages WHERE id=thread_id AND ((sender_id=? AND receiver_id=?) OR (sender_id=? AND receiver_id=?))');
+    $stmt->execute([$clientId, $lawyerId, $lawyerId, $clientId]);
+    return (int) $stmt->fetchColumn();
+}
+
+function contact_count_all_threads_for_client(PDO $pdo, int $clientId): int
+{
+    ensure_contact_message_columns($pdo);
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM messages WHERE id=thread_id AND (sender_id=? OR receiver_id=?)');
+    $stmt->execute([$clientId, $clientId]);
+    return (int) $stmt->fetchColumn();
+}
+
+function contact_fetch_threads_for_client(PDO $pdo, int $clientId, int $lawyerId, int $limit, int $offset): array
+{
+    ensure_contact_message_columns($pdo);
+    $sql = 'SELECT root.id AS thread_id, root.subject, root.status, root.created_at,
+        latest.body AS preview_body, latest.created_at AS last_at, latest.sender_id AS last_sender_id,
+        CONCAT(lu.first_name," ",lu.last_name) AS last_sender_name,
+        (SELECT COUNT(*) FROM messages WHERE thread_id = root.id) AS message_count
+        FROM messages root
+        JOIN messages latest ON latest.id = (
+            SELECT id FROM messages WHERE thread_id = root.id ORDER BY created_at DESC LIMIT 1
+        )
+        JOIN users lu ON lu.id = latest.sender_id
+        WHERE root.id = root.thread_id
+          AND ((root.sender_id = ? AND root.receiver_id = ?) OR (root.sender_id = ? AND root.receiver_id = ?))
+        ORDER BY latest.created_at DESC
+        LIMIT ? OFFSET ?';
+    $stmt = $pdo->prepare($sql);
+    $stmt->bindValue(1, $clientId, PDO::PARAM_INT);
+    $stmt->bindValue(2, $lawyerId, PDO::PARAM_INT);
+    $stmt->bindValue(3, $lawyerId, PDO::PARAM_INT);
+    $stmt->bindValue(4, $clientId, PDO::PARAM_INT);
+    $stmt->bindValue(5, $limit, PDO::PARAM_INT);
+    $stmt->bindValue(6, $offset, PDO::PARAM_INT);
+    $stmt->execute();
+    return $stmt->fetchAll();
+}
+
+function contact_fetch_all_threads_for_client(PDO $pdo, int $clientId, int $limit, int $offset): array
+{
+    ensure_contact_message_columns($pdo);
+    $sql = 'SELECT root.id AS thread_id, root.subject, root.status, root.created_at, root.case_id,
+        latest.body AS preview_body, latest.created_at AS last_at, latest.sender_id AS last_sender_id,
+        CONCAT(lu.first_name," ",lu.last_name) AS last_sender_name,
+        IF(root.sender_id = ?, root.receiver_id, root.sender_id) AS lawyer_id,
+        CONCAT(law.first_name," ",law.last_name) AS lawyer_name,
+        (SELECT COUNT(*) FROM messages WHERE thread_id = root.id) AS message_count
+        FROM messages root
+        JOIN messages latest ON latest.id = (
+            SELECT id FROM messages WHERE thread_id = root.id ORDER BY created_at DESC LIMIT 1
+        )
+        JOIN users lu ON lu.id = latest.sender_id
+        JOIN users law ON law.id = IF(root.sender_id = ?, root.receiver_id, root.sender_id)
+        WHERE root.id = root.thread_id
+          AND (root.sender_id = ? OR root.receiver_id = ?)
+        ORDER BY latest.created_at DESC
+        LIMIT ? OFFSET ?';
+    $stmt = $pdo->prepare($sql);
+    $stmt->bindValue(1, $clientId, PDO::PARAM_INT);
+    $stmt->bindValue(2, $clientId, PDO::PARAM_INT);
+    $stmt->bindValue(3, $clientId, PDO::PARAM_INT);
+    $stmt->bindValue(4, $clientId, PDO::PARAM_INT);
+    $stmt->bindValue(5, $limit, PDO::PARAM_INT);
+    $stmt->bindValue(6, $offset, PDO::PARAM_INT);
+    $stmt->execute();
+    return $stmt->fetchAll();
+}
+
+function contact_count_threads_for_lawyer(PDO $pdo, int $lawyerId, ?int $clientId = null): int
+{
+    ensure_contact_message_columns($pdo);
+    $sql = "SELECT COUNT(*) FROM messages root
+        WHERE root.id = root.thread_id
+          AND (root.sender_id = ? OR root.receiver_id = ?)
+          AND EXISTS (
+            SELECT 1 FROM users u WHERE u.role='client'
+              AND u.id = IF(root.sender_id = ?, root.receiver_id, root.sender_id)
+              AND (u.assigned_lawyer_id = ? OR u.id IN (SELECT client_id FROM cases WHERE lawyer_id = ?))
+          )";
+    $params = [$lawyerId, $lawyerId, $lawyerId, $lawyerId, $lawyerId];
+    if ($clientId) {
+        $sql .= ' AND (root.sender_id = ? OR root.receiver_id = ?)';
+        $params[] = $clientId;
+        $params[] = $clientId;
+    }
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    return (int) $stmt->fetchColumn();
+}
+
+function contact_fetch_threads_for_lawyer(PDO $pdo, int $lawyerId, int $limit, int $offset, ?int $clientId = null): array
+{
+    ensure_contact_message_columns($pdo);
+    $sql = "SELECT root.id AS thread_id, root.subject, root.status, root.created_at,
+        latest.body AS preview_body, latest.created_at AS last_at, latest.sender_id AS last_sender_id,
+        CONCAT(lu.first_name,' ',lu.last_name) AS last_sender_name,
+        IF(root.sender_id = ?, root.receiver_id, root.sender_id) AS client_id,
+        CONCAT(cu.first_name,' ',cu.last_name) AS client_name,
+        (SELECT COUNT(*) FROM messages WHERE thread_id = root.id) AS message_count,
+        (SELECT COUNT(*) FROM messages WHERE thread_id = root.id AND receiver_id = ? AND is_read = 0) AS unread_count
+        FROM messages root
+        JOIN messages latest ON latest.id = (
+            SELECT id FROM messages WHERE thread_id = root.id ORDER BY created_at DESC LIMIT 1
+        )
+        JOIN users lu ON lu.id = latest.sender_id
+        JOIN users cu ON cu.id = IF(root.sender_id = ?, root.receiver_id, root.sender_id)
+        WHERE root.id = root.thread_id
+          AND (root.sender_id = ? OR root.receiver_id = ?)
+          AND (cu.assigned_lawyer_id = ? OR cu.id IN (SELECT client_id FROM cases WHERE lawyer_id = ?))";
+    $params = [$lawyerId, $lawyerId, $lawyerId, $lawyerId, $lawyerId, $lawyerId, $lawyerId];
+    if ($clientId) {
+        $sql .= ' AND (root.sender_id = ? OR root.receiver_id = ?)';
+        $params[] = $clientId;
+        $params[] = $clientId;
+    }
+    $sql .= ' ORDER BY latest.created_at DESC LIMIT ? OFFSET ?';
+    $params[] = $limit;
+    $params[] = $offset;
+    $stmt = $pdo->prepare($sql);
+    foreach ($params as $i => $val) {
+        $stmt->bindValue($i + 1, $val, PDO::PARAM_INT);
+    }
+    $stmt->execute();
+    return $stmt->fetchAll();
+}
+
+function contact_delete_thread(PDO $pdo, int $threadId): void
+{
+    ensure_contact_message_columns($pdo);
+    $pdo->prepare('DELETE FROM messages WHERE thread_id=? OR id=?')->execute([$threadId, $threadId]);
+}
+
 function create_notification(PDO $pdo, int $userId, string $title, string $message, string $type = 'info', ?string $link = null, ?int $createdBy = null): void
 {
     $stmt = $pdo->prepare('INSERT INTO notifications (user_id, title, message, type, link, created_by) VALUES (?, ?, ?, ?, ?, ?)');
@@ -329,6 +767,184 @@ function unread_notifications(PDO $pdo, int $userId): int
     $stmt = $pdo->prepare('SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0');
     $stmt->execute([$userId]);
     return (int) $stmt->fetchColumn();
+}
+
+function contact_fetch_client_for_lawyer(PDO $pdo, int $lawyerId, int $clientId): ?array
+{
+    if (!lawyer_can_access_client($pdo, $lawyerId, $clientId)) {
+        return null;
+    }
+    $stmt = $pdo->prepare('SELECT * FROM users WHERE id=? AND role="client"');
+    $stmt->execute([$clientId]);
+    $row = $stmt->fetch();
+    return $row ?: null;
+}
+
+function contact_fetch_case_summary(PDO $pdo, ?int $caseId): ?array
+{
+    if (!$caseId) {
+        return null;
+    }
+    $stmt = $pdo->prepare('SELECT id, case_number, title, status FROM cases WHERE id=?');
+    $stmt->execute([$caseId]);
+    $row = $stmt->fetch();
+    return $row ?: null;
+}
+
+function contact_info_icon_svg(string $type): string
+{
+    $icons = [
+        'company' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 21V5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v16"/><path d="M14 9h5a1 1 0 0 1 1 1v11"/><path d="M8 9h2M8 13h2M8 17h2"/></svg>',
+        'lawyer' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="8" r="3.25"/><path d="M6 21v-1a6 6 0 0 1 12 0v1"/></svg>',
+        'client' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="8" r="3.25"/><path d="M6 21v-1a6 6 0 0 1 12 0v1"/></svg>',
+        'case' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><rect x="3" y="7" width="18" height="14" rx="2"/><path d="M3 13h18"/></svg>',
+        'email' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>',
+        'phone' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M6.6 3.9h2.4l1.2 3.6-1.6 1.2a11 11 0 0 0 5.3 5.3l1.2-1.6 3.6 1.2v2.4a2 2 0 0 1-2 2A14 14 0 0 1 4.6 5.9a2 2 0 0 1 2-2z"/></svg>',
+        'location' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 21s6-5.2 6-10a6 6 0 1 0-12 0c0 4.8 6 10 6 10"/><circle cx="12" cy="11" r="2.5"/></svg>',
+        'hours' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2.5 2"/></svg>',
+    ];
+    return $icons[$type] ?? $icons['company'];
+}
+
+function notification_type_icon_svg(string $type): string
+{
+    $icons = [
+        'document' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M8 3h6l5 5v13a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/></svg>',
+        'payment' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>',
+        'appointment' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
+        'case' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><rect x="3" y="7" width="18" height="14" rx="2"/><path d="M3 13h18"/></svg>',
+        'reminder' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M7 9a5 5 0 0 1 10 0c0 5 2 6 2 6H5s2-1 2-6"/><path d="M10 19a2 2 0 0 0 4 0"/></svg>',
+        'success' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M9 12.5l2 2 4-4.5"/></svg>',
+        'info' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 11v5M12 8h.01"/></svg>',
+    ];
+    return $icons[$type] ?? $icons['info'];
+}
+
+/** @deprecated Use notification_type_icon_svg() */
+function notification_type_icons(): array
+{
+    return [
+        'info' => 'i',
+        'success' => 'OK',
+        'case' => 'C',
+        'appointment' => 'A',
+        'payment' => 'P',
+        'document' => 'D',
+        'reminder' => 'R',
+    ];
+}
+
+function notification_open_url(?string $link, string $portalBase, string $base, string $fallback = ''): string
+{
+    $fallback = $fallback !== '' ? $fallback : ($portalBase . '/notifications.php');
+    $link = trim((string) $link);
+    if ($link === '') {
+        return $fallback;
+    }
+    if (preg_match('#^https?://#i', $link) || str_starts_with($link, '/')) {
+        return $link;
+    }
+    if (str_starts_with($link, '../')) {
+        return rtrim($base, '/') . '/' . ltrim(preg_replace('#^(\.\./)+#', '', $link), '/');
+    }
+    return $portalBase . '/' . ltrim($link, './');
+}
+
+function format_time_ago(?string $date): string
+{
+    if (!$date) {
+        return '';
+    }
+    $ts = strtotime($date);
+    if (!$ts) {
+        return '';
+    }
+    $diff = time() - $ts;
+    if ($diff < 60) {
+        return __('time.just_now');
+    }
+    if ($diff < 3600) {
+        $mins = max(1, (int) floor($diff / 60));
+        return $mins === 1 ? __('time.minute_ago') : __('time.minutes_ago', ['count' => $mins]);
+    }
+    if ($diff < 86400) {
+        $hours = max(1, (int) floor($diff / 3600));
+        return $hours === 1 ? __('time.hour_ago') : __('time.hours_ago', ['count' => $hours]);
+    }
+    if ($diff < 604800) {
+        $days = max(1, (int) floor($diff / 86400));
+        return $days === 1 ? __('time.day_ago') : __('time.days_ago', ['count' => $days]);
+    }
+    return format_date($date, 'M j, Y');
+}
+
+function handle_notification_post(PDO $pdo, array $user, string $redirectUrl, bool $allowDeleteAny = false): void
+{
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        return;
+    }
+    verify_csrf();
+    ensure_notification_edited_column($pdo);
+    $fa = post('form_action');
+    $uid = (int) $user['id'];
+    $returnPage = max(0, (int) post('return_page', 0));
+    $redirectTarget = $returnPage > 1 ? $redirectUrl . '?page=' . $returnPage : $redirectUrl;
+
+    if ($fa === 'read') {
+        $pdo->prepare('UPDATE notifications SET is_read=1 WHERE id=? AND user_id=?')->execute([(int) post('id'), $uid]);
+        redirect($redirectTarget);
+    }
+    if ($fa === 'read_all') {
+        $pdo->prepare('UPDATE notifications SET is_read=1 WHERE user_id=?')->execute([$uid]);
+        flash('success', __('flash.notifications.marked_read'));
+        redirect($redirectTarget);
+    }
+    if ($fa === 'edit') {
+        $id = (int) post('id');
+        $title = trim((string) post('title'));
+        $message = trim((string) post('message'));
+        if ($title === '' || $message === '') {
+            flash('error', __('flash.notification.edit_required'));
+            redirect($redirectTarget);
+        }
+        if ($allowDeleteAny) {
+            $stmt = $pdo->prepare('UPDATE notifications SET title=?, message=?, edited_at=NOW() WHERE id=?');
+            $stmt->execute([$title, $message, $id]);
+        } else {
+            $stmt = $pdo->prepare('UPDATE notifications SET title=?, message=?, edited_at=NOW() WHERE id=? AND user_id=?');
+            $stmt->execute([$title, $message, $id, $uid]);
+        }
+        if ($stmt->rowCount()) {
+            flash('success', __('flash.notification.updated'));
+        }
+        redirect($redirectTarget);
+    }
+    if ($fa === 'delete') {
+        $id = (int) post('id');
+        if ($allowDeleteAny) {
+            $pdo->prepare('DELETE FROM notifications WHERE id=?')->execute([$id]);
+        } else {
+            $pdo->prepare('DELETE FROM notifications WHERE id=? AND user_id=?')->execute([$id, $uid]);
+        }
+        flash('success', __('flash.notification.deleted'));
+        redirect($redirectTarget);
+    }
+}
+
+function handle_notification_open(PDO $pdo, array $user, string $portalBase, string $base, string $fallbackUrl): void
+{
+    if (get('action') !== 'open') {
+        return;
+    }
+    $id = (int) get('id', 0);
+    $stmt = $pdo->prepare('SELECT link FROM notifications WHERE id=? AND user_id=?');
+    $stmt->execute([$id, (int) $user['id']]);
+    $row = $stmt->fetch();
+    if (!$row) {
+        redirect($fallbackUrl);
+    }
+    $pdo->prepare('UPDATE notifications SET is_read=1 WHERE id=? AND user_id=?')->execute([$id, (int) $user['id']]);
+    redirect(notification_open_url($row['link'] ?? null, $portalBase, $base, $fallbackUrl));
 }
 
 function get_setting(PDO $pdo, string $key, $default = null)
@@ -343,6 +959,11 @@ function set_setting(PDO $pdo, string $key, ?string $value): void
 {
     $stmt = $pdo->prepare('INSERT INTO settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)');
     $stmt->execute([$key, $value]);
+}
+
+function client_case_instructions(PDO $pdo): string
+{
+    return trim((string) get_setting($pdo, 'client_case_instructions', __('content.settings.client_case_instructions')));
 }
 
 function handle_upload(array $file, string $subdir = 'documents'): ?array
@@ -373,6 +994,52 @@ function handle_upload(array $file, string $subdir = 'documents'): ?array
         'file_type' => $file['type'] ?? $ext,
         'file_size' => (int) $file['size'],
     ];
+}
+
+function handle_branding_image_upload(array $file, string $prefix): ?string
+{
+    if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        return null;
+    }
+    if (($file['size'] ?? 0) > app_config('upload_max', 10485760)) {
+        throw new RuntimeException(__('error.upload.too_large'));
+    }
+    $allowed = ['png', 'jpg', 'jpeg', 'svg', 'webp', 'gif', 'ico'];
+    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    if (!in_array($ext, $allowed, true)) {
+        throw new RuntimeException(__('error.upload.type_not_allowed'));
+    }
+    $dir = __DIR__ . '/../uploads/branding';
+    if (!is_dir($dir)) {
+        mkdir($dir, 0775, true);
+    }
+    $stored = $prefix . '_' . uniqid('', true) . '.' . $ext;
+    $dest = $dir . '/' . $stored;
+    if (!move_uploaded_file($file['tmp_name'], $dest)) {
+        throw new RuntimeException(__('error.upload.store_failed'));
+    }
+    return 'uploads/branding/' . $stored;
+}
+
+function save_branding_data_url(string $dataUrl, string $prefix): ?string
+{
+    if (!preg_match('#^data:image/(png|jpeg|jpg|webp);base64,(.+)$#s', $dataUrl, $m)) {
+        return null;
+    }
+    $ext = $m[1] === 'jpeg' ? 'jpg' : $m[1];
+    $bin = base64_decode($m[2], true);
+    if ($bin === false || $bin === '' || strlen($bin) > app_config('upload_max', 10485760)) {
+        return null;
+    }
+    $dir = __DIR__ . '/../uploads/branding';
+    if (!is_dir($dir)) {
+        mkdir($dir, 0775, true);
+    }
+    $stored = $prefix . '_' . uniqid('', true) . '.' . $ext;
+    if (file_put_contents($dir . '/' . $stored, $bin) === false) {
+        return null;
+    }
+    return 'uploads/branding/' . $stored;
 }
 
 function csrf_token(): string
@@ -427,6 +1094,28 @@ function normalize_appointment_status(string $status): string
         'rejected' => 'cancelled',
     ];
     return $legacy[$status] ?? $status;
+}
+
+/** @return list<int> */
+function appointment_duration_options(): array
+{
+    return [30, 60, 90, 120];
+}
+
+function normalize_appointment_duration(int $minutes): int
+{
+    return in_array($minutes, appointment_duration_options(), true) ? $minutes : 60;
+}
+
+function format_appointment_duration(int $minutes): string
+{
+    $minutes = normalize_appointment_duration($minutes);
+    return __('appointment.duration.' . $minutes);
+}
+
+function post_appointment_duration(string $field = 'duration_minutes', int $default = 60): int
+{
+    return normalize_appointment_duration((int) post($field, $default));
 }
 
 /** Calendar tone matches stored appointment status. */
@@ -592,6 +1281,12 @@ function render_appointment_calendar_days(int $year, int $month, int $selectedDa
         $html .= '</div>';
     }
 
+    $usedCells = $firstDow + $daysInMonth;
+    $targetCells = 6 * 7;
+    for ($i = $usedCells; $i < $targetCells; $i++) {
+        $html .= '<span class="appt-cal-day is-empty" aria-hidden="true"></span>';
+    }
+
     return $html;
 }
 
@@ -625,10 +1320,11 @@ function appointment_calendar_export_urls(array $item): array
     $location = (string) ($item['location'] ?? '');
     $startTs = strtotime((string) ($item['scheduledAt'] ?? $item['scheduled_at'] ?? ''));
     $duration = (int) ($item['durationMinutes'] ?? $item['duration_minutes'] ?? 60);
+    $duration = normalize_appointment_duration($duration);
     if (!$startTs) {
         return ['google' => '#', 'outlook' => '#', 'ics' => '#'];
     }
-    $endTs = $startTs + max(15, $duration) * 60;
+    $endTs = $startTs + normalize_appointment_duration($duration) * 60;
     $fmt = static fn(int $ts): string => gmdate('Ymd\THis', $ts);
     // Use local wall time without Z for Google "floating" local times
     $localFmt = static fn(int $ts): string => date('Ymd\THis', $ts);
@@ -702,6 +1398,47 @@ function hearing_list_status_badge(string $status): string
     return '<span class="appt-list-badge tone-' . e($tone) . '">' . e(translate_status($status)) . '</span>';
 }
 
+function ensure_court_hearing_lawyer_column(PDO $pdo): void
+{
+    static $ready = false;
+    if ($ready) {
+        return;
+    }
+    $col = $pdo->query("SHOW COLUMNS FROM court_hearings LIKE 'lawyer_id'")->fetch();
+    if (!$col) {
+        $pdo->exec('ALTER TABLE court_hearings ADD COLUMN lawyer_id INT UNSIGNED DEFAULT NULL AFTER case_id');
+        try {
+            $pdo->exec('ALTER TABLE court_hearings ADD CONSTRAINT fk_court_hearing_lawyer FOREIGN KEY (lawyer_id) REFERENCES users(id) ON DELETE SET NULL');
+        } catch (Throwable $e) {
+            // Constraint may already exist.
+        }
+        $pdo->exec('UPDATE court_hearings h JOIN cases c ON c.id = h.case_id SET h.lawyer_id = c.lawyer_id WHERE h.lawyer_id IS NULL AND c.lawyer_id IS NOT NULL');
+    }
+    $ready = true;
+}
+
+function resolve_hearing_lawyer_id(PDO $pdo, int $caseId, ?int $lawyerId = null, ?int $lockLawyerId = null): ?int
+{
+    ensure_court_hearing_lawyer_column($pdo);
+    if ($lockLawyerId && $lockLawyerId > 0) {
+        return $lockLawyerId;
+    }
+    if ($lawyerId && $lawyerId > 0) {
+        $chk = $pdo->prepare('SELECT id FROM users WHERE id=? AND role="lawyer" AND is_active=1');
+        $chk->execute([$lawyerId]);
+        return $chk->fetch() ? $lawyerId : null;
+    }
+    if ($caseId > 0) {
+        $case = $pdo->prepare('SELECT lawyer_id FROM cases WHERE id=?');
+        $case->execute([$caseId]);
+        $row = $case->fetch();
+        if ($row && !empty($row['lawyer_id'])) {
+            return (int) $row['lawyer_id'];
+        }
+    }
+    return null;
+}
+
 function calendar_item_from_appointment(array $r, array $opts = []): array
 {
     $caseLabel = trim(($r['case_number'] ? $r['case_number'] . ' — ' : '') . ($r['case_title'] ?: ($r['title'] ?? '')));
@@ -729,17 +1466,19 @@ function calendar_item_from_hearing(array $r, array $opts = []): array
 {
     $caseLabel = trim(($r['case_number'] ? $r['case_number'] . ' — ' : '') . ($r['title'] ?? ''));
     $status = strtolower((string) ($r['status'] ?? 'scheduled'));
-    $hearingTitle = trim(($r['hearing_type'] ?: __('court.hearings')) . ($caseLabel !== '' ? ' — ' . $caseLabel : ''));
+    $hearingType = trim((string) ($r['hearing_type'] ?? ''));
+    $hearingTitle = trim(($hearingType !== '' ? $hearingType : __('court.hearings')) . ($caseLabel !== '' ? ' — ' . $caseLabel : ''));
     $location = trim((string) ($r['court_name'] ?? '') . (!empty($r['court_location']) ? ', ' . $r['court_location'] : ''));
     $notes = trim((string) ($r['notes'] ?? ''));
     $outcome = trim((string) ($r['outcome'] ?? ''));
-    $description = trim($notes . (($notes && $outcome) ? "\n" : '') . $outcome);
+    $judge = trim((string) ($r['judge_name'] ?? ''));
     $editUrl = array_key_exists('editUrl', $opts)
         ? (string) $opts['editUrl']
         : ('?action=edit&id=' . (int) ($r['id'] ?? 0));
 
     return [
         'id' => (int) ($r['id'] ?? 0),
+        'entity' => 'hearing',
         'title' => t_content($hearingTitle),
         'caseLabel' => t_content($caseLabel),
         'client' => t_content((string) ($r['court_name'] ?? '')),
@@ -749,7 +1488,10 @@ function calendar_item_from_hearing(array $r, array $opts = []): array
         'status' => $status,
         'tone' => hearing_calendar_tone($status),
         'statusLabel' => translate_status($status),
-        'description' => $description !== '' ? t_content($description) : '',
+        'hearingType' => $hearingType !== '' ? t_content($hearingType) : '',
+        'judge' => $judge !== '' ? t_content($judge) : '',
+        'outcome' => $outcome !== '' ? t_content($outcome) : '',
+        'description' => $notes !== '' ? t_content($notes) : '',
         'durationMinutes' => (int) ($opts['durationMinutes'] ?? 60),
         'editUrl' => $editUrl,
     ];
@@ -1064,4 +1806,324 @@ function render_appointment_calendar_agenda_pager(int $total, int $page = 1, int
         . '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>'
         . '</button>'
         . '</div>';
+}
+
+function ensure_lawyer_availability_slots_table(PDO $pdo): void
+{
+    static $ready = false;
+    if ($ready) {
+        return;
+    }
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS lawyer_availability_slots (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            lawyer_id INT UNSIGNED NOT NULL,
+            week_start DATE NOT NULL COMMENT "Monday of the week",
+            day_of_week TINYINT UNSIGNED NOT NULL COMMENT "1=Mon ... 6=Sat",
+            slot_time TIME NOT NULL,
+            UNIQUE KEY uniq_lawyer_week_day_slot (lawyer_id, week_start, day_of_week, slot_time),
+            INDEX idx_lawyer_week (lawyer_id, week_start),
+            CONSTRAINT fk_lawyer_availability_lawyer
+                FOREIGN KEY (lawyer_id) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+    );
+
+    $col = $pdo->query("SHOW COLUMNS FROM lawyer_availability_slots LIKE 'week_start'")->fetch();
+    if (!$col) {
+        $defaultWeek = availability_week_start();
+        $pdo->exec("ALTER TABLE lawyer_availability_slots ADD COLUMN week_start DATE NOT NULL DEFAULT '$defaultWeek' AFTER lawyer_id");
+        $pdo->exec("UPDATE lawyer_availability_slots SET week_start='$defaultWeek'");
+        try {
+            $pdo->exec('ALTER TABLE lawyer_availability_slots DROP INDEX uniq_lawyer_day_slot');
+        } catch (Throwable $e) {
+            // Legacy index may already be replaced.
+        }
+        try {
+            $pdo->exec('ALTER TABLE lawyer_availability_slots ADD UNIQUE KEY uniq_lawyer_week_day_slot (lawyer_id, week_start, day_of_week, slot_time)');
+        } catch (Throwable $e) {
+            // Index may already exist on fresh installs.
+        }
+        try {
+            $pdo->exec('ALTER TABLE lawyer_availability_slots ADD INDEX idx_lawyer_week (lawyer_id, week_start)');
+        } catch (Throwable $e) {
+            // Index may already exist on fresh installs.
+        }
+    }
+
+    $ready = true;
+}
+
+/** Monday (Y-m-d) for the week containing the given date, or today. */
+function availability_week_start(?string $date = null): string
+{
+    $ts = $date ? strtotime($date) : time();
+    if (!$ts) {
+        $ts = time();
+    }
+    $dateStr = date('Y-m-d', $ts);
+    $dow = (int) date('N', $ts);
+    if ($dow === 7) {
+        return date('Y-m-d', strtotime($dateStr . ' -6 days'));
+    }
+    return date('Y-m-d', strtotime($dateStr . ' -' . ($dow - 1) . ' days'));
+}
+
+function availability_normalize_week_start(?string $week): string
+{
+    if ($week && preg_match('/^\d{4}-\d{2}-\d{2}$/', $week)) {
+        return availability_week_start($week);
+    }
+    return availability_week_start();
+}
+
+/** @return array<int, string> day 1–6 => Y-m-d */
+function availability_week_dates(string $weekStart): array
+{
+    $weekStart = availability_normalize_week_start($weekStart);
+    $dates = [];
+    for ($day = 1; $day <= 6; $day++) {
+        $dates[$day] = date('Y-m-d', strtotime($weekStart . ' +' . ($day - 1) . ' days'));
+    }
+    return $dates;
+}
+
+function availability_format_short_date(string $date): string
+{
+    $ts = strtotime($date);
+    if (!$ts) {
+        return $date;
+    }
+    if (class_exists('IntlDateFormatter') && function_exists('locale_tag')) {
+        $fmt = new IntlDateFormatter(locale_tag(), IntlDateFormatter::MEDIUM, IntlDateFormatter::NONE);
+        return $fmt->format($ts) ?: date('j M', $ts);
+    }
+    return date('j M', $ts);
+}
+
+function availability_format_week_range(string $weekStart): string
+{
+    $weekStart = availability_normalize_week_start($weekStart);
+    $weekEnd = date('Y-m-d', strtotime($weekStart . ' +5 days'));
+    return __('availability.week.range', [
+        'start' => availability_format_short_date($weekStart),
+        'end' => availability_format_short_date($weekEnd),
+    ]);
+}
+
+/** @return array<int, string> ISO weekday 1=Mon … 6=Sat */
+function availability_weekdays(): array
+{
+    return [
+        1 => __('availability.day.mon'),
+        2 => __('availability.day.tue'),
+        3 => __('availability.day.wed'),
+        4 => __('availability.day.thu'),
+        5 => __('availability.day.fri'),
+        6 => __('availability.day.sat'),
+    ];
+}
+
+/** @return list<string> HH:MM:SS */
+function availability_slot_times(): array
+{
+    $slots = [];
+    for ($hour = 9; $hour < 17; $hour++) {
+        $slots[] = sprintf('%02d:00:00', $hour);
+        $slots[] = sprintf('%02d:30:00', $hour);
+    }
+    return $slots;
+}
+
+function availability_format_slot_label(string $time): string
+{
+    $ts = strtotime('1970-01-01 ' . $time);
+    if (!$ts) {
+        return $time;
+    }
+    if (class_exists('IntlDateFormatter') && function_exists('locale_tag')) {
+        $fmt = new IntlDateFormatter(locale_tag(), IntlDateFormatter::NONE, IntlDateFormatter::SHORT);
+        return $fmt->format($ts) ?: date('g:i A', $ts);
+    }
+    return date('g:i A', $ts);
+}
+
+/** @return array<int, array<string, bool>> */
+function get_lawyer_availability_matrix(PDO $pdo, int $lawyerId, ?string $weekStart = null): array
+{
+    ensure_lawyer_availability_slots_table($pdo);
+    $weekStart = availability_normalize_week_start($weekStart);
+    $matrix = [];
+    foreach (array_keys(availability_weekdays()) as $day) {
+        $matrix[$day] = [];
+    }
+    if ($lawyerId <= 0) {
+        return $matrix;
+    }
+    $stmt = $pdo->prepare('SELECT day_of_week, slot_time FROM lawyer_availability_slots WHERE lawyer_id=? AND week_start=?');
+    $stmt->execute([$lawyerId, $weekStart]);
+    foreach ($stmt->fetchAll() as $row) {
+        $matrix[(int) $row['day_of_week']][substr((string) $row['slot_time'], 0, 5)] = true;
+    }
+    return $matrix;
+}
+
+/** @param list<string> $slotKeys e.g. ["1-09:00", "2-14:30"] */
+function save_lawyer_availability_matrix(PDO $pdo, int $lawyerId, string $weekStart, array $slotKeys): void
+{
+    ensure_lawyer_availability_slots_table($pdo);
+    $weekStart = availability_normalize_week_start($weekStart);
+    $pdo->prepare('DELETE FROM lawyer_availability_slots WHERE lawyer_id=? AND week_start=?')->execute([$lawyerId, $weekStart]);
+    $ins = $pdo->prepare('INSERT INTO lawyer_availability_slots (lawyer_id, week_start, day_of_week, slot_time) VALUES (?,?,?,?)');
+    foreach ($slotKeys as $key) {
+        if (!preg_match('/^([1-6])-(\d{2}:\d{2})$/', (string) $key, $m)) {
+            continue;
+        }
+        $ins->execute([$lawyerId, $weekStart, (int) $m[1], $m[2] . ':00']);
+    }
+}
+
+/** @return array{ok:bool, message:string} */
+function validate_lawyer_appointment_slot(PDO $pdo, ?int $lawyerId, string $scheduledAt, int $durationMinutes, ?int $excludeApptId = null, bool $forUpdate = false): array
+{
+    if (!$lawyerId || $lawyerId <= 0) {
+        return ['ok' => true, 'message' => ''];
+    }
+
+    ensure_lawyer_availability_slots_table($pdo);
+
+    $lawyer = $pdo->prepare('SELECT availability FROM users WHERE id=? AND role="lawyer"');
+    $lawyer->execute([$lawyerId]);
+    $lawyerRow = $lawyer->fetch();
+    if (!$lawyerRow) {
+        return ['ok' => false, 'message' => __('error.availability.lawyer_not_found')];
+    }
+    if (($lawyerRow['availability'] ?? '') === 'unavailable') {
+        return ['ok' => false, 'message' => __('error.availability.lawyer_unavailable')];
+    }
+
+    $startTs = strtotime($scheduledAt);
+    if (!$startTs) {
+        return ['ok' => false, 'message' => __('error.availability.invalid_datetime')];
+    }
+
+    $durationMinutes = normalize_appointment_duration($durationMinutes);
+    $endTs = $startTs + ($durationMinutes * 60);
+    $step = 30 * 60;
+
+    for ($t = $startTs; $t < $endTs; $t += $step) {
+        $dow = (int) date('N', $t);
+        if ($dow === 7) {
+            return ['ok' => false, 'message' => __('error.availability.sunday')];
+        }
+        if ($dow < 1 || $dow > 6) {
+            return ['ok' => false, 'message' => __('error.availability.outside_days')];
+        }
+        $slotTime = date('H:i:00', $t);
+        $weekStart = availability_week_start(date('Y-m-d', $t));
+        $chk = $pdo->prepare('SELECT 1 FROM lawyer_availability_slots WHERE lawyer_id=? AND week_start=? AND day_of_week=? AND slot_time=?');
+        $chk->execute([$lawyerId, $weekStart, $dow, $slotTime]);
+        if (!$chk->fetch()) {
+            return ['ok' => false, 'message' => __('error.availability.not_available')];
+        }
+    }
+
+    $conflict = $pdo->prepare(
+        'SELECT id FROM appointments
+         WHERE lawyer_id=?
+           AND status NOT IN ("cancelled","completed")
+           AND (? IS NULL OR id <> ?)
+           AND scheduled_at < FROM_UNIXTIME(?)
+           AND DATE_ADD(scheduled_at, INTERVAL duration_minutes MINUTE) > FROM_UNIXTIME(?)'
+        . ($forUpdate ? ' FOR UPDATE' : '')
+    );
+    $conflict->execute([$lawyerId, $excludeApptId, $excludeApptId, $endTs, $startTs]);
+    if ($conflict->fetch()) {
+        return ['ok' => false, 'message' => __('error.availability.conflict')];
+    }
+
+    return ['ok' => true, 'message' => ''];
+}
+
+/** @return list<array{value:string, label:string}> */
+function get_lawyer_bookable_slots(PDO $pdo, int $lawyerId, string $date, int $durationMinutes, ?int $excludeApptId = null): array
+{
+    if ($lawyerId <= 0 || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+        return [];
+    }
+
+    $dow = (int) date('N', strtotime($date));
+    if ($dow === 7) {
+        return [];
+    }
+
+    $durationMinutes = normalize_appointment_duration($durationMinutes);
+    $bookable = [];
+    foreach (availability_slot_times() as $slotTime) {
+        $timeKey = substr($slotTime, 0, 5);
+        $scheduledAt = $date . ' ' . $timeKey . ':00';
+        $check = validate_lawyer_appointment_slot($pdo, $lawyerId, $scheduledAt, $durationMinutes, $excludeApptId);
+        if ($check['ok']) {
+            $bookable[] = [
+                'value' => $timeKey,
+                'label' => availability_format_slot_label($slotTime),
+            ];
+        }
+    }
+
+    return $bookable;
+}
+
+function flash_lawyer_slot_error(array $check, string $redirect): void
+{
+    flash('error', $check['message'] ?: __('error.availability.not_available'));
+    redirect($redirect);
+}
+
+/** Build a no-JS overview area/line SVG for the glass dashboard. */
+function build_overview_svg(array $labels, array $values, string $ariaLabel): string
+{
+    $w = 640;
+    $h = 220;
+    $padL = 12;
+    $padR = 12;
+    $padT = 18;
+    $padB = 34;
+    $n = max(count($values), 1);
+    $max = max(array_map('floatval', $values) ?: [0]);
+    if ($max <= 0) {
+        $max = 1;
+    }
+    $innerW = $w - $padL - $padR;
+    $innerH = $h - $padT - $padB;
+    $pts = [];
+    foreach ($values as $i => $v) {
+        $x = $padL + ($n === 1 ? $innerW / 2 : ($i / ($n - 1)) * $innerW);
+        $y = $padT + $innerH - ((float) $v / $max) * $innerH;
+        $pts[] = [$x, $y];
+    }
+    if (!$pts) {
+        $pts[] = [$padL + $innerW / 2, $padT + $innerH];
+    }
+    $line = '';
+    foreach ($pts as $i => [$x, $y]) {
+        $line .= ($i === 0 ? 'M' : 'L') . round($x, 1) . ',' . round($y, 1) . ' ';
+    }
+    $area = $line . 'L' . round($pts[count($pts) - 1][0], 1) . ',' . ($padT + $innerH)
+        . ' L' . round($pts[0][0], 1) . ',' . ($padT + $innerH) . ' Z';
+    $labelsHtml = '';
+    foreach ($labels as $i => $lab) {
+        $x = $padL + ($n === 1 ? $innerW / 2 : ($i / ($n - 1)) * $innerW);
+        $labelsHtml .= '<text x="' . round($x, 1) . '" y="' . ($h - 10) . '" text-anchor="middle">' . htmlspecialchars((string) $lab) . '</text>';
+    }
+    $last = $pts[count($pts) - 1];
+    return '<svg class="glass-svg-chart" viewBox="0 0 ' . $w . ' ' . $h . '" preserveAspectRatio="none" role="img" aria-label="' . htmlspecialchars($ariaLabel, ENT_QUOTES, 'UTF-8') . '">'
+        . '<defs><linearGradient id="ovFill" x1="0" y1="0" x2="0" y2="1">'
+        . '<stop offset="0%" stop-color="currentColor" stop-opacity="0.28"/>'
+        . '<stop offset="100%" stop-color="currentColor" stop-opacity="0"/>'
+        . '</linearGradient></defs>'
+        . '<path class="glass-svg-area" d="' . trim($area) . '" fill="url(#ovFill)"/>'
+        . '<path class="glass-svg-line" d="' . trim($line) . '" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>'
+        . '<circle class="glass-svg-dot" cx="' . round($last[0], 1) . '" cy="' . round($last[1], 1) . '" r="5"/>'
+        . '<g class="glass-svg-labels">' . $labelsHtml . '</g>'
+        . '</svg>';
 }

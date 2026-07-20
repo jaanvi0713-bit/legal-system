@@ -156,6 +156,26 @@
     setText('apptViewStatus', item.statusLabel || item.status || emDash);
     setText('apptViewNotes', item.description || emDash);
 
+    function setOptionalRow(rowId, valueId, value) {
+      var row = document.getElementById(rowId);
+      var has = !!(value && String(value).trim());
+      if (row) {
+        if (has) {
+          row.hidden = false;
+          row.removeAttribute('hidden');
+        } else {
+          row.hidden = true;
+          row.setAttribute('hidden', '');
+        }
+      }
+      if (has) setText(valueId, value);
+    }
+
+    setOptionalRow('apptViewLawyerRow', 'apptViewLawyer', item.lawyer);
+    setOptionalRow('apptViewHearingTypeRow', 'apptViewHearingType', item.hearingType);
+    setOptionalRow('apptViewJudgeRow', 'apptViewJudge', item.judge);
+    setOptionalRow('apptViewOutcomeRow', 'apptViewOutcome', item.outcome);
+
     var clientLabel = document.getElementById('apptViewClientLabel');
     if (clientLabel && data.fieldClient) {
       clientLabel.textContent = data.fieldClient;
@@ -197,7 +217,12 @@
     }
     id = parseInt(id, 10);
     if (id) {
-      window.location.href = '?action=edit&id=' + id;
+      var href = '?view=' + id;
+      var btn = evt && evt.target && evt.target.closest ? evt.target.closest('[data-appt-view], a[href]') : null;
+      if (btn && btn.getAttribute('href') && btn.getAttribute('href') !== '#') {
+        href = btn.getAttribute('href');
+      }
+      window.location.href = href;
     }
     return false;
   }

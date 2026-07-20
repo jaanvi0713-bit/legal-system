@@ -3,10 +3,69 @@ require_once __DIR__ . '/../includes/auth.php';
 require_role(['lawyer']);
 $pdo = db();
 $uid = (int) current_user()['id'];
+$action = get('action', 'list');
+$id = (int) get('id', 0);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     $fa = post('form_action');
+    if ($fa === 'save') {
+        $editId = (int) post('id');
+        $status = post('status');
+        if (!in_array($status, appointment_statuses(), true)) {
+            $status = 'confirmed';
+        }
+        $caseId = post('case_id') ?: null;
+        if ($caseId) {
+            $check = $pdo->prepare('SELECT id FROM cases WHERE id=? AND lawyer_id=?');
+            $check->execute([(int) $caseId, $uid]);
+            if (!$check->fetch()) {
+                $caseId = null;
+            }
+        }
+        $clientId = post('client_id') ?: null;
+        if ($clientId) {
+            $check = $pdo->prepare('SELECT id FROM users WHERE id=? AND role="client" AND (assigned_lawyer_id=? OR id IN (SELECT client_id FROM cases WHERE lawyer_id=?))');
+            $check->execute([(int) $clientId, $uid, $uid]);
+            if (!$check->fetch()) {
+                $clientId = null;
+            }
+        }
+        $duration = post_appointment_duration();
+        $vals = [
+            post('title'), post('description'), post('appointment_type'), $caseId,
+            $clientId, $uid, post('scheduled_at'),
+            $duration, post('location'), $status,
+        ];
+        $pdo->beginTransaction();
+        $slotCheck = validate_lawyer_appointment_slot($pdo, $uid, post('scheduled_at'), $duration, $editId ?: null, true);
+        if (!$slotCheck['ok']) {
+            $pdo->rollBack();
+            flash_lawyer_slot_error($slotCheck, $editId ? 'appointments.php?action=edit&id=' . $editId : 'appointments.php?action=create');
+        }
+        if ($editId) {
+            $owned = $pdo->prepare('SELECT id FROM appointments WHERE id=? AND lawyer_id=?');
+            $owned->execute([$editId, $uid]);
+            if (!$owned->fetch()) {
+                $pdo->rollBack();
+                flash('error', __('error.case.invalid'));
+                redirect('appointments.php');
+            }
+            $vals[] = $editId;
+            $pdo->prepare('UPDATE appointments SET title=?, description=?, appointment_type=?, case_id=?, client_id=?, lawyer_id=?, scheduled_at=?, duration_minutes=?, location=?, status=? WHERE id=?')->execute($vals);
+            $pdo->commit();
+            flash('success', __('flash.appointment.updated'));
+        } else {
+            $vals[] = $uid;
+            $pdo->prepare('INSERT INTO appointments (title, description, appointment_type, case_id, client_id, lawyer_id, scheduled_at, duration_minutes, location, status, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)')->execute($vals);
+            $pdo->commit();
+            if ($clientId) {
+                create_notification($pdo, (int) $clientId, 'notify.meeting_scheduled', post('title'), 'appointment', '../client/appointments.php', $uid);
+            }
+            flash('success', __('flash.meeting.scheduled'));
+        }
+        redirect('appointments.php');
+    }
     if ($fa === 'respond') {
         $status = post('status');
         if (!in_array($status, appointment_statuses(), true)) {
@@ -17,89 +76,93 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $ap->execute([(int) post('id')]);
         $ap = $ap->fetch();
         if ($ap && $ap['client_id']) {
-            create_notification($pdo, (int)$ap['client_id'], notify_payload('notify.appointment_status', ['status' => post('status')]), $ap['title'], 'appointment', '../client/appointments.php', $uid);
+            create_notification($pdo, (int) $ap['client_id'], notify_payload('notify.appointment_status', ['status' => post('status')]), $ap['title'], 'appointment', '../client/appointments.php', $uid);
         }
         flash('success', __('flash.appointment.status', ['status' => translate_status(post('status'))]));
         redirect('appointments.php');
     }
-    if ($fa === 'schedule') {
-        $pdo->prepare('INSERT INTO appointments (title, description, appointment_type, case_id, client_id, lawyer_id, scheduled_at, duration_minutes, location, status, created_by) VALUES (?,?,?,?,?,?,?,?,?,"confirmed",?)')
-            ->execute([post('title'), post('description'), post('appointment_type'), post('case_id') ?: null, post('client_id') ?: null, $uid, post('scheduled_at'), (int) post('duration_minutes', 60), post('location'), $uid]);
-        if (post('client_id')) {
-            create_notification($pdo, (int) post('client_id'), 'notify.meeting_scheduled', post('title'), 'appointment', '../client/appointments.php', $uid);
+}
+
+$myClients = $pdo->prepare("SELECT id, first_name, last_name FROM users WHERE role='client' AND (assigned_lawyer_id=? OR id IN (SELECT client_id FROM cases WHERE lawyer_id=?)) ORDER BY first_name");
+$myClients->execute([$uid, $uid]);
+$myClients = $myClients->fetchAll();
+$myCases = $pdo->prepare('SELECT id, case_number, title FROM cases WHERE lawyer_id=? ORDER BY created_at DESC');
+$myCases->execute([$uid]);
+$myCases = $myCases->fetchAll();
+
+$pageTitle = __('page.appointments_short');
+$pageSubtitle = __('ai.subtitle.lawyer');
+$portal = 'lawyer';
+$activeNav = 'appointments';
+
+if ($action === 'create' || ($action === 'edit' && $id)) {
+    $row = ['id' => 0, 'title' => '', 'description' => '', 'appointment_type' => 'meeting', 'case_id' => '', 'client_id' => '', 'lawyer_id' => $uid, 'scheduled_at' => date('Y-m-d\TH:i'), 'duration_minutes' => 60, 'location' => '', 'status' => 'confirmed'];
+    if ($action === 'create') {
+        $prefillDate = get('date', '');
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $prefillDate)) {
+            $row['scheduled_at'] = $prefillDate . 'T09:00';
         }
-        flash('success', __('flash.meeting.scheduled'));
-        redirect('appointments.php');
     }
-    if ($fa === 'availability') {
-        $pdo->prepare('UPDATE users SET availability=? WHERE id=?')->execute([post('availability'), $uid]);
-        refresh_session_user();
-        flash('success', __('flash.availability.updated'));
-        redirect('appointments.php');
+    if ($id) {
+        $stmt = $pdo->prepare('SELECT * FROM appointments WHERE id=? AND lawyer_id=?');
+        $stmt->execute([$id, $uid]);
+        $row = $stmt->fetch() ?: $row;
+        if (!empty($row['scheduled_at'])) {
+            $row['scheduled_at'] = date('Y-m-d\TH:i', strtotime($row['scheduled_at']));
+        }
+        if (!$row || !(int) ($row['id'] ?? 0)) {
+            flash('error', __('error.case.invalid'));
+            redirect('appointments.php');
+        }
     }
+    require __DIR__ . '/../includes/header.php';
+    $isEdit = (bool) $id;
+    $formCancelUrl = 'appointments.php';
+    $clients = $myClients;
+    $cases = $myCases;
+    $apptFormConfig = [
+        'showLawyer' => false,
+        'lockLawyerId' => $uid,
+        'createLabel' => __('lawyer.appointments.schedule'),
+        'editLabel' => __('common.save'),
+        'createHelp' => __('lawyer.appointments.schedule_meeting'),
+        'types' => ['meeting', 'consultation', 'hearing'],
+    ];
+    $apptAvailabilityLawyerId = $uid;
+    require __DIR__ . '/../includes/appointment-form.php';
+    require __DIR__ . '/../includes/footer.php';
+    exit;
 }
 
 $appointments = $pdo->prepare("SELECT a.*, CONCAT(c.first_name,' ',c.last_name) AS client_name, cs.case_number, cs.title AS case_title FROM appointments a LEFT JOIN users c ON c.id=a.client_id LEFT JOIN cases cs ON cs.id=a.case_id WHERE a.lawyer_id=? ORDER BY a.scheduled_at DESC");
 $appointments->execute([$uid]);
 $appointments = $appointments->fetchAll();
-$myClients = $pdo->prepare("SELECT id, first_name, last_name FROM users WHERE role='client' AND (assigned_lawyer_id=? OR id IN (SELECT client_id FROM cases WHERE lawyer_id=?))");
-$myClients->execute([$uid, $uid]);
-$myClients = $myClients->fetchAll();
-$myCases = $pdo->prepare('SELECT id, case_number, title FROM cases WHERE lawyer_id=?');
-$myCases->execute([$uid]);
-$myCases = $myCases->fetchAll();
 
 $totalCount = count($appointments);
 $listSubtitle = $totalCount === 1
     ? __('appointments.total_one', ['count' => $totalCount])
     : __('appointments.total_many', ['count' => $totalCount]);
 $calendarTones = appointment_statuses();
-$calendarItems = array_map(static fn(array $r): array => calendar_item_from_appointment($r, ['editUrl' => '']), $appointments);
+$calendarItems = array_map(static fn(array $r): array => calendar_item_from_appointment($r, ['editUrl' => '?action=edit&id=' . (int) $r['id']]), $appointments);
 $calCtx = build_entity_calendar_context($calendarItems, [
     'entity' => 'appointment',
-    'showCreate' => false,
-    'createUrl' => '#apptScheduleForm',
-    'scheduleLabel' => __('calendar.schedule_for_day'),
+    'showCreate' => true,
+    'createUrl' => '?action=create',
+    'createLabel' => __('lawyer.appointments.schedule'),
 ]);
 extract($calCtx, EXTR_OVERWRITE);
 
-$prefillScheduleAt = '';
-$prefillDate = get('date', '');
-if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $prefillDate)) {
-    $prefillScheduleAt = $prefillDate . 'T09:00';
-}
-
-$pageTitle = __('page.appointments_short');
-$pageSubtitle = __('ai.subtitle.lawyer');
-$portal = 'lawyer';
-$activeNav = 'appointments';
 require __DIR__ . '/../includes/header.php';
 require __DIR__ . '/../includes/calendar-panel.php';
 require __DIR__ . '/../includes/calendar-view-modal.php';
 ?>
-<div class="grid grid-2">
-    <div class="panel">
-        <h2><?= __e('lawyer.appointments.my_availability') ?></h2>
-        <form method="post" class="form-grid">
-            <?= csrf_field() ?><input type="hidden" name="form_action" value="availability">
-            <div class="form-group"><select name="availability"><?php foreach (['available','busy','unavailable'] as $a): ?><option value="<?= $a ?>" <?= current_user()['availability']===$a?'selected':'' ?>><?= e(translate_status($a)) ?></option><?php endforeach; ?></select></div>
-            <div class="form-group"><button class="btn btn-primary" type="submit"><?= __e('common.update') ?></button></div>
-        </form>
-    </div>
-    <div class="panel" id="apptScheduleForm">
-        <h2><?= __e('lawyer.appointments.schedule_meeting') ?></h2>
-        <form method="post" class="form-grid">
-            <?= csrf_field() ?><input type="hidden" name="form_action" value="schedule">
-            <div class="form-group full"><input name="title" required placeholder="<?= __e('common.title') ?>"></div>
-            <div class="form-group"><select name="appointment_type"><?php foreach (['meeting','consultation','hearing'] as $t): ?><option value="<?= $t ?>"><?= e(__('appointment.type.' . $t)) ?></option><?php endforeach; ?></select></div>
-            <div class="form-group"><input type="datetime-local" name="scheduled_at" required value="<?= e($prefillScheduleAt) ?>"></div>
-            <div class="form-group"><select name="client_id"><option value=""><?= __e('common.client') ?>…</option><?php foreach ($myClients as $c): ?><option value="<?= (int)$c['id'] ?>"><?= e(full_name($c)) ?></option><?php endforeach; ?></select></div>
-            <div class="form-group"><select name="case_id"><option value=""><?= __e('common.case') ?>…</option><?php foreach ($myCases as $c): ?><option value="<?= (int)$c['id'] ?>"><?= e($c['case_number']) ?></option><?php endforeach; ?></select></div>
-            <div class="form-group"><input type="number" name="duration_minutes" value="60"></div>
-            <div class="form-group"><input name="location" placeholder="<?= __e('common.location') ?>"></div>
-            <div class="form-group full"><textarea name="description" placeholder="<?= __e('common.notes') ?>"></textarea></div>
-            <div class="form-actions full"><button class="btn btn-accent" type="submit"><?= __e('lawyer.appointments.schedule') ?></button></div>
-        </form>
+<div class="panel avail-schedule-link-panel">
+    <div class="avail-schedule-link-inner">
+        <div>
+            <h2><?= __e('lawyer.appointments.my_availability') ?></h2>
+            <p class="muted"><?= __e('availability.schedule.manage_hint') ?></p>
+        </div>
+        <a class="btn btn-primary btn-sm" href="availability.php"><?= __e('availability.schedule.manage') ?></a>
     </div>
 </div>
 <?php
@@ -135,9 +198,10 @@ foreach ($appointments as $a):
     <td><?= calendar_export_buttons_html($exports, (string) $a['title']) ?></td>
     <td>
         <div class="row-actions">
+            <a class="btn btn-row-edit btn-sm" href="?action=edit&id=<?= (int) $a['id'] ?>"><?= __e('common.edit') ?></a>
             <?php if ($status === 'pending'): ?>
             <form method="post"><?= csrf_field() ?><input type="hidden" name="form_action" value="respond"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="status" value="confirmed"><button class="btn btn-row-approve btn-sm" type="submit"><?= __e('common.accept') ?></button></form>
-            <form method="post"><?= csrf_field() ?><input type="hidden" name="form_action" value="respond"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="status" value="cancelled"><button class="btn btn-row-delete btn-sm" type="submit"><?= __e('common.reject') ?></button></form>
+            <form method="post" data-confirm="<?= __e('confirm.reject_appointment') ?>"><?= csrf_field() ?><input type="hidden" name="form_action" value="respond"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="status" value="cancelled"><button class="btn btn-row-delete btn-sm" type="submit"><?= __e('common.reject') ?></button></form>
             <?php endif; ?>
         </div>
     </td>
@@ -169,6 +233,6 @@ $listColumns = [
 $listShowingTpl = __('appointments.showing', ['shown' => $totalCount, 'total' => $totalCount]);
 $listTotalOneTpl = __('appointments.total_one', ['count' => ':count']);
 $listTotalManyTpl = __('appointments.total_many', ['count' => ':count']);
+$listHeroActionHtml = '<a class="btn btn-primary btn-sm" href="?action=create">' . __e('lawyer.appointments.schedule') . '</a>';
 require __DIR__ . '/../includes/entity-list-panel.php';
 require __DIR__ . '/../includes/footer.php';
-

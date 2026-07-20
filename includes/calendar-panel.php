@@ -74,7 +74,9 @@ $calendarLegendItems = $calendarLegendItems ?? [];
             <div class="appt-cal-day-menu" id="apptCalDayMenu" hidden role="menu" aria-label="<?= e($calScheduleLabel) ?>">
                 <p class="appt-cal-day-menu-date" id="apptCalDayMenuDate"></p>
                 <button type="button" class="btn btn-secondary btn-sm appt-cal-view-btn" id="apptCalDayMenuView" role="menuitem"><?= e($calViewLabel) ?></button>
+                <?php if (trim((string) $calCreateUrl) !== ''): ?>
                 <a class="btn btn-primary btn-sm appt-cal-schedule-btn" id="apptCalDayMenuSchedule" href="#" role="menuitem" data-cal-schedule><?= e($calScheduleLabel) ?></a>
+                <?php endif; ?>
             </div>
             <div class="appt-cal-legend" aria-hidden="true">
                 <?php foreach ($calendarLegendItems as $legend): ?>

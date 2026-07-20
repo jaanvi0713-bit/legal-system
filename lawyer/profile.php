@@ -23,17 +23,66 @@ $portal = 'lawyer';
 $activeNav = 'profile';
 require __DIR__ . '/../includes/header.php';
 ?>
-<div class="panel">
-    <form method="post" class="form-grid">
-        <?= csrf_field() ?>
-        <div class="form-group"><label><?= __e('form.first_name') ?></label><input name="first_name" required value="<?= e($u['first_name']) ?>"></div>
-        <div class="form-group"><label><?= __e('form.last_name') ?></label><input name="last_name" required value="<?= e($u['last_name']) ?>"></div>
-        <div class="form-group"><label><?= __e('common.email') ?></label><input value="<?= e($u['email']) ?>" disabled></div>
-        <div class="form-group"><label><?= __e('common.phone') ?></label><input name="phone" value="<?= e($u['phone']) ?>"></div>
-        <div class="form-group"><label><?= __e('form.specialization') ?></label><input name="specialization" value="<?= e($u['specialization']) ?>"></div>
-        <div class="form-group"><label><?= __e('form.new_password') ?></label><input type="password" name="password" placeholder="<?= __e('form.password_keep') ?>"></div>
-        <div class="form-group full"><label><?= __e('common.address') ?></label><textarea name="address"><?= e($u['address']) ?></textarea></div>
-        <div class="form-actions full"><button class="btn btn-primary" type="submit"><?= __e('common.save_profile') ?></button></div>
+<div class="entity-form-wrap">
+<div class="entity-form panel">
+    <div class="entity-form-hero">
+        <div>
+            <p class="entity-form-eyebrow"><?= __e('page.profile') ?></p>
+            <h2><?= __e('common.save_profile') ?></h2>
+            <p class="muted"><?= __e('settings.profile.help') ?></p>
+        </div>
+    </div>
+    <form method="post">
+        <div class="entity-form-body">
+            <section class="entity-section">
+                <div class="entity-section-head">
+                    <h3><?= __e('form.section.personal') ?></h3>
+                </div>
+                <div class="form-grid">
+                    <div class="entity-field-row entity-field-row--2">
+                        <div class="form-group">
+                            <label for="first_name"><?= __e('form.first_name') ?></label>
+                            <input id="first_name" name="first_name" required value="<?= e($u['first_name']) ?>">
+                        </div>
+                        <div class="form-group">
+                            <label for="last_name"><?= __e('form.last_name') ?></label>
+                            <input id="last_name" name="last_name" required value="<?= e($u['last_name']) ?>">
+                        </div>
+                    </div>
+                    <div class="entity-field-row entity-field-row--2">
+                        <div class="form-group">
+                            <label for="email"><?= __e('common.email') ?></label>
+                            <input id="email" value="<?= e($u['email']) ?>" disabled>
+                        </div>
+                        <div class="form-group">
+                            <label for="phone"><?= __e('common.phone') ?></label>
+                            <input id="phone" name="phone" value="<?= e($u['phone']) ?>">
+                        </div>
+                    </div>
+                    <div class="entity-field-row entity-field-row--2">
+                        <div class="form-group">
+                            <label for="specialization"><?= __e('form.specialization') ?></label>
+                            <input id="specialization" name="specialization" value="<?= e($u['specialization']) ?>">
+                        </div>
+                        <div class="form-group">
+                            <label for="password"><?= __e('form.new_password') ?></label>
+                            <input id="password" type="password" name="password" placeholder="<?= __e('form.password_keep') ?>">
+                        </div>
+                    </div>
+                    <div class="form-group full entity-field-notes">
+                        <span class="field-hint"><?= __e('form.hint.password_keep') ?></span>
+                    </div>
+                    <div class="form-group full">
+                        <label for="address"><?= __e('common.address') ?></label>
+                        <textarea id="address" name="address" rows="2"><?= e($u['address']) ?></textarea>
+                    </div>
+                </div>
+            </section>
+        </div>
+        <div class="entity-form-footer">
+            <button class="btn btn-primary" type="submit"><?= __e('common.save_profile') ?></button>
+        </div>
     </form>
+</div>
 </div>
 <?php require __DIR__ . '/../includes/footer.php'; ?>

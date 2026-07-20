@@ -1,4 +1,6 @@
 Options -Indexes
-<pMatch \.php$>
+
+# Never execute uploaded files as scripts; serve them as static content only.
+<FilesMatch "\.(php|phtml|php3|php4|php5|php7|phps|pl|py|cgi|asp|aspx|sh)$">
     Require all denied
-</IfMatch>
+</FilesMatch>
