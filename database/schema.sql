@@ -52,11 +52,14 @@ CREATE TABLE cases (
     case_number VARCHAR(50) NOT NULL UNIQUE,
     title VARCHAR(255) NOT NULL,
     description TEXT DEFAULT NULL,
+    client_instructions TEXT DEFAULT NULL,
     case_type VARCHAR(100) DEFAULT NULL,
     status ENUM('open','active','pending','on_hold','closed','reopened') NOT NULL DEFAULT 'open',
     priority ENUM('low','medium','high','urgent') NOT NULL DEFAULT 'medium',
+    total_fee DECIMAL(12,2) NOT NULL DEFAULT 0,
     client_id INT UNSIGNED NOT NULL,
     lawyer_id INT UNSIGNED DEFAULT NULL,
+    assigned_admin_id INT UNSIGNED DEFAULT NULL,
     court_name VARCHAR(191) DEFAULT NULL,
     court_location VARCHAR(191) DEFAULT NULL,
     filing_date DATE DEFAULT NULL,
@@ -67,9 +70,24 @@ CREATE TABLE cases (
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (client_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (lawyer_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (assigned_admin_id) REFERENCES users(id) ON DELETE SET NULL,
     INDEX idx_status (status),
     INDEX idx_client (client_id),
     INDEX idx_lawyer (lawyer_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE case_fee_items (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    case_id INT UNSIGNED NOT NULL,
+    section ENUM('nonvat','vat') NOT NULL DEFAULT 'nonvat',
+    description VARCHAR(255) NOT NULL,
+    net_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+    vat_rate DECIMAL(8,2) NOT NULL DEFAULT 0,
+    vat_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+    line_total DECIMAL(12,2) NOT NULL DEFAULT 0,
+    sort_order INT UNSIGNED NOT NULL DEFAULT 0,
+    INDEX idx_case_fee_case (case_id),
+    FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 CREATE TABLE case_notes (
@@ -155,6 +173,13 @@ CREATE TABLE invoices (
     issued_at DATE DEFAULT NULL,
     created_by INT UNSIGNED DEFAULT NULL,
     bank_account_id TINYINT UNSIGNED DEFAULT NULL,
+    payment_terms VARCHAR(255) DEFAULT NULL,
+    payment_instructions TEXT DEFAULT NULL,
+    payment_link_token VARCHAR(64) DEFAULT NULL,
+    payment_link VARCHAR(500) DEFAULT NULL,
+    payment_status VARCHAR(20) NOT NULL DEFAULT 'none',
+    payment_date DATETIME DEFAULT NULL,
+    transaction_reference VARCHAR(100) DEFAULT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE SET NULL,

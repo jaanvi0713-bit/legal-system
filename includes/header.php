@@ -13,7 +13,13 @@ $unread = unread_notifications($pdoHeader, (int) $user['id']);
 $flash = get_flash();
 $base = app_config('url');
 $portalBase = $base . '/' . $portal;
-$topbarNotifsStmt = $pdoHeader->prepare('SELECT id, title, message, type, link, is_read, created_at, edited_at FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 12');
+$topbarNotifsStmt = $pdoHeader->prepare(
+    'SELECT id, title, message, type, link, is_read, created_at, edited_at
+     FROM notifications
+     WHERE user_id = ?
+     ORDER BY is_read ASC, created_at DESC, id DESC
+     LIMIT 15'
+);
 $topbarNotifsStmt->execute([(int) $user['id']]);
 $topbarNotifs = $topbarNotifsStmt->fetchAll();
 $companyLogo = trim((string) get_setting(db(), 'company_logo', ''));
@@ -200,6 +206,7 @@ $gradInfo = "linear-gradient(135deg, {$accent} 0%, {$accentDeep} 100%)";
                                 <form method="post" action="<?= e($portalBase) ?>/notifications.php" class="topbar-notify-markall">
                                     <?= csrf_field() ?>
                                     <input type="hidden" name="form_action" value="read_all">
+                                    <input type="hidden" name="return_to" value="<?= e($_SERVER['REQUEST_URI'] ?? ($portalBase . '/notifications.php')) ?>">
                                     <button type="submit"><?= __e('common.mark_all_read') ?></button>
                                 </form>
                                 <?php endif; ?>
@@ -208,16 +215,8 @@ $gradInfo = "linear-gradient(135deg, {$accent} 0%, {$accentDeep} 100%)";
                                 <?php foreach ($topbarNotifs as $tn):
                                     $tnType = $tn['type'] ?: 'info';
                                     $tnUnread = !(int) $tn['is_read'];
-                                    $tnLink = trim((string) ($tn['link'] ?? ''));
-                                    if ($tnLink === '') {
-                                        $tnHref = $portalBase . '/notifications.php';
-                                    } elseif (preg_match('#^https?://#i', $tnLink) || str_starts_with($tnLink, '/')) {
-                                        $tnHref = $tnLink;
-                                    } elseif (str_starts_with($tnLink, '../')) {
-                                        $tnHref = rtrim($base, '/') . '/' . ltrim(preg_replace('#^(\.\./)+#', '', $tnLink), '/');
-                                    } else {
-                                        $tnHref = $portalBase . '/' . ltrim($tnLink, './');
-                                    }
+                                    // Always open via mark-read redirect so the badge updates
+                                    $tnHref = $portalBase . '/notifications.php?action=open&id=' . (int) $tn['id'];
                                 ?>
                                     <a class="topbar-notify-item <?= $tnUnread ? 'is-unread' : '' ?>" href="<?= e($tnHref) ?>">
                                         <span class="notify-type-icon-wrap">
@@ -230,7 +229,7 @@ $gradInfo = "linear-gradient(135deg, {$accent} 0%, {$accentDeep} 100%)";
                                             <?php if (!empty($tn['edited_at'])): ?>
                                                 <span class="topbar-notify-edited"><?= __e('notifications.message_edited') ?></span>
                                             <?php endif; ?>
-                                            <span class="topbar-notify-time"><?= e(format_date($tn['created_at'], 'M j, Y')) ?></span>
+                                            <span class="topbar-notify-time"><?= e(format_time_ago($tn['created_at'] ?? null) ?: format_date($tn['created_at'], 'M j, Y')) ?></span>
                                         </span>
                                     </a>
                                 <?php endforeach; ?>

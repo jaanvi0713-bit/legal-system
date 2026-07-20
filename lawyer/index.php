@@ -158,7 +158,7 @@ $gd = [
         'chipLabel' => __('lawyer.dash.view_cases'),
         'chipUrl' => 'cases.php',
     ],
-    'ai' => ['url' => 'ai.php', 'pct' => $aiPct, 'caption' => $aiCaption],
+    'ai' => ['url' => 'cases.php', 'pct' => $aiPct, 'caption' => $aiCaption],
     'side' => [
         'title' => __('dashboard.panel.upcoming_schedule'),
         'viewUrl' => $hearings ? 'court.php' : 'appointments.php',

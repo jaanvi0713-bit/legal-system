@@ -37,6 +37,15 @@ $cases = $cases->fetchAll();
 $invoices = $pdo->prepare('SELECT * FROM invoices WHERE client_id=? ORDER BY created_at DESC');
 $invoices->execute([$uid]);
 $invoices = $invoices->fetchAll();
+ensure_document_requests_table($pdo);
+$docRequests = $pdo->prepare(
+    'SELECT r.*, c.case_number FROM document_requests r
+     LEFT JOIN cases c ON c.id = r.case_id
+     WHERE r.client_id=? AND r.status="pending"
+     ORDER BY r.created_at DESC'
+);
+$docRequests->execute([$uid]);
+$docRequests = $docRequests->fetchAll();
 
 $pageTitle = __('page.documents');
 $pageSubtitle = __('ai.subtitle.client');
@@ -44,6 +53,20 @@ $portal = 'client';
 $activeNav = 'documents';
 require __DIR__ . '/../includes/header.php';
 ?>
+<?php if ($docRequests): ?>
+<div class="panel">
+    <h2><?= __e('cases.docs.requested_from_client') ?></h2>
+    <div class="list-stack">
+        <?php foreach ($docRequests as $req): ?>
+            <div class="list-item">
+                <strong><?= e($req['title']) ?></strong>
+                <?php if (!empty($req['is_required'])): ?><span class="muted"> · <?= __e('cases.docs.required') ?></span><?php endif; ?>
+                <span class="muted"><?= e($req['case_number'] ?: __('common.case')) ?><?= !empty($req['instructions']) ? ' · ' . e($req['instructions']) : '' ?></span>
+            </div>
+        <?php endforeach; ?>
+    </div>
+</div>
+<?php endif; ?>
 <div class="panel">
     <h2><?= __e('client.documents.upload') ?></h2>
     <form method="post" enctype="multipart/form-data" class="form-grid entity-inline-form">

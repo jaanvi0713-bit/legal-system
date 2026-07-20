@@ -206,7 +206,7 @@ require __DIR__ . '/../includes/header.php';
                     <div class="glass-ai-copy">
                         <div class="glass-ai-title">
                             <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l1.2 6.2L19 9l-5.2 2.2L12 17l-1.8-5.8L5 9l5.8-.8L12 2zm7 11l.7 3.3L23 17l-3.3.7L19 21l-.7-3.3L15 17l3.3-.7L19 13zM5 14l.6 2.7L8 17.2 5.6 18 5 20.5l-.6-2.5L2 17.2l2.4-.5L5 14z"/></svg>
-                            <span><?= __e('dashboard.ai_assistant') ?></span>
+                            <span><?= __e('dashboard.insights') ?></span>
                         </div>
                         <div class="glass-ai-stat">
                             <span class="glass-ai-chart" aria-hidden="true">

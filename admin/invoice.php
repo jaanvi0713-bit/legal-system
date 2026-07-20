@@ -35,38 +35,70 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $dueDate = post('due_date') ?: null;
         $title = trim((string) post('title')) ?: 'Invoice';
         $notes = trim((string) post('description'));
+        $paymentTerms = trim((string) post('payment_terms'));
+        $paymentInstructions = trim((string) post('payment_instructions'));
+        $generatePayLink = post('generate_payment_link') === '1';
         $bankAccountId = (int) post('bank_account_id');
-        if ($bankAccountId < 1 || $bankAccountId > 3 || !get_bank_account($pdo, $bankAccountId)) {
-            $bankAccountId = get_default_bank_account_id($pdo);
+        $allBanks = get_bank_accounts($pdo);
+        if ($bankAccountId < 1 || $bankAccountId > 3 || !isset($allBanks[$bankAccountId])) {
+            $bankAccountId = get_default_bank_account_id($pdo) ?: 1;
         }
 
-        $descriptions = $_POST['item_description'] ?? [];
-        $quantities = $_POST['item_qty'] ?? [];
-        $prices = $_POST['item_price'] ?? [];
-        $vats = $_POST['item_vat'] ?? [];
-
+        $vatRate = max(0, (float) post('vat_rate', 0));
         $lines = [];
         $subtotal = 0.0;
         $vatTotal = 0.0;
-        foreach ($descriptions as $i => $desc) {
-            $desc = trim((string) $desc);
-            if ($desc === '') {
-                continue;
+
+        $appendLines = static function (array $descriptions, array $amounts, bool $isVat) use (&$lines, &$subtotal, &$vatTotal, $vatRate): void {
+            foreach ($descriptions as $i => $desc) {
+                $desc = trim((string) $desc);
+                if ($desc === '') {
+                    continue;
+                }
+                $net = max(0, (float) ($amounts[$i] ?? 0));
+                $vat = $isVat ? round($net * ($vatRate / 100), 2) : 0.0;
+                $lineTotal = round($net + $vat, 2);
+                $lines[] = [
+                    'description' => $desc,
+                    'quantity' => 1,
+                    'unit_price' => $net,
+                    'vat_amount' => $vat,
+                    'line_total' => $lineTotal,
+                ];
+                $subtotal += $net;
+                $vatTotal += $vat;
             }
-            $qty = max(0, (float) ($quantities[$i] ?? 1));
-            $price = max(0, (float) ($prices[$i] ?? 0));
-            $vat = max(0, (float) ($vats[$i] ?? 0));
-            $lineSub = round($qty * $price, 2);
-            $lineTotal = round($lineSub + $vat, 2);
-            $lines[] = [
-                'description' => $desc,
-                'quantity' => $qty,
-                'unit_price' => $price,
-                'vat_amount' => $vat,
-                'line_total' => $lineTotal,
-            ];
-            $subtotal += $lineSub;
-            $vatTotal += $vat;
+        };
+
+        $appendLines($_POST['nonvat_description'] ?? [], $_POST['nonvat_amount'] ?? [], false);
+        $appendLines($_POST['vat_description'] ?? [], $_POST['vat_amount'] ?? [], true);
+
+        // Legacy fallback if old field names are posted
+        if (!$lines && !empty($_POST['item_description'])) {
+            $descriptions = $_POST['item_description'] ?? [];
+            $quantities = $_POST['item_qty'] ?? [];
+            $prices = $_POST['item_price'] ?? [];
+            $vats = $_POST['item_vat'] ?? [];
+            foreach ($descriptions as $i => $desc) {
+                $desc = trim((string) $desc);
+                if ($desc === '') {
+                    continue;
+                }
+                $qty = max(0, (float) ($quantities[$i] ?? 1));
+                $price = max(0, (float) ($prices[$i] ?? 0));
+                $vat = max(0, (float) ($vats[$i] ?? 0));
+                $lineSub = round($qty * $price, 2);
+                $lineTotal = round($lineSub + $vat, 2);
+                $lines[] = [
+                    'description' => $desc,
+                    'quantity' => $qty,
+                    'unit_price' => $price,
+                    'vat_amount' => $vat,
+                    'line_total' => $lineTotal,
+                ];
+                $subtotal += $lineSub;
+                $vatTotal += $vat;
+            }
         }
 
         if (!$clientId || !$lines) {
@@ -80,16 +112,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $grand = round($subtotal + $vatTotal, 2);
         $number = generate_invoice_number($pdo);
+        $payToken = null;
+        $payLink = null;
+        $payStatus = 'none';
+        if ($generatePayLink) {
+            $payToken = bin2hex(random_bytes(16));
+            $payLink = invoice_payment_public_url($payToken);
+            $payStatus = 'pending';
+        }
 
         $pdo->beginTransaction();
         try {
             $pdo->prepare(
-                'INSERT INTO invoices (invoice_number, case_id, client_id, title, description, amount, tax, total, status, due_date, issued_at, created_by, bank_account_id)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)'
+                'INSERT INTO invoices (invoice_number, case_id, client_id, title, description, amount, tax, total, status, due_date, issued_at, created_by, bank_account_id, payment_terms, payment_instructions, payment_link_token, payment_link, payment_status)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
             )->execute([
                 $number, $caseId, $clientId, $title, $notes ?: null,
                 round($subtotal, 2), round($vatTotal, 2), $grand, $status,
                 $dueDate, $issuedAt, current_user()['id'], $bankAccountId,
+                $paymentTerms !== '' ? $paymentTerms : null,
+                $paymentInstructions !== '' ? $paymentInstructions : null,
+                $payToken,
+                $payLink,
+                $payStatus,
             ]);
             $invoiceId = (int) $pdo->lastInsertId();
             $ins = $pdo->prepare(
@@ -175,7 +220,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($fa === 'set_bank_account') {
         $invoiceId = (int) post('invoice_id');
         $bankAccountId = (int) post('bank_account_id');
-        if ($bankAccountId < 1 || $bankAccountId > 3 || !get_bank_account($pdo, $bankAccountId)) {
+        $allBanks = get_bank_accounts($pdo);
+        if ($bankAccountId < 1 || $bankAccountId > 3 || !isset($allBanks[$bankAccountId])) {
             flash('error', __('flash.invoice.bank_required'));
             redirect('invoice.php?id=' . $invoiceId);
         }
@@ -189,7 +235,9 @@ $clients = $pdo->query("SELECT id, first_name, last_name, email, address FROM us
 $cases = $pdo->query('SELECT id, case_number, title, client_id FROM cases ORDER BY created_at DESC')->fetchAll();
 
 if ($action === 'generate') {
-    $bankOptions = get_configured_bank_accounts($pdo);
+    $bankAccounts = get_bank_accounts($pdo);
+    $configuredBanks = get_configured_bank_accounts($pdo);
+    $defaultBankId = get_default_bank_account_id($pdo) ?: 1;
     $preCaseId = (int) get('case_id', 0);
     $preClientId = (int) get('client_id', 0);
     if ($preCaseId > 0 && $preClientId < 1) {
@@ -201,158 +249,263 @@ if ($action === 'generate') {
         }
     }
     $genReturn = $safe_return((string) get('from', ''), $case_billing_url($preCaseId > 0 ? $preCaseId : null));
+    $currencySym = trim(currency_symbol());
+    $defaultTerms = __('finance.payment_terms_default');
     $pageTitle = __('finance.generate_invoice');
     $pageSubtitle = __('finance.generate_invoice_help');
     $portal = 'admin';
     $activeNav = 'cases';
+    $bodyClass = 'page-invoice-generate';
     require __DIR__ . '/../includes/header.php';
     ?>
-    <div class="panel inv-gen-panel">
-        <div class="panel-header">
-            <h2><?= __e('finance.generate_invoice') ?></h2>
-            <a class="btn btn-secondary btn-sm" href="<?= e($genReturn) ?>"><?= __e('common.back') ?></a>
-        </div>
-        <form method="post" class="form-grid entity-inline-form" id="invoiceGenerateForm">
-            <?= csrf_field() ?>
-            <input type="hidden" name="form_action" value="generate">
-            <input type="hidden" name="return_to" value="<?= e($genReturn) ?>">
-            <div class="entity-field-row entity-field-row--2">
-                <div class="form-group">
-                    <label><?= __e('finance.client') ?></label>
-                    <select name="client_id" id="invClient" required>
-                        <option value=""><?= __e('finance.select_client') ?></option>
-                        <?php foreach ($clients as $c): ?>
-                            <option value="<?= (int) $c['id'] ?>" <?= $preClientId === (int) $c['id'] ? 'selected' : '' ?>><?= e(full_name($c)) ?></option>
+    <div class="inv-gen-shell">
+        <div class="panel inv-gen-panel">
+            <div class="inv-gen-header">
+                <div>
+                    <h2><?= __e('finance.generate_invoice') ?></h2>
+                    <p class="inv-gen-help"><?= __e('finance.generate_invoice_line_help') ?></p>
+                </div>
+                <a class="inv-gen-close" href="<?= e($genReturn) ?>" aria-label="<?= __e('common.close') ?>">×</a>
+            </div>
+
+            <form method="post" class="inv-gen-form" id="invoiceGenerateForm">
+                <?= csrf_field() ?>
+                <input type="hidden" name="form_action" value="generate">
+                <input type="hidden" name="return_to" value="<?= e($genReturn) ?>">
+                <input type="hidden" name="title" value="Professional services">
+                <input type="hidden" name="issued_at" value="<?= e(date('Y-m-d')) ?>">
+                <input type="hidden" name="status" value="sent">
+
+                <?php if ($preClientId > 0 && $preCaseId > 0): ?>
+                    <input type="hidden" name="client_id" value="<?= (int) $preClientId ?>">
+                    <input type="hidden" name="case_id" value="<?= (int) $preCaseId ?>">
+                <?php else: ?>
+                <div class="inv-gen-parties">
+                    <div class="form-group">
+                        <label><?= __e('finance.client') ?></label>
+                        <select name="client_id" id="invClient" required>
+                            <option value=""><?= __e('finance.select_client') ?></option>
+                            <?php foreach ($clients as $c): ?>
+                                <option value="<?= (int) $c['id'] ?>" <?= $preClientId === (int) $c['id'] ? 'selected' : '' ?>><?= e(full_name($c)) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label><?= __e('nav.cases') ?></label>
+                        <select name="case_id" id="invCase">
+                            <option value=""><?= __e('common.em_dash') ?></option>
+                            <?php foreach ($cases as $c): ?>
+                                <option value="<?= (int) $c['id'] ?>" data-client="<?= (int) $c['client_id'] ?>" <?= $preCaseId === (int) $c['id'] ? 'selected' : '' ?>><?= e($c['case_number'] . ' · ' . $c['title']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+                <?php endif; ?>
+
+                <section class="inv-svc-block" data-section="nonvat">
+                    <div class="inv-svc-head">
+                        <h3><?= __e('finance.non_vat_services') ?></h3>
+                        <button type="button" class="inv-svc-add" data-add="nonvat">+ <?= __e('finance.add_service') ?></button>
+                    </div>
+                    <div class="inv-svc-rows" id="invNonVatRows">
+                        <div class="inv-svc-row">
+                            <input name="nonvat_description[]" placeholder="<?= __e('finance.service_desc_ph') ?>">
+                            <div class="inv-svc-amount">
+                                <span class="inv-svc-currency"><?= e($currencySym) ?></span>
+                                <input type="number" step="0.01" min="0" name="nonvat_amount[]" value="0" class="inv-amt" data-group="nonvat">
+                            </div>
+                            <button type="button" class="inv-svc-remove" aria-label="<?= __e('common.delete') ?>">×</button>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="inv-svc-block" data-section="vat">
+                    <div class="inv-svc-head">
+                        <h3><?= __e('finance.vat_services') ?></h3>
+                        <div class="inv-svc-head-actions">
+                            <label class="inv-vat-rate">
+                                <span><?= __e('finance.vat_rate') ?></span>
+                                <input type="number" step="0.01" min="0" max="100" name="vat_rate" id="invVatRate" value="0">
+                            </label>
+                            <button type="button" class="inv-svc-add" data-add="vat">+ <?= __e('finance.add_service') ?></button>
+                        </div>
+                    </div>
+                    <div class="inv-svc-rows" id="invVatRows">
+                        <div class="inv-svc-row">
+                            <input name="vat_description[]" placeholder="<?= __e('finance.service_desc_ph') ?>">
+                            <div class="inv-svc-amount">
+                                <span class="inv-svc-currency"><?= e($currencySym) ?></span>
+                                <input type="number" step="0.01" min="0" name="vat_amount[]" value="0" class="inv-amt" data-group="vat">
+                            </div>
+                            <button type="button" class="inv-svc-remove" aria-label="<?= __e('common.delete') ?>">×</button>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="inv-gen-summary" aria-live="polite">
+                    <div class="inv-gen-summary-col">
+                        <div class="inv-gen-summary-row"><span><?= __e('finance.non_vat_net') ?></span><strong id="invNonVatNet"><?= e(money(0)) ?></strong></div>
+                        <div class="inv-gen-summary-row"><span><?= __e('finance.vat_services_net') ?></span><strong id="invVatNet"><?= e(money(0)) ?></strong></div>
+                        <div class="inv-gen-summary-row is-emphasis"><span><?= __e('finance.net_subtotal') ?></span><strong id="invNetSubtotal"><?= e(money(0)) ?></strong></div>
+                    </div>
+                    <div class="inv-gen-summary-col">
+                        <div class="inv-gen-summary-row"><span><?= __e('finance.vat_amount') ?></span><strong id="invVatTotal"><?= e(money(0)) ?></strong></div>
+                        <div class="inv-gen-summary-divider"></div>
+                        <div class="inv-gen-summary-row is-grand"><span><?= __e('finance.invoice_total') ?></span><strong id="invGrand"><?= e(money(0)) ?></strong></div>
+                    </div>
+                </section>
+
+                <div class="form-group inv-gen-bank">
+                    <label class="inv-gen-bank-label">
+                        <span class="inv-gen-bank-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 10l9-6 9 6"/><path d="M5 10v8M19 10v8M9 10v8M15 10v8M3 21h18"/></svg>
+                        </span>
+                        <?= __e('finance.bank_on_invoice') ?>
+                    </label>
+                    <select name="bank_account_id" required>
+                        <?php foreach ($bankAccounts as $ba):
+                            $isConfigured = isset($configuredBanks[(int) $ba['id']]);
+                            $label = $ba['label'] ?: ('Bank account ' . $ba['id']);
+                            if (!$isConfigured) {
+                                $label .= ' (' . __('finance.bank_not_configured') . ')';
+                            } elseif ($ba['bank'] || $ba['account_number']) {
+                                $label .= ($ba['bank'] ? ' · ' . $ba['bank'] : '') . ($ba['account_number'] ? ' · ' . $ba['account_number'] : '');
+                            }
+                            ?>
+                            <option value="<?= (int) $ba['id'] ?>" <?= (int) $ba['id'] === (int) $defaultBankId ? 'selected' : '' ?>><?= e($label) ?></option>
                         <?php endforeach; ?>
                     </select>
+                    <p class="inv-gen-hint"><?= __e('finance.bank_configure_hint') ?> <a href="settings.php?tab=payments"><?= __e('settings.payments.title') ?></a>.</p>
                 </div>
-                <div class="form-group">
-                    <label><?= __e('nav.cases') ?></label>
-                    <select name="case_id" id="invCase">
-                        <option value=""><?= __e('common.em_dash') ?></option>
-                        <?php foreach ($cases as $c): ?>
-                            <option value="<?= (int) $c['id'] ?>" data-client="<?= (int) $c['client_id'] ?>" <?= $preCaseId === (int) $c['id'] ? 'selected' : '' ?>><?= e($c['case_number'] . ' · ' . $c['title']) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-            </div>
-            <div class="form-group full">
-                <label><?= __e('finance.invoice_title') ?></label>
-                <input name="title" value="Professional services" required>
-            </div>
-            <div class="entity-field-row">
-                <div class="form-group">
-                    <label><?= __e('form.issued') ?></label>
-                    <input type="date" name="issued_at" value="<?= e(date('Y-m-d')) ?>" required>
-                </div>
+
                 <div class="form-group">
                     <label><?= __e('finance.due_date') ?></label>
                     <input type="date" name="due_date" value="<?= e(date('Y-m-d', strtotime('+14 days'))) ?>">
                 </div>
                 <div class="form-group">
-                    <label><?= __e('common.status') ?></label>
-                    <select name="status">
-                        <?php foreach (['sent', 'draft', 'partial', 'paid', 'overdue'] as $s): ?>
-                            <option value="<?= e($s) ?>"><?= e(translate_status($s)) ?></option>
-                        <?php endforeach; ?>
-                    </select>
+                    <label><?= __e('finance.payment_terms') ?></label>
+                    <input type="text" name="payment_terms" value="<?= e($defaultTerms) ?>">
                 </div>
-            </div>
-            <div class="form-group full">
-                <label><?= __e('finance.pay_to_bank') ?></label>
-                <?php if ($bankOptions): $defaultBankId = get_default_bank_account_id($pdo); ?>
-                    <select name="bank_account_id" required>
-                        <?php foreach ($bankOptions as $ba): ?>
-                            <option value="<?= (int) $ba['id'] ?>" <?= (int) $ba['id'] === (int) $defaultBankId ? 'selected' : '' ?>><?= e($ba['label'] . ($ba['bank'] ? ' · ' . $ba['bank'] : '') . ($ba['account_number'] ? ' · ' . $ba['account_number'] : '')) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                <?php else: ?>
-                    <p class="muted" style="margin:0.35rem 0 0;"><?= __e('finance.no_bank_accounts') ?> <a href="settings.php?tab=payments"><?= __e('settings.payments.title') ?></a></p>
-                    <input type="hidden" name="bank_account_id" value="">
-                <?php endif; ?>
-            </div>
-            <div class="form-group full">
-                <label><?= __e('common.notes') ?></label>
-                <textarea name="description" rows="2" placeholder="<?= __e('finance.invoice_notes_ph') ?>"></textarea>
-            </div>
+                <div class="form-group">
+                    <label><?= __e('finance.payment_instructions') ?></label>
+                    <textarea name="payment_instructions" rows="3" placeholder="<?= __e('finance.payment_instructions_ph') ?>"></textarea>
+                </div>
+                <div class="form-group">
+                    <label><?= __e('common.notes') ?></label>
+                    <textarea name="description" rows="3" placeholder="<?= __e('finance.invoice_notes_ph') ?>"></textarea>
+                </div>
 
-            <div class="form-group full">
-                <div class="inv-lines-head">
-                    <h3><?= __e('finance.line_items') ?></h3>
-                    <button type="button" class="btn btn-secondary btn-sm" id="invAddLine">+ <?= __e('finance.add_line') ?></button>
-                </div>
-                <div class="table-wrap">
-                    <table class="inv-lines-table" id="invLinesTable">
-                        <thead>
-                            <tr>
-                                <th><?= __e('common.description') ?></th>
-                                <th><?= __e('finance.qty') ?></th>
-                                <th><?= __e('finance.unit_price') ?></th>
-                                <th><?= __e('finance.vat') ?></th>
-                                <th><?= __e('common.total') ?></th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr class="inv-line">
-                                <td><input name="item_description[]" required placeholder="<?= __e('finance.line_desc_ph') ?>"></td>
-                                <td><input type="number" step="0.01" min="0" name="item_qty[]" value="1" class="inv-qty"></td>
-                                <td><input type="number" step="0.01" min="0" name="item_price[]" value="0" class="inv-price"></td>
-                                <td><input type="number" step="0.01" min="0" name="item_vat[]" value="0" class="inv-vat"></td>
-                                <td class="inv-line-total muted">0.00</td>
-                                <td><button type="button" class="chip inv-remove-line" aria-label="<?= __e('common.delete') ?>">×</button></td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-                <div class="inv-gen-totals">
-                    <div><span><?= __e('finance.subtotal') ?></span><strong id="invSubtotal">0.00</strong></div>
-                    <div><span><?= __e('finance.vat_amount') ?></span><strong id="invVatTotal">0.00</strong></div>
-                    <div class="is-grand"><span><?= __e('finance.grand_total') ?></span><strong id="invGrand">0.00</strong></div>
-                </div>
-            </div>
+                <label class="inv-paylink">
+                    <input type="checkbox" name="generate_payment_link" value="1" checked>
+                    <span><?= __e('finance.generate_payment_link') ?></span>
+                </label>
 
-            <div class="form-actions full">
-                <button class="btn btn-primary" type="submit"><?= __e('finance.generate_invoice') ?></button>
-                <a class="btn btn-secondary" href="<?= e($genReturn) ?>"><?= __e('common.cancel') ?></a>
-            </div>
-        </form>
+                <div class="inv-gen-actions">
+                    <a class="btn btn-secondary" href="<?= e($genReturn) ?>"><?= __e('common.cancel') ?></a>
+                    <button class="btn btn-primary" type="submit"><?= __e('finance.generate') ?></button>
+                </div>
+            </form>
+        </div>
     </div>
     <script>
     (function () {
-      var tbody = document.querySelector('#invLinesTable tbody');
-      var addBtn = document.getElementById('invAddLine');
-      function rowHtml() {
-        return '<tr class="inv-line">' +
-          '<td><input name="item_description[]" required placeholder="<?= e(__('finance.line_desc_ph')) ?>"></td>' +
-          '<td><input type="number" step="0.01" min="0" name="item_qty[]" value="1" class="inv-qty"></td>' +
-          '<td><input type="number" step="0.01" min="0" name="item_price[]" value="0" class="inv-price"></td>' +
-          '<td><input type="number" step="0.01" min="0" name="item_vat[]" value="0" class="inv-vat"></td>' +
-          '<td class="inv-line-total muted">0.00</td>' +
-          '<td><button type="button" class="chip inv-remove-line">×</button></td></tr>';
+      var currencySym = <?= json_encode($currencySym) ?>;
+      var moneyFmt = function (n) {
+        var v = (Math.round((n + Number.EPSILON) * 100) / 100).toFixed(2);
+        try {
+          v = Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        } catch (e) {}
+        return currencySym + v;
+      };
+      var nonVatRows = document.getElementById('invNonVatRows');
+      var vatRows = document.getElementById('invVatRows');
+      var vatRateInput = document.getElementById('invVatRate');
+      var ph = <?= json_encode(__('finance.service_desc_ph')) ?>;
+      var delLabel = <?= json_encode(__('common.delete')) ?>;
+
+      function rowHtml(group) {
+        var nameDesc = group === 'vat' ? 'vat_description[]' : 'nonvat_description[]';
+        var nameAmt = group === 'vat' ? 'vat_amount[]' : 'nonvat_amount[]';
+        return '<div class="inv-svc-row">' +
+          '<input name="' + nameDesc + '" placeholder="' + ph.replace(/"/g, '&quot;') + '">' +
+          '<div class="inv-svc-amount"><span class="inv-svc-currency">' + currencySym + '</span>' +
+          '<input type="number" step="0.01" min="0" name="' + nameAmt + '" value="0" class="inv-amt" data-group="' + group + '"></div>' +
+          '<button type="button" class="inv-svc-remove" aria-label="' + delLabel.replace(/"/g, '&quot;') + '">×</button></div>';
       }
-      function recalc() {
-        var sub = 0, vat = 0;
-        tbody.querySelectorAll('.inv-line').forEach(function (row) {
-          var q = parseFloat(row.querySelector('.inv-qty').value) || 0;
-          var p = parseFloat(row.querySelector('.inv-price').value) || 0;
-          var v = parseFloat(row.querySelector('.inv-vat').value) || 0;
-          var lineSub = q * p;
-          sub += lineSub; vat += v;
-          row.querySelector('.inv-line-total').textContent = (lineSub + v).toFixed(2);
+
+      function sumGroup(root) {
+        var total = 0;
+        root.querySelectorAll('.inv-amt').forEach(function (input) {
+          total += parseFloat(input.value) || 0;
         });
-        document.getElementById('invSubtotal').textContent = sub.toFixed(2);
-        document.getElementById('invVatTotal').textContent = vat.toFixed(2);
-        document.getElementById('invGrand').textContent = (sub + vat).toFixed(2);
+        return total;
       }
-      window.lexoraInvoiceRecalc = recalc;
-      addBtn.addEventListener('click', function () {
-        tbody.insertAdjacentHTML('beforeend', rowHtml());
+
+      function recalc() {
+        var nonVat = sumGroup(nonVatRows);
+        var vatNet = sumGroup(vatRows);
+        var rate = parseFloat(vatRateInput.value) || 0;
+        var vatAmt = Math.round(vatNet * rate) / 100;
+        vatAmt = Math.round((vatAmt + Number.EPSILON) * 100) / 100;
+        var netSub = nonVat + vatNet;
+        var grand = netSub + vatAmt;
+        document.getElementById('invNonVatNet').textContent = moneyFmt(nonVat);
+        document.getElementById('invVatNet').textContent = moneyFmt(vatNet);
+        document.getElementById('invNetSubtotal').textContent = moneyFmt(netSub);
+        document.getElementById('invVatTotal').textContent = moneyFmt(vatAmt);
+        document.getElementById('invGrand').textContent = moneyFmt(grand);
+      }
+
+      document.querySelectorAll('[data-add]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var group = btn.getAttribute('data-add');
+          var root = group === 'vat' ? vatRows : nonVatRows;
+          root.insertAdjacentHTML('beforeend', rowHtml(group));
+          recalc();
+        });
+      });
+
+      document.getElementById('invoiceGenerateForm').addEventListener('click', function (e) {
+        var rem = e.target.closest('.inv-svc-remove');
+        if (!rem) return;
+        var row = rem.closest('.inv-svc-row');
+        var root = row.parentElement;
+        if (root.querySelectorAll('.inv-svc-row').length <= 1) {
+          var desc = row.querySelector('input[name$="_description[]"]');
+          if (desc) desc.value = '';
+          var amt = row.querySelector('.inv-amt');
+          if (amt) amt.value = '0';
+        } else {
+          row.remove();
+        }
         recalc();
       });
-      tbody.addEventListener('input', function (e) {
-        if (e.target.matches('.inv-qty, .inv-price, .inv-vat')) recalc();
+
+      document.getElementById('invoiceGenerateForm').addEventListener('input', function (e) {
+        if (e.target.matches('.inv-amt, #invVatRate')) recalc();
       });
+
+      var caseSelect = document.getElementById('invCase');
+      var clientSelect = document.getElementById('invClient');
+      if (caseSelect && clientSelect) {
+        caseSelect.addEventListener('change', function () {
+          var opt = caseSelect.options[caseSelect.selectedIndex];
+          var cid = opt && opt.getAttribute('data-client');
+          if (cid) clientSelect.value = cid;
+        });
+      }
+
+      document.getElementById('invoiceGenerateForm').addEventListener('submit', function (e) {
+        var hasLine = false;
+        document.querySelectorAll('input[name="nonvat_description[]"], input[name="vat_description[]"]').forEach(function (input) {
+          if ((input.value || '').trim() !== '') hasLine = true;
+        });
+        if (!hasLine) {
+          e.preventDefault();
+          alert(<?= json_encode(__('flash.invoice.need_lines')) ?>);
+        }
+      });
+
       recalc();
     })();
     </script>
@@ -402,19 +555,59 @@ if (!$invoiceLines) {
 }
 
 $paid = invoice_paid_total($pdo, $id);
-$subtotal = (float) $invoice['amount'];
-$vatAmount = (float) $invoice['tax'];
-$grand = (float) $invoice['total'];
+$subtotal = 0.0;
+$vatAmount = 0.0;
+$grand = 0.0;
+foreach ($invoiceLines as $line) {
+    $qty = (float) ($line['quantity'] ?? 1);
+    $price = (float) ($line['unit_price'] ?? 0);
+    $subtotal += round($qty * $price, 2);
+    $vatAmount += (float) ($line['vat_amount'] ?? 0);
+    $grand += (float) ($line['line_total'] ?? (($qty * $price) + (float) ($line['vat_amount'] ?? 0)));
+}
+$subtotal = round($subtotal, 2);
+$vatAmount = round($vatAmount, 2);
+$grand = round($grand > 0 ? $grand : ($subtotal + $vatAmount), 2);
+// Keep stored header totals in sync with line items
+if (
+    abs($subtotal - (float) $invoice['amount']) > 0.009
+    || abs($vatAmount - (float) $invoice['tax']) > 0.009
+    || abs($grand - (float) $invoice['total']) > 0.009
+) {
+    $pdo->prepare('UPDATE invoices SET amount = ?, tax = ?, total = ? WHERE id = ?')
+        ->execute([$subtotal, $vatAmount, $grand, $id]);
+    $invoice['amount'] = $subtotal;
+    $invoice['tax'] = $vatAmount;
+    $invoice['total'] = $grand;
+}
 $amountDue = max(0, round($grand - $paid, 2));
-$bankOptions = get_configured_bank_accounts($pdo);
+$bankOptions = get_bank_accounts($pdo);
+$configuredBanks = get_configured_bank_accounts($pdo);
 $selectedBank = get_bank_account($pdo, isset($invoice['bank_account_id']) ? (int) $invoice['bank_account_id'] : null);
+if (!$selectedBank && !empty($invoice['bank_account_id'])) {
+    $selectedBank = $bankOptions[(int) $invoice['bank_account_id']] ?? null;
+}
 
 $firmName = get_setting($pdo, 'company_name', app_config('name', 'LEGAL PRO'));
 $firmEmail = get_setting($pdo, 'company_email', '');
 $firmPhone = get_setting($pdo, 'company_phone', '');
 $firmAddress = get_setting($pdo, 'company_address', '');
 $firmVat = get_setting($pdo, 'company_vat', get_setting($pdo, 'company_registration', ''));
-$payInstructions = get_setting($pdo, 'payment_instructions', '');
+$payInstructions = trim((string) ($invoice['payment_instructions'] ?? ''));
+if ($payInstructions === '') {
+    $payInstructions = get_setting($pdo, 'payment_instructions', '');
+}
+$paymentTerms = trim((string) ($invoice['payment_terms'] ?? ''));
+$paymentLinkToken = trim((string) ($invoice['payment_link_token'] ?? ''));
+$paymentLink = trim((string) ($invoice['payment_link'] ?? ''));
+if ($paymentLink === '' && $paymentLinkToken !== '') {
+    $paymentLink = invoice_payment_public_url($paymentLinkToken);
+}
+$payStatus = invoice_payment_status($invoice);
+$showPayNow = invoice_has_pay_now($invoice, $amountDue);
+$clientPayUrl = $showPayNow
+    ? ($paymentLink !== '' ? $paymentLink : ($paymentLinkToken !== '' ? '../client/pay.php?token=' . rawurlencode($paymentLinkToken) : ''))
+    : '';
 
 $pageTitle = $invoice['invoice_number'];
 $pageSubtitle = __('finance.invoice_document');
@@ -433,34 +626,50 @@ $mailtoHref = 'mailto:' . rawurlencode((string) $invoice['email'])
     . '&body=' . rawurlencode('Please find your invoice ' . $invoice['invoice_number'] . ' for ' . money($invoice['total']) . '. View it in your client portal.');
 ?>
 <div class="inv-doc-toolbar no-print">
-    <div>
-        <a class="btn btn-secondary btn-sm" href="<?= e($returnTo) ?>"><?= __e('common.back') ?></a>
-    </div>
+    <a class="btn btn-secondary btn-sm inv-doc-back" href="<?= e($returnTo) ?>"><?= __e('common.back') ?></a>
     <div class="inv-doc-actions">
         <?php if ($bankOptions): ?>
-        <form method="post" class="inv-bank-switch inline-form">
+        <form method="post" class="inv-bank-switch">
             <?= csrf_field() ?>
             <input type="hidden" name="form_action" value="set_bank_account">
             <input type="hidden" name="invoice_id" value="<?= (int) $invoice['id'] ?>">
-            <label class="sr-only" for="invBankSelect"><?= __e('finance.pay_to_bank') ?></label>
+            <label for="invBankSelect"><?= __e('finance.pay_to_bank') ?></label>
             <select name="bank_account_id" id="invBankSelect" onchange="this.form.submit()">
-                <?php foreach ($bankOptions as $ba): ?>
-                    <option value="<?= (int) $ba['id'] ?>" <?= (int) ($invoice['bank_account_id'] ?? 0) === (int) $ba['id'] ? 'selected' : '' ?>><?= e($ba['label']) ?></option>
+                <?php foreach ($bankOptions as $ba):
+                    $isConfigured = isset($configuredBanks[(int) $ba['id']]);
+                    $optLabel = $ba['label'] ?: ('Bank account ' . $ba['id']);
+                    if (!$isConfigured) {
+                        $optLabel .= ' (' . __('finance.bank_not_configured') . ')';
+                    }
+                    ?>
+                    <option value="<?= (int) $ba['id'] ?>" <?= (int) ($invoice['bank_account_id'] ?? 0) === (int) $ba['id'] ? 'selected' : '' ?>><?= e($optLabel) ?></option>
                 <?php endforeach; ?>
             </select>
         </form>
+        <span class="inv-doc-actions-sep" aria-hidden="true"></span>
         <?php endif; ?>
-        <button type="button" class="btn btn-secondary btn-sm" onclick="window.print()"><?= __e('finance.print') ?></button>
-        <form method="post" class="inline-form">
-            <?= csrf_field() ?>
-            <input type="hidden" name="form_action" value="email_client">
-            <input type="hidden" name="invoice_id" value="<?= (int) $invoice['id'] ?>">
-            <input type="hidden" name="return_to" value="<?= e($returnTo) ?>">
-            <button class="btn btn-primary btn-sm" type="submit"><?= __e('finance.email_client') ?></button>
-        </form>
-        <?php if ($invoiceCaseId > 0): ?>
-        <a class="btn btn-accent btn-sm" href="<?= e($paymentUrl) ?>"><?= __e('finance.record_payment') ?></a>
-        <?php endif; ?>
+        <div class="inv-doc-action-btns">
+            <button type="button" class="btn btn-primary btn-sm inv-doc-print-btn" onclick="window.print()"><?= __e('finance.print_save_pdf') ?></button>
+            <form method="post">
+                <?= csrf_field() ?>
+                <input type="hidden" name="form_action" value="email_client">
+                <input type="hidden" name="invoice_id" value="<?= (int) $invoice['id'] ?>">
+                <input type="hidden" name="return_to" value="<?= e($returnTo) ?>">
+                <button class="btn btn-secondary btn-sm" type="submit"><?= __e('finance.email_client') ?></button>
+            </form>
+            <?php if ($showPayNow && $clientPayUrl): ?>
+            <a class="btn btn-primary btn-sm inv-pay-now-btn" href="<?= e($clientPayUrl) ?>" target="_blank" rel="noopener"><?= __e('finance.pay_now') ?> | <?= e(money($amountDue)) ?></a>
+            <?php elseif ($payStatus === 'paid' || $invoice['status'] === 'paid'): ?>
+            <span class="inv-pay-status-inline"><?= payment_status_badge('paid') ?></span>
+            <?php elseif ($payStatus === 'failed'): ?>
+            <span class="inv-pay-status-inline"><?= payment_status_badge('failed') ?></span>
+            <?php elseif ($payStatus === 'pending'): ?>
+            <span class="inv-pay-status-inline"><?= payment_status_badge('pending') ?></span>
+            <?php endif; ?>
+            <?php if ($invoiceCaseId > 0): ?>
+            <a class="btn btn-accent btn-sm" href="<?= e($paymentUrl) ?>"><?= __e('finance.record_payment') ?></a>
+            <?php endif; ?>
+        </div>
     </div>
 </div>
 
@@ -527,7 +736,7 @@ $mailtoHref = 'mailto:' . rawurlencode((string) $invoice['email'])
         <div class="inv-doc-summary-row"><span><?= __e('finance.subtotal') ?></span><strong><?= e(money($subtotal)) ?></strong></div>
         <div class="inv-doc-summary-row"><span><?= __e('finance.vat_amount') ?></span><strong><?= e(money($vatAmount)) ?></strong></div>
         <div class="inv-doc-summary-row"><span><?= __e('finance.net_ex_vat') ?></span><strong><?= e(money($subtotal)) ?></strong></div>
-        <div class="inv-doc-summary-row"><span><?= __e('finance.net_inc_vat') ?></span><strong><?= e(money($grand)) ?></strong></div>
+        <div class="inv-doc-summary-row"><span><?= __e('finance.net_inc_vat') ?></span><strong><?= e(money($subtotal + $vatAmount)) ?></strong></div>
         <div class="inv-doc-summary-row"><span><?= __e('finance.amount_paid') ?></span><strong><?= e(money($paid)) ?></strong></div>
         <div class="inv-doc-summary-divider"></div>
         <div class="inv-doc-summary-row is-emphasis"><span><?= __e('finance.amount_due') ?></span><strong><?= e(money($amountDue)) ?></strong></div>
@@ -542,7 +751,7 @@ $mailtoHref = 'mailto:' . rawurlencode((string) $invoice['email'])
             <?php if ($firmVat): ?>
                 <p><?= __e('finance.vat_number') ?>: <?= e($firmVat) ?></p>
             <?php endif; ?>
-            <?php if ($selectedBank): ?>
+            <?php if ($selectedBank && (($selectedBank['bank'] ?? '') !== '' || ($selectedBank['account_number'] ?? '') !== '' || ($selectedBank['iban'] ?? '') !== '')): ?>
                 <div class="inv-doc-bank">
                     <div class="inv-doc-bank-label"><?= e($selectedBank['label']) ?></div>
                     <?php if ($selectedBank['bank']): ?><p><span><?= __e('settings.payments.bank_name') ?></span> <?= e($selectedBank['bank']) ?></p><?php endif; ?>
@@ -556,9 +765,33 @@ $mailtoHref = 'mailto:' . rawurlencode((string) $invoice['email'])
             <?php else: ?>
                 <p class="muted no-print"><?= __e('finance.no_bank_on_invoice') ?></p>
             <?php endif; ?>
+            <?php if ($paymentTerms): ?>
+                <p class="inv-doc-pay-note"><strong><?= __e('finance.payment_terms') ?>:</strong> <?= e($paymentTerms) ?></p>
+            <?php endif; ?>
             <?php if ($payInstructions): ?>
                 <p class="inv-doc-pay-note"><?= e($payInstructions) ?></p>
             <?php endif; ?>
+            <div class="inv-doc-pay-cta no-print">
+                <?php if ($showPayNow && $clientPayUrl): ?>
+                    <a class="btn btn-primary inv-pay-now-btn" href="<?= e($clientPayUrl) ?>" target="_blank" rel="noopener"><?= __e('finance.pay_now') ?> | <?= e(money($amountDue)) ?></a>
+                    <span class="muted"><?= __e('finance.pay_now_help') ?></span>
+                <?php elseif ($payStatus === 'paid' || $invoice['status'] === 'paid'): ?>
+                    <?= payment_status_badge('paid') ?>
+                    <?php if (!empty($invoice['payment_date'])): ?>
+                        <span class="muted"><?= e(format_datetime($invoice['payment_date'])) ?></span>
+                    <?php endif; ?>
+                    <?php if (!empty($invoice['transaction_reference'])): ?>
+                        <span class="muted"><?= __e('finance.transaction_ref') ?>: <?= e($invoice['transaction_reference']) ?></span>
+                    <?php endif; ?>
+                <?php elseif ($payStatus === 'failed'): ?>
+                    <?= payment_status_badge('failed') ?>
+                    <?php if ($paymentLinkToken !== ''): ?>
+                        <a class="btn btn-secondary btn-sm" href="<?= e(invoice_payment_public_url($paymentLinkToken)) ?>" target="_blank" rel="noopener"><?= __e('finance.retry_payment') ?></a>
+                    <?php endif; ?>
+                <?php elseif ($payStatus === 'pending'): ?>
+                    <?= payment_status_badge('pending') ?>
+                <?php endif; ?>
+            </div>
         </div>
         <p class="inv-doc-thanks"><?= __e('finance.thank_you') ?></p>
     </footer>

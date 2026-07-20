@@ -19,18 +19,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && post('form_action') === 'record') {
     $receipt = generate_receipt_number($pdo);
     $pdo->prepare('INSERT INTO payments (invoice_id, client_id, amount, payment_method, reference_number, receipt_number, notes, paid_at, recorded_by) VALUES (?,?,?,?,?,?,?,NOW(),?)')
         ->execute([$invoiceId, $uid, $amount, post('payment_method'), post('reference_number'), $receipt, 'Client-recorded payment', $uid]);
-    $sumStmt = $pdo->prepare('SELECT COALESCE(SUM(amount),0) FROM payments WHERE invoice_id=?');
-    $sumStmt->execute([$invoiceId]);
-    $paid = (float) $sumStmt->fetchColumn();
-    $status = $paid >= (float)$invoice['total'] ? 'paid' : 'partial';
-    $pdo->prepare('UPDATE invoices SET status=? WHERE id=?')->execute([$status, $invoiceId]);
+    sync_invoice_payment_status($pdo, $invoiceId);
     $payCaseId = (int) ($invoice['case_id'] ?? 0);
     $caseLink = $payCaseId > 0
         ? '../admin/cases.php?action=view&id=' . $payCaseId . '&tab=receipts'
         : '../admin/cases.php';
+    $paymentId = (int) $pdo->lastInsertId();
     create_notification($pdo, 1, 'notify.payment_recorded', notify_payload('notify.msg.payment_recorded', ['receipt' => $receipt, 'amount' => money($amount)]), 'payment', $caseLink, $uid);
     flash('success', __('flash.payment.recorded', ['receipt' => $receipt]));
-    redirect('payments.php');
+    redirect('receipt.php?id=' . $paymentId);
 }
 
 $invoices = $pdo->prepare('SELECT i.*, IFNULL((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id=i.id),0) AS paid_amount FROM invoices i WHERE i.client_id=? ORDER BY i.created_at DESC');
@@ -115,16 +112,25 @@ require __DIR__ . '/../includes/header.php';
     <h2><?= __e('payments.history') ?></h2>
     <div class="table-wrap">
         <table>
-            <thead><tr><th><?= __e('finance.receipt') ?></th><th><?= __e('common.amount') ?></th><th><?= __e('finance.method') ?></th><th><?= __e('common.date') ?></th></tr></thead>
+            <thead><tr><th><?= __e('finance.receipt') ?></th><th><?= __e('common.amount') ?></th><th><?= __e('finance.method') ?></th><th><?= __e('common.date') ?></th><th class="is-right"><?= __e('common.actions') ?></th></tr></thead>
             <tbody>
             <?php foreach ($payments as $p): ?>
                 <tr>
-                    <td><strong><?= e($p['receipt_number']) ?></strong><div class="muted"><?= e($p['reference_number'] ?: '') ?></div></td>
+                    <td>
+                        <a class="inv-list-number" href="receipt.php?id=<?= (int) $p['id'] ?>"><strong><?= e($p['receipt_number']) ?></strong></a>
+                        <div class="muted"><?= e($p['reference_number'] ?: '') ?></div>
+                    </td>
                     <td><?= e(money($p['amount'])) ?></td>
                     <td><?= e(__('payment.method.' . $p['payment_method'])) ?></td>
                     <td><?= e(format_datetime($p['paid_at'])) ?></td>
+                    <td class="is-right">
+                        <a class="btn btn-row-open btn-sm" href="receipt.php?id=<?= (int) $p['id'] ?>"><?= __e('common.view') ?></a>
+                    </td>
                 </tr>
             <?php endforeach; ?>
+            <?php if (!$payments): ?>
+                <tr><td colspan="5" class="muted"><?= __e('finance.no_receipts') ?></td></tr>
+            <?php endif; ?>
             </tbody>
         </table>
     </div>

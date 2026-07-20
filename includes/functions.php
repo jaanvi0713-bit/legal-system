@@ -46,26 +46,42 @@ function full_name(array $user): string
     return trim(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? ''));
 }
 
+function currency_symbol(): string
+{
+    static $symbol = null;
+    if ($symbol !== null) {
+        return $symbol;
+    }
+    $code = 'MUR';
+    try {
+        $code = strtoupper((string) get_setting(db(), 'payment_currency', app_config('currency', 'MUR')));
+    } catch (Throwable $e) {
+        $code = strtoupper((string) app_config('currency', 'MUR'));
+    }
+    $symbols = [
+        'MUR' => 'Rs ',
+        'INR' => '₹',
+        'AED' => 'AED ',
+        'USD' => '$',
+        'EUR' => '€',
+        'GBP' => '£',
+    ];
+    $symbol = $symbols[$code] ?? (app_config('currency_symbol', 'Rs '));
+    return $symbol;
+}
+
 function money($amount): string
 {
     static $symbol = null;
     static $locale = null;
     if ($symbol === null) {
+        $symbol = currency_symbol();
         $code = 'MUR';
         try {
             $code = strtoupper((string) get_setting(db(), 'payment_currency', app_config('currency', 'MUR')));
         } catch (Throwable $e) {
             $code = strtoupper((string) app_config('currency', 'MUR'));
         }
-        $symbols = [
-            'MUR' => 'Rs ',
-            'INR' => '₹',
-            'AED' => 'AED ',
-            'USD' => '$',
-            'EUR' => '€',
-            'GBP' => '£',
-        ];
-        $symbol = $symbols[$code] ?? (app_config('currency_symbol', 'Rs '));
         $locales = [
             'MUR' => 'en_MU',
             'INR' => 'en_IN',
@@ -136,6 +152,7 @@ function status_badge(string $status): string
         'completed' => 'badge-dark',
         'scheduled' => 'badge-info',
         'adjourned' => 'badge-warning',
+        'failed' => 'badge-danger',
         'draft' => 'badge-muted',
         'sent' => 'badge-info',
         'paid' => 'badge-success',
@@ -162,6 +179,87 @@ function generate_case_number(PDO $pdo): string
     $stmt = $pdo->query("SELECT COUNT(*) FROM cases WHERE YEAR(created_at) = YEAR(CURDATE())");
     $count = (int) $stmt->fetchColumn() + 1;
     return sprintf('CASE-%s-%03d', $year, $count);
+}
+
+function ensure_case_create_columns(PDO $pdo): void
+{
+    static $ready = false;
+    if ($ready) {
+        return;
+    }
+    $cols = [
+        'client_instructions' => 'ALTER TABLE cases ADD COLUMN client_instructions TEXT DEFAULT NULL AFTER description',
+        'assigned_admin_id' => 'ALTER TABLE cases ADD COLUMN assigned_admin_id INT UNSIGNED DEFAULT NULL AFTER lawyer_id',
+        'total_fee' => 'ALTER TABLE cases ADD COLUMN total_fee DECIMAL(12,2) NOT NULL DEFAULT 0 AFTER priority',
+    ];
+    foreach ($cols as $name => $sql) {
+        $exists = $pdo->query("SHOW COLUMNS FROM cases LIKE " . $pdo->quote($name))->fetch();
+        if (!$exists) {
+            $pdo->exec($sql);
+        }
+    }
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS case_fee_items (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            case_id INT UNSIGNED NOT NULL,
+            section ENUM("nonvat","vat") NOT NULL DEFAULT "nonvat",
+            description VARCHAR(255) NOT NULL,
+            net_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+            vat_rate DECIMAL(8,2) NOT NULL DEFAULT 0,
+            vat_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+            line_total DECIMAL(12,2) NOT NULL DEFAULT 0,
+            sort_order INT UNSIGNED NOT NULL DEFAULT 0,
+            INDEX idx_case_fee_case (case_id),
+            CONSTRAINT fk_case_fee_case FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+    );
+    $ready = true;
+}
+
+/** @return array<int, array<string,mixed>> */
+function case_fee_items(PDO $pdo, int $caseId): array
+{
+    ensure_case_create_columns($pdo);
+    $stmt = $pdo->prepare('SELECT * FROM case_fee_items WHERE case_id = ? ORDER BY section ASC, sort_order ASC, id ASC');
+    $stmt->execute([$caseId]);
+    return $stmt->fetchAll();
+}
+
+/**
+ * Persist fee rows from create/edit case form.
+ * @return float total fee
+ */
+function save_case_fee_items_from_post(PDO $pdo, int $caseId): float
+{
+    ensure_case_create_columns($pdo);
+    $pdo->prepare('DELETE FROM case_fee_items WHERE case_id = ?')->execute([$caseId]);
+    $nonvatRate = max(0, (float) post('nonvat_rate', 0));
+    $vatRate = max(0, (float) post('vat_rate', 0));
+    $total = 0.0;
+    $ord = 0;
+    $ins = $pdo->prepare(
+        'INSERT INTO case_fee_items (case_id, section, description, net_amount, vat_rate, vat_amount, line_total, sort_order)
+         VALUES (?,?,?,?,?,?,?,?)'
+    );
+
+    $saveSection = static function (string $section, array $descriptions, array $amounts, float $rate) use ($ins, $caseId, &$total, &$ord): void {
+        foreach ($descriptions as $i => $desc) {
+            $desc = trim((string) $desc);
+            if ($desc === '') {
+                continue;
+            }
+            $net = max(0, (float) ($amounts[$i] ?? 0));
+            $vat = $rate > 0 ? round($net * ($rate / 100), 2) : 0.0;
+            $line = round($net + $vat, 2);
+            $ins->execute([$caseId, $section, $desc, $net, $rate, $vat, $line, $ord++]);
+            $total += $line;
+        }
+    };
+
+    $saveSection('nonvat', $_POST['nonvat_description'] ?? [], $_POST['nonvat_amount'] ?? [], $nonvatRate);
+    $saveSection('vat', $_POST['vat_description'] ?? [], $_POST['vat_amount'] ?? [], $vatRate);
+    $pdo->prepare('UPDATE cases SET total_fee = ? WHERE id = ?')->execute([round($total, 2), $caseId]);
+    return round($total, 2);
 }
 
 /**
@@ -239,6 +337,78 @@ function invoice_line_items(PDO $pdo, int $invoiceId): array
     return $stmt->fetchAll();
 }
 
+/**
+ * Build receipt/invoice display totals from line items; optionally sync invoice header.
+ * @return array{lines: array, subtotal: float, vat: float, grand: float}
+ */
+function invoice_display_totals(PDO $pdo, int $invoiceId, ?array $invoice = null, bool $syncHeader = true): array
+{
+    ensure_invoice_items_table($pdo);
+    $lines = array_values(array_filter(
+        invoice_line_items($pdo, $invoiceId),
+        static fn($r) => is_array($r) && trim((string) ($r['description'] ?? '')) !== ''
+    ));
+
+    if (!$invoice) {
+        $stmt = $pdo->prepare('SELECT amount, tax, total, title, description FROM invoices WHERE id = ?');
+        $stmt->execute([$invoiceId]);
+        $invoice = $stmt->fetch() ?: [];
+    }
+
+    if (!$lines) {
+        $desc = trim((string) ($invoice['title'] ?? ''));
+        if (!empty($invoice['description'])) {
+            $desc = $desc !== ''
+                ? ($desc . ' — ' . trim((string) $invoice['description']))
+                : trim((string) $invoice['description']);
+        }
+        if ($desc === '') {
+            $desc = 'Professional services';
+        }
+        $lines = [[
+            'description' => $desc,
+            'quantity' => 1,
+            'unit_price' => (float) ($invoice['amount'] ?? 0),
+            'vat_amount' => (float) ($invoice['tax'] ?? 0),
+            'line_total' => (float) ($invoice['total'] ?? 0),
+        ]];
+    }
+
+    $subtotal = 0.0;
+    $vat = 0.0;
+    $grand = 0.0;
+    foreach ($lines as $line) {
+        $qty = (float) ($line['quantity'] ?? 1);
+        $price = (float) ($line['unit_price'] ?? 0);
+        $subtotal += round($qty * $price, 2);
+        $vat += (float) ($line['vat_amount'] ?? 0);
+        $grand += (float) ($line['line_total'] ?? (($qty * $price) + (float) ($line['vat_amount'] ?? 0)));
+    }
+    $subtotal = round($subtotal, 2);
+    $vat = round($vat, 2);
+    $grand = round($grand > 0 ? $grand : ($subtotal + $vat), 2);
+
+    if (
+        $syncHeader
+        && $invoiceId > 0
+        && (
+            abs($subtotal - (float) ($invoice['amount'] ?? 0)) > 0.009
+            || abs($vat - (float) ($invoice['tax'] ?? 0)) > 0.009
+            || abs($grand - (float) ($invoice['total'] ?? 0)) > 0.009
+        )
+    ) {
+        $pdo->prepare('UPDATE invoices SET amount = ?, tax = ?, total = ? WHERE id = ?')
+            ->execute([$subtotal, $vat, $grand, $invoiceId]);
+    }
+
+    return [
+        'lines' => $lines,
+        'subtotal' => $subtotal,
+        'vat' => $vat,
+        'grand' => $grand,
+    ];
+}
+
 function ensure_invoice_bank_column(PDO $pdo): void
 {
     static $ready = false;
@@ -249,7 +419,248 @@ function ensure_invoice_bank_column(PDO $pdo): void
     if (!$col) {
         $pdo->exec('ALTER TABLE invoices ADD COLUMN bank_account_id TINYINT UNSIGNED DEFAULT NULL AFTER created_by');
     }
+    $cols = [
+        'payment_terms' => 'ALTER TABLE invoices ADD COLUMN payment_terms VARCHAR(255) DEFAULT NULL AFTER bank_account_id',
+        'payment_instructions' => 'ALTER TABLE invoices ADD COLUMN payment_instructions TEXT DEFAULT NULL AFTER payment_terms',
+        'payment_link_token' => 'ALTER TABLE invoices ADD COLUMN payment_link_token VARCHAR(64) DEFAULT NULL AFTER payment_instructions',
+        'payment_link' => 'ALTER TABLE invoices ADD COLUMN payment_link VARCHAR(500) DEFAULT NULL AFTER payment_link_token',
+        'payment_status' => "ALTER TABLE invoices ADD COLUMN payment_status VARCHAR(20) NOT NULL DEFAULT 'none' AFTER payment_link",
+        'payment_date' => 'ALTER TABLE invoices ADD COLUMN payment_date DATETIME DEFAULT NULL AFTER payment_status',
+        'transaction_reference' => 'ALTER TABLE invoices ADD COLUMN transaction_reference VARCHAR(100) DEFAULT NULL AFTER payment_date',
+    ];
+    foreach ($cols as $name => $sql) {
+        $exists = $pdo->query("SHOW COLUMNS FROM invoices LIKE " . $pdo->quote($name))->fetch();
+        if (!$exists) {
+            $pdo->exec($sql);
+        }
+    }
     $ready = true;
+}
+
+/** Active payment gateway driver. Swap to stripe/paypal later via settings. */
+function payment_gateway_driver(): string
+{
+    try {
+        $driver = strtolower(trim((string) get_setting(db(), 'payment_gateway_driver', 'prototype')));
+    } catch (Throwable $e) {
+        $driver = 'prototype';
+    }
+    return $driver !== '' ? $driver : 'prototype';
+}
+
+function invoice_payment_public_url(string $token): string
+{
+    $base = rtrim((string) app_config('url'), '/');
+    return $base . '/client/pay.php?token=' . rawurlencode($token);
+}
+
+/**
+ * Create a checkout/payment link for an invoice.
+ * Prototype stores a token URL; real gateways can replace this body later.
+ *
+ * @return array{token:string,link:string,status:string}
+ */
+function create_invoice_payment_checkout(PDO $pdo, int $invoiceId): array
+{
+    ensure_invoice_bank_column($pdo);
+    $token = bin2hex(random_bytes(16));
+    $link = invoice_payment_public_url($token);
+    // Future: if payment_gateway_driver() === 'stripe', create a Checkout Session and use that URL.
+    $pdo->prepare(
+        'UPDATE invoices
+         SET payment_link_token = ?, payment_link = ?, payment_status = ?, payment_date = NULL, transaction_reference = NULL
+         WHERE id = ?'
+    )->execute([$token, $link, 'pending', $invoiceId]);
+    return ['token' => $token, 'link' => $link, 'status' => 'pending'];
+}
+
+function invoice_payment_status(array $invoice): string
+{
+    $status = strtolower(trim((string) ($invoice['payment_status'] ?? 'none')));
+    return $status !== '' ? $status : 'none';
+}
+
+function invoice_has_pay_now(array $invoice, float $amountDue = -1): bool
+{
+    $token = trim((string) ($invoice['payment_link_token'] ?? ''));
+    $link = trim((string) ($invoice['payment_link'] ?? ''));
+    if ($token === '' && $link === '') {
+        return false;
+    }
+    $payStatus = invoice_payment_status($invoice);
+    if ($payStatus === 'paid') {
+        return false;
+    }
+    if (in_array((string) ($invoice['status'] ?? ''), ['paid', 'cancelled', 'draft'], true)) {
+        return false;
+    }
+    if ($amountDue >= 0 && $amountDue <= 0) {
+        return false;
+    }
+    return true;
+}
+
+function payment_status_badge(string $status): string
+{
+    $status = strtolower(trim($status));
+    if ($status === '' || $status === 'none') {
+        return '<span class="badge badge-muted badge-st-none">' . e(__('finance.payment_status.none')) . '</span>';
+    }
+    $map = [
+        'pending' => 'badge-warning',
+        'paid' => 'badge-success',
+        'failed' => 'badge-danger',
+    ];
+    $class = $map[$status] ?? 'badge-muted';
+    $label = __('finance.payment_status.' . $status);
+    if ($label === 'finance.payment_status.' . $status) {
+        $label = ucfirst($status);
+    }
+    return '<span class="badge ' . $class . ' badge-st-' . e($status) . '">' . e($label) . '</span>';
+}
+
+/**
+ * Apply a prototype (or future gateway webhook) payment result.
+ * @param 'paid'|'failed' $result
+ */
+function apply_invoice_payment_result(PDO $pdo, int $invoiceId, string $result, ?string $transactionRef = null, ?float $amount = null): void
+{
+    ensure_invoice_bank_column($pdo);
+    $result = $result === 'paid' ? 'paid' : 'failed';
+    $stmt = $pdo->prepare('SELECT * FROM invoices WHERE id = ? LIMIT 1');
+    $stmt->execute([$invoiceId]);
+    $invoice = $stmt->fetch();
+    if (!$invoice) {
+        return;
+    }
+
+    if ($result === 'failed') {
+        $pdo->prepare(
+            'UPDATE invoices SET payment_status = ?, transaction_reference = COALESCE(?, transaction_reference) WHERE id = ?'
+        )->execute(['failed', $transactionRef, $invoiceId]);
+        return;
+    }
+
+    $paidSoFar = invoice_paid_total($pdo, $invoiceId);
+    $due = max(0, round((float) $invoice['total'] - $paidSoFar, 2));
+    $payAmount = $amount !== null ? max(0, round($amount, 2)) : $due;
+    $ref = $transactionRef ?: ('DEMO-' . strtoupper(substr((string) ($invoice['payment_link_token'] ?? generate_alnum_code(8)), 0, 10)));
+
+    if ($payAmount > 0) {
+        $receipt = generate_receipt_number($pdo);
+        $pdo->prepare(
+            'INSERT INTO payments (invoice_id, client_id, amount, payment_method, reference_number, receipt_number, notes, paid_at, recorded_by)
+             VALUES (?,?,?,?,?,?,?,NOW(),?)'
+        )->execute([
+            $invoiceId,
+            (int) $invoice['client_id'],
+            $payAmount,
+            'online',
+            $ref,
+            $receipt,
+            'Prototype payment gateway (' . payment_gateway_driver() . ')',
+            is_logged_in() ? (int) current_user()['id'] : null,
+        ]);
+        $paymentId = (int) $pdo->lastInsertId();
+        notify_payment_events(
+            $pdo,
+            $invoice,
+            $payAmount,
+            $paymentId,
+            $receipt,
+            is_logged_in() ? (int) current_user()['id'] : null
+        );
+    }
+
+    $pdo->prepare(
+        'UPDATE invoices SET payment_status = ?, payment_date = NOW(), transaction_reference = ? WHERE id = ?'
+    )->execute(['paid', $ref, $invoiceId]);
+    sync_invoice_payment_status($pdo, $invoiceId);
+}
+
+/**
+ * Notify client + admin/staff (+ case lawyer) after a payment/receipt is created.
+ */
+function notify_payment_events(
+    PDO $pdo,
+    array $invoice,
+    float $amount,
+    int $paymentId,
+    string $receiptNumber,
+    ?int $createdBy = null
+): void {
+    $clientId = (int) ($invoice['client_id'] ?? 0);
+    $caseId = (int) ($invoice['case_id'] ?? 0);
+    $invoiceNumber = (string) ($invoice['invoice_number'] ?? '—');
+
+    $fromName = '';
+    if ($clientId > 0) {
+        $cStmt = $pdo->prepare('SELECT first_name, last_name, company_name FROM users WHERE id = ?');
+        $cStmt->execute([$clientId]);
+        $client = $cStmt->fetch() ?: [];
+        $fromName = trim((string) ($client['company_name'] ?? ''));
+        if ($fromName === '') {
+            $fromName = trim(($client['first_name'] ?? '') . ' ' . ($client['last_name'] ?? ''));
+        }
+        if ($fromName === '') {
+            $fromName = __('common.client');
+        }
+        create_notification(
+            $pdo,
+            $clientId,
+            'notify.receipt_issued',
+            notify_payload('notify.msg.receipt_issued', [
+                'number' => $receiptNumber,
+                'amount' => money($amount),
+                'invoice' => $invoiceNumber,
+            ]),
+            'payment',
+            '../client/receipt.php?id=' . $paymentId,
+            $createdBy
+        );
+    }
+
+    $adminLink = $caseId > 0
+        ? 'cases.php?action=view&id=' . $caseId . '&tab=receipts'
+        : 'receipt.php?id=' . $paymentId;
+    $staffIds = $pdo->query(
+        "SELECT id FROM users WHERE role IN ('admin','staff') AND is_active=1"
+    )->fetchAll(PDO::FETCH_COLUMN);
+    foreach ($staffIds as $staffId) {
+        $staffId = (int) $staffId;
+        create_notification(
+            $pdo,
+            $staffId,
+            'notify.payment_received',
+            notify_payload('notify.msg.payment_received', [
+                'amount' => money($amount),
+                'from' => $fromName !== '' ? $fromName : __('common.client'),
+            ]),
+            'payment',
+            $adminLink,
+            $createdBy
+        );
+    }
+
+    if ($caseId > 0) {
+        $lawStmt = $pdo->prepare('SELECT lawyer_id FROM cases WHERE id = ?');
+        $lawStmt->execute([$caseId]);
+        $lawyerId = (int) ($lawStmt->fetchColumn() ?: 0);
+        if ($lawyerId > 0) {
+            create_notification(
+                $pdo,
+                $lawyerId,
+                'notify.payment_received',
+                notify_payload('notify.msg.payment_received', [
+                    'amount' => money($amount),
+                    'from' => $fromName !== '' ? $fromName : __('common.client'),
+                ]),
+                'payment',
+                '../lawyer/cases.php?id=' . $caseId,
+                $createdBy
+            );
+        }
+    }
 }
 
 /** @return array<int, array{id:int,label:string,bank:string,account_name:string,account_number:string,iban:string,swift:string}> */
@@ -345,6 +756,34 @@ function generate_receipt_number(PDO $pdo): string
         }
     }
     return sprintf('RCP-%s-%s', $year, generate_alnum_code(8));
+}
+
+function sync_invoice_payment_status(PDO $pdo, int $invoiceId): void
+{
+    if ($invoiceId < 1) {
+        return;
+    }
+    ensure_invoice_bank_column($pdo);
+    $inv = $pdo->prepare('SELECT total, status, payment_status FROM invoices WHERE id = ?');
+    $inv->execute([$invoiceId]);
+    $row = $inv->fetch();
+    if (!$row) {
+        return;
+    }
+    if (in_array($row['status'], ['draft', 'cancelled'], true)) {
+        return;
+    }
+    $paid = invoice_paid_total($pdo, $invoiceId);
+    $total = (float) $row['total'];
+    $status = $paid >= $total && $total > 0 ? 'paid' : ($paid > 0 ? 'partial' : 'sent');
+    $payStatus = (string) ($row['payment_status'] ?? 'none');
+    if ($status === 'paid' && $payStatus !== 'paid') {
+        $pdo->prepare(
+            'UPDATE invoices SET status = ?, payment_status = ?, payment_date = COALESCE(payment_date, NOW()) WHERE id = ?'
+        )->execute([$status, 'paid', $invoiceId]);
+        return;
+    }
+    $pdo->prepare('UPDATE invoices SET status = ? WHERE id = ?')->execute([$status, $invoiceId]);
 }
 
 function log_activity(PDO $pdo, ?int $userId, string $action, ?string $entityType = null, ?int $entityId = null, ?string $description = null): void
@@ -888,7 +1327,12 @@ function handle_notification_post(PDO $pdo, array $user, string $redirectUrl, bo
     $fa = post('form_action');
     $uid = (int) $user['id'];
     $returnPage = max(0, (int) post('return_page', 0));
-    $redirectTarget = $returnPage > 1 ? $redirectUrl . '?page=' . $returnPage : $redirectUrl;
+    $returnTo = trim((string) post('return_to', ''));
+    if ($returnTo !== '' && !str_contains($returnTo, '://') && !str_starts_with($returnTo, '//')) {
+        $redirectTarget = $returnTo;
+    } else {
+        $redirectTarget = $returnPage > 1 ? $redirectUrl . '?page=' . $returnPage : $redirectUrl;
+    }
 
     if ($fa === 'read') {
         $pdo->prepare('UPDATE notifications SET is_read=1 WHERE id=? AND user_id=?')->execute([(int) post('id'), $uid]);
@@ -927,6 +1371,11 @@ function handle_notification_post(PDO $pdo, array $user, string $redirectUrl, bo
             $pdo->prepare('DELETE FROM notifications WHERE id=? AND user_id=?')->execute([$id, $uid]);
         }
         flash('success', __('flash.notification.deleted'));
+        redirect($redirectTarget);
+    }
+    if ($fa === 'clear_all') {
+        $pdo->prepare('DELETE FROM notifications WHERE user_id=?')->execute([$uid]);
+        flash('success', __('flash.notifications.cleared'));
         redirect($redirectTarget);
     }
 }
@@ -974,7 +1423,7 @@ function handle_upload(array $file, string $subdir = 'documents'): ?array
     if (($file['size'] ?? 0) > app_config('upload_max', 10485760)) {
         throw new RuntimeException(__('error.upload.too_large'));
     }
-    $allowed = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'txt', 'xls', 'xlsx'];
+    $allowed = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'txt', 'xls', 'xlsx', 'zip'];
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
     if (!in_array($ext, $allowed, true)) {
         throw new RuntimeException(__('error.upload.type_not_allowed'));
@@ -994,6 +1443,44 @@ function handle_upload(array $file, string $subdir = 'documents'): ?array
         'file_type' => $file['type'] ?? $ext,
         'file_size' => (int) $file['size'],
     ];
+}
+
+function format_file_size(int $bytes): string
+{
+    if ($bytes < 1024) {
+        return $bytes . ' B';
+    }
+    if ($bytes < 1048576) {
+        return rtrim(rtrim(number_format($bytes / 1024, 1, '.', ''), '0'), '.') . ' KB';
+    }
+    return rtrim(rtrim(number_format($bytes / 1048576, 1, '.', ''), '0'), '.') . ' MB';
+}
+
+function ensure_document_requests_table(PDO $pdo): void
+{
+    static $ready = false;
+    if ($ready) {
+        return;
+    }
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS document_requests (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            case_id INT UNSIGNED NOT NULL,
+            client_id INT UNSIGNED NOT NULL,
+            title VARCHAR(255) NOT NULL,
+            instructions TEXT DEFAULT NULL,
+            is_required TINYINT(1) NOT NULL DEFAULT 1,
+            status ENUM("pending","fulfilled","cancelled") NOT NULL DEFAULT "pending",
+            requested_by INT UNSIGNED DEFAULT NULL,
+            fulfilled_document_id INT UNSIGNED DEFAULT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_doc_req_case (case_id),
+            INDEX idx_doc_req_client (client_id),
+            CONSTRAINT fk_doc_req_case FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+            CONSTRAINT fk_doc_req_client FOREIGN KEY (client_id) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+    );
+    $ready = true;
 }
 
 function handle_branding_image_upload(array $file, string $prefix): ?string

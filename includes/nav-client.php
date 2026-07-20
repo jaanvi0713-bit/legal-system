@@ -8,7 +8,6 @@ $items = [
     ['payments.php', 'nav.payments', 'payments', 'payments'],
     ['contact.php', 'nav.contact', 'contact', 'contact'],
     ['notifications.php', 'nav.notifications', 'notifications', 'notifications'],
-    ['ai.php', 'nav.ai', 'ai', 'ai'],
 ];
 foreach ($items as [$href, $labelKey, $key, $icon]):
     $active = ($activeNav ?? '') === $key ? 'active' : '';
