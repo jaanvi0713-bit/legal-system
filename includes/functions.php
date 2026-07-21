@@ -54,7 +54,7 @@ function ai_format_message(?string $text): string
         },
         $safe
     );
-    return $safe;
+    return nl2br($safe, false);
 }
 
 function redirect(string $url): void

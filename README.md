@@ -32,13 +32,11 @@ Login with **username or email** + password:
 
 ## AI Assistant
 
-Chat works offline with rule-based legal helpers scoped by portal.
+The assistant is **fully built in** — no OpenAI or external API key is required.
 
-For live OpenAI replies, set your key in `config/app.php`:
+It can answer **Mauritius law questions** with Act names and section citations (e.g. Employment Rights Act 2008, s. 45–49; Civil Code, Art. 1134; Constitution, s. 3–19) from an integrated legal corpus, plus firm data, calculations, and document review.
 
-```php
-'openai_api_key' => 'sk-...',
-```
+Optional: **Admin → Settings → AI Assistant** lets you connect an external OpenAI-compatible API for broader coverage if you want it — but it is not needed for normal use.
 
 Client AI only receives that client’s own cases/invoices and will refuse requests about other clients.
 

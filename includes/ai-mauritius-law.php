@@ -10,100 +10,23 @@ function ai_mauritius_law_is_fr(): bool
 }
 
 /**
- * @return array<string, string> term => definition
+ * @return array<string, string>
  */
 function ai_legal_glossary(): array
 {
+    require_once __DIR__ . '/ai-legal-glossary-data.php';
+
     if (ai_mauritius_law_is_fr()) {
-        return [
-            'constitution' => 'Loi fondamentale suprême de l’État. Toute autre norme doit y être conforme.',
-            'loi' => 'Texte adopté par le Parlement (National Assembly). En Maurice, les lois sont souvent publiées en anglais.',
-            'règlement / législation subsidiaire' => 'Normes prises sous l’autorité d’une loi (règlements, ordres, notices) par le pouvoir exécutif.',
-            'jurisprudence' => 'Ensemble des décisions judiciaires. Elle guide l’interprétation, surtout dans les matières de common law.',
-            'précédent' => 'Décision antérieure pouvant orienter ou lier des affaires semblables (surtout dans la tradition de common law).',
-            'droit civil' => 'Branche régissant les rapports entre personnes privées (contrats, biens, famille, responsabilité civile).',
-            'droit pénal' => 'Branche définissant les infractions et les peines.',
-            'droit commercial' => 'Règles applicables aux entreprises, sociétés, commerce et insolvabilité.',
-            'droit du travail' => 'Règles relatives à l’emploi, aux contrats de travail, aux salaires et aux relations collectives.',
-            'droit administratif' => 'Règles régissant l’action de l’administration et le contrôle de ses actes.',
-            'droit constitutionnel' => 'Organisation des pouvoirs publics et protection des droits fondamentaux.',
-            'droit international' => 'Règles entre États et organisations internationales ; traités et coutume internationale.',
-            'procédure civile' => 'Règles de forme pour saisir un tribunal civil et mener un procès.',
-            'procédure pénale' => 'Règles de forme pour enquêter, poursuivre et juger les infractions.',
-            'demandeur / plaignant' => 'Partie qui engage une action en justice.',
-            'défendeur' => 'Partie contre laquelle l’action est dirigée.',
-            'plaideur' => 'Toute partie à une instance.',
-            'avocat' => 'Professionnel du droit qui conseille et représente les clients.',
-            'magistrat / juge' => 'Autorité judiciaire qui tranche les litiges.',
-            'tribunal / cour' => 'Institution chargée de rendre la justice.',
-            'compétence' => 'Pouvoir d’une juridiction de connaître d’une affaire (matière, territoire, degré).',
-            'pourvoi / appel' => 'Voie de recours contre une décision devant une juridiction supérieure.',
-            'jugement / arrêt' => 'Décision rendue par une juridiction.',
-            'injonction' => 'Ordonnance du tribunal obligeant ou interdisant un comportement.',
-            'contrat' => 'Accord de volontés créant des obligations juridiquement sanctionnées.',
-            'obligation' => 'Lien de droit obligeant une personne à donner, faire ou ne pas faire quelque chose.',
-            'responsabilité civile' => 'Devoir de réparer un dommage causé à autrui (contractuelle ou délictuelle).',
-            'délit civil (tort)' => 'Fait fautif causant un préjudice ouvrant droit à réparation (tradition de common law).',
-            'dommages-intérêts' => 'Somme allouée pour réparer un préjudice.',
-            'preuve' => 'Éléments produits pour établir un fait devant le juge.',
-            'charge de la preuve' => 'Obligation pour une partie de prouver les faits qu’elle allègue.',
-            'prescription' => 'Extinction d’un droit ou d’une action par l’écoulement du temps.',
-            'prescription extinctive' => 'Perte du droit d’agir en justice après un délai légal.',
-            'propriété' => 'Droit de jouir et disposer d’un bien dans les limites de la loi.',
-            'sûreté / garantie' => 'Mécanisme protégeant un créancier (hypothèque, nantissement, caution, etc.).',
-            'société' => 'Personne morale formée pour exercer une activité selon le droit des sociétés.',
-            'faillite / insolvabilité' => 'Situation où le débiteur ne peut plus faire face à ses dettes exigibles.',
-            'equity' => 'Ensemble de principes d’équité issus de la common law anglaise, complétant le droit strict.',
-            'habeas corpus' => 'Recours protégeant contre une détention illégale.',
-            'due process / équité procédurale' => 'Garantie d’une procédure juste et équitable.',
-            'common law' => 'Tradition juridique anglaise fondée sur la jurisprudence et l’équité.',
-            'civil law (tradition romaniste)' => 'Tradition issue du droit romain / codes écrits (forte influence française à Maurice pour le droit privé).',
-        ];
+        // French definitions where available; English fills remaining terms.
+        return array_merge(ai_legal_glossary_en(), ai_legal_glossary_fr());
     }
 
-    return [
-        'constitution' => 'The supreme law of the State. All other laws and acts must conform to it.',
-        'act / statute / law' => 'Primary legislation passed by Parliament (the National Assembly). In Mauritius, statutes are commonly published in English.',
-        'subsidiary legislation / regulations' => 'Rules made under authority of an Act (regulations, orders, notices) by the executive.',
-        'case law / jurisprudence' => 'Body of judicial decisions. It guides interpretation, especially in common-law areas.',
-        'precedent' => 'An earlier decision that may guide or bind later similar cases (especially in the common-law tradition).',
-        'civil law (subject)' => 'Rules governing private relations (contracts, property, family, civil liability).',
-        'criminal law' => 'Rules defining offences and penalties.',
-        'commercial / company law' => 'Rules for businesses, companies, trade, and insolvency.',
-        'employment / labour law' => 'Rules on employment contracts, wages, and workplace relations.',
-        'administrative law' => 'Rules governing public administration and review of administrative action.',
-        'constitutional law' => 'Organisation of public powers and protection of fundamental rights.',
-        'international law' => 'Rules between States and international organisations; treaties and custom.',
-        'civil procedure' => 'Formal rules for starting and conducting civil proceedings.',
-        'criminal procedure' => 'Formal rules for investigation, prosecution, and trial of offences.',
-        'plaintiff / claimant' => 'The party who brings a civil claim.',
-        'defendant' => 'The party against whom a claim or charge is brought.',
-        'litigant' => 'Any party to court proceedings.',
-        'attorney / counsel / barrister / solicitor' => 'Legal professionals who advise and represent clients (titles vary by practice and jurisdiction).',
-        'judge / magistrate' => 'Judicial officer who decides disputes.',
-        'court / tribunal' => 'Institution empowered to administer justice.',
-        'jurisdiction' => 'Authority of a court to hear a matter (subject-matter, territory, level).',
-        'appeal' => 'Challenge of a decision before a higher court.',
-        'judgment / order' => 'Decision issued by a court.',
-        'injunction' => 'Court order requiring or prohibiting conduct.',
-        'contract' => 'Agreement creating legally enforceable obligations.',
-        'obligation' => 'Legal duty to give, do, or refrain from doing something.',
-        'civil liability' => 'Duty to repair harm caused to another (contractual or delictual/tortious).',
-        'tort' => 'Civil wrong (other than breach of contract) that may give rise to damages.',
-        'damages' => 'Money awarded to compensate loss or injury.',
-        'evidence' => 'Material presented to prove facts before a court.',
-        'burden of proof' => 'Duty of a party to prove the facts it alleges.',
-        'limitation / prescription' => 'Time limit after which a claim may no longer be brought.',
-        'property / ownership' => 'Right to use and dispose of a thing within the limits of the law.',
-        'security / charge' => 'Device protecting a creditor (mortgage, pledge, guarantee, etc.).',
-        'company / corporation' => 'Legal person formed to carry on business under company law.',
-        'insolvency / bankruptcy' => 'Situation where a debtor cannot meet due debts.',
-        'equity' => 'Body of fairness principles from English law that supplement strict legal rules.',
-        'habeas corpus' => 'Remedy protecting against unlawful detention.',
-        'due process / natural justice' => 'Guarantee of a fair and impartial procedure.',
-        'common law' => 'English legal tradition based largely on judicial decisions and equity.',
-        'civil law (tradition)' => 'Romanist/codified tradition (strong French influence on Mauritian private law).',
-    ];
+    return ai_legal_glossary_en();
+}
+
+function ai_legal_glossary_count(): int
+{
+    return count(ai_legal_glossary());
 }
 
 function ai_mauritius_sources_of_law(): string
@@ -208,58 +131,262 @@ function ai_mauritius_main_law_areas(): string
 
 function ai_legal_glossary_formatted(): string
 {
-    $lines = [];
-    foreach (ai_legal_glossary() as $term => $def) {
+    $glossary = ai_legal_glossary();
+    if (function_exists('mb_strtoupper')) {
+        uksort($glossary, static fn(string $a, string $b): int => strcasecmp(ltrim($a, '— '), ltrim($b, '— ')));
+    } else {
+        ksort($glossary, SORT_STRING | SORT_FLAG_CASE);
+    }
+
+    $count = count($glossary);
+    $fr = ai_mauritius_law_is_fr();
+    $lines = [
+        $fr
+            ? "Glossaire juridique — {$count} termes (A–Z). Demandez « define … » ou « what is … » pour un terme précis."
+            : "Legal glossary — {$count} terms (A–Z). Ask « define … » or « what is … » for any specific term.",
+        '',
+    ];
+
+    $currentLetter = '';
+    foreach ($glossary as $term => $def) {
+        $first = strtoupper((string) preg_replace('/^[^a-zA-Z]+/u', '', $term)[0] ?? '#');
+        if ($first !== $currentLetter) {
+            $currentLetter = $first;
+            $lines[] = '— ' . $currentLetter . ' —';
+        }
         $lines[] = '• ' . $term . ' — ' . $def;
     }
-    $head = ai_mauritius_law_is_fr()
-        ? "Définitions essentielles d’un système juridique\n"
-        : "Core definitions used in a legal system\n";
-    return $head . implode("\n", $lines);
+
+    return implode("\n", $lines);
+}
+
+function ai_wants_legal_definition(string $message): bool
+{
+    $q = mb_strtolower(trim($message));
+    if ($q === '') {
+        return false;
+    }
+
+    if (preg_match('/\b(our|we|my|firm|dashboard|revenue|invoice|payment|client|case|appointment|how many|total|summarize)\b/iu', $q)) {
+        return false;
+    }
+
+    if (preg_match(
+        '/\b((all\s+)?(the\s+)?(core\s+|essential\s+|main\s+|legal\s+)?definitions|legal\s+glossary|glossary\s+of\s+law|d[eé]finitions?\s+(du|de\s+la|d[\'’]un|essentielles?|juridiques?)|glossaire\s+juridique|toutes\s+les\s+d[eé]finitions)\b/iu',
+        $q
+    )) {
+        return true;
+    }
+
+    return (bool) preg_match(
+        '/\b(define|definition\s+of|meaning\s+of|what\s+is|what\'s|what\s+does\s+.+\s+mean|explain|qu[\'’]?est-ce|d[eé]finis|d[eé]finition\s+d[e\'’]|signification\s+d[e\'’])\b/iu',
+        $q
+    );
+}
+
+function ai_glossary_display_term(string $term): string
+{
+    $main = trim((string) preg_split('/\s*\/\s*/', $term)[0]);
+    if ($main === '') {
+        return $term;
+    }
+    if (function_exists('mb_convert_case')) {
+        return mb_convert_case($main, MB_CASE_TITLE, 'UTF-8');
+    }
+
+    return ucwords(strtolower($main));
+}
+
+function ai_format_definition_reply(string $term, string $definition, ?string $cite = null, bool $shortDisclaimer = false): string
+{
+    $fr = ai_mauritius_law_is_fr();
+    $lines = [ai_glossary_display_term($term), '', $definition];
+    if ($cite !== null && $cite !== '') {
+        $lines[] = '';
+        $lines[] = ($fr ? 'En droit mauricien : ' : 'Under Mauritian law: ') . $cite;
+    }
+    $lines[] = '';
+    $lines[] = $shortDisclaimer || ($cite === null || $cite === '')
+        ? ai_mauritius_law_disclaimer_short()
+        : ai_mauritius_law_disclaimer();
+
+    return implode("\n", $lines);
+}
+
+/**
+ * Extract the term the user wants defined, if phrasing matches.
+ */
+function ai_legal_glossary_extract_term(string $message): ?string
+{
+    $q = mb_strtolower(trim($message));
+    $q = preg_replace('/[?؟!.]+$/u', '', $q) ?? $q;
+
+    $patterns = [
+        '/\b(?:what\s+is|what\'s)\s+(?:a|an|the)?\s*(.+)$/iu',
+        '/\b(?:define|explain)\s+(?:a|an|the|me)?\s*(.+)$/iu',
+        '/\bdefinition\s+of\s+(?:a|an|the)?\s*(.+)$/iu',
+        '/\bmeaning\s+of\s+(?:a|an|the)?\s*(.+)$/iu',
+        '/\bwhat\s+does\s+(.+?)\s+mean\b/iu',
+        '/\b(?:can\s+you|please)\s+(?:define|explain)\s+(?:a|an|the)?\s*(.+)$/iu',
+        '/\bqu[\'’]?est-ce\s+qu[\'’]?(?:un|une|le|la|l[\'’])?\s*(.+)$/iu',
+        '/\bd[eé]finis?\s+(?:le|la|l[\'’]|un|une|moi)?\s*(.+)$/iu',
+        '/\bd[eé]finition\s+d[e\'’]\s*(?:un|une|le|la|l[\'’])?\s*(.+)$/iu',
+    ];
+
+    foreach ($patterns as $pattern) {
+        if (preg_match($pattern, $q, $m)) {
+            $term = trim((string) ($m[1] ?? ''));
+            $term = preg_replace('/\s+(for\s+me|please|in\s+mauritius|in\s+mauritian\s+law)$/iu', '', $term) ?? $term;
+            if ($term !== '') {
+                return $term;
+            }
+        }
+    }
+
+    return null;
+}
+
+function ai_legal_glossary_match_term(string $needle, array $glossary): ?array
+{
+    $needle = mb_strtolower(trim($needle));
+    if ($needle === '') {
+        return null;
+    }
+
+    $best = null;
+    $bestLen = 0;
+    $bestScore = 0;
+
+    foreach ($glossary as $key => $def) {
+        $aliases = preg_split('/\s*\/\s*/', mb_strtolower($key)) ?: [mb_strtolower($key)];
+        foreach ($aliases as $alias) {
+            $alias = trim((string) $alias);
+            if ($alias === '') {
+                continue;
+            }
+            $score = 0;
+            if ($needle === $alias) {
+                $score = 100 + mb_strlen($alias);
+            } elseif (preg_match('/\b' . preg_quote($alias, '/') . '\b/iu', $needle)) {
+                $score = 80 + mb_strlen($alias);
+            } elseif (preg_match('/\b' . preg_quote($needle, '/') . '\b/iu', $alias)) {
+                $score = 70 + mb_strlen($needle);
+            } elseif (str_contains($needle, $alias) || str_contains($alias, $needle)) {
+                $score = 40 + min(mb_strlen($alias), mb_strlen($needle));
+            }
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $bestLen = mb_strlen($alias);
+                $best = ['term' => $key, 'definition' => $def];
+            }
+        }
+    }
+
+    return $bestScore >= 40 ? $best : null;
+}
+
+/**
+ * Suggest closest glossary terms when lookup fails.
+ *
+ * @return list<string>
+ */
+function ai_legal_glossary_suggest(string $needle, int $limit = 5): array
+{
+    $needle = mb_strtolower(trim($needle));
+    if ($needle === '') {
+        return [];
+    }
+
+    $scores = [];
+    foreach (ai_legal_glossary() as $key => $def) {
+        $aliases = preg_split('/\s*\/\s*/', mb_strtolower($key)) ?: [mb_strtolower($key)];
+        $max = 0;
+        foreach ($aliases as $alias) {
+            $alias = trim((string) $alias);
+            if ($alias === '') {
+                continue;
+            }
+            similar_text($needle, $alias, $pct);
+            if ($pct > $max) {
+                $max = $pct;
+            }
+            if (str_contains($alias, $needle) || str_contains($needle, $alias)) {
+                $max = max($max, 55.0);
+            }
+        }
+        if ($max >= 45) {
+            $scores[$key] = $max;
+        }
+    }
+
+    arsort($scores, SORT_NUMERIC);
+
+    return array_slice(array_keys($scores), 0, max(1, $limit));
 }
 
 function ai_legal_glossary_lookup(string $message): ?string
 {
     $q = mb_strtolower(trim($message));
-    $q = preg_replace('/[?؟!.]+$/u', '', $q) ?? $q;
-
-    // "what is X" / "define X" / "definition of X" / "qu'est-ce que X"
-    $term = null;
-    if (preg_match('/^(?:what\s+is\s+(?:a|an|the)?\s*|define\s+(?:the\s+)?|definition\s+of\s+(?:a|an|the)?\s*|meaning\s+of\s+(?:a|an|the)?\s*|qu[\'’]?est-ce\s+qu[\'’]?(?:un|une|le|la|l[\'’])?\s*|d[eé]finis?\s+(?:le|la|l[\'’]|un|une)?\s*|d[eé]finition\s+d[e\'’]\s*(?:un|une|le|la|l[\'’])?\s*)(.+)$/iu', $q, $m)) {
-        $term = trim($m[1]);
-    }
-
     $glossary = ai_legal_glossary();
-    if ($term !== null && $term !== '') {
-        foreach ($glossary as $key => $def) {
-            $keyLower = mb_strtolower($key);
-            $aliases = preg_split('/\s*\/\s*/', $keyLower) ?: [$keyLower];
-            foreach ($aliases as $alias) {
-                $alias = trim($alias);
-                if ($alias !== '' && (mb_strpos($term, $alias) !== false || mb_strpos($alias, $term) !== false || $term === $alias)) {
-                    $label = ai_mauritius_law_is_fr() ? 'Définition' : 'Definition';
-                    return $label . ': ' . $key . "\n" . $def;
-                }
-            }
+
+    $extracted = ai_legal_glossary_extract_term($message);
+    if ($extracted !== null) {
+        $match = ai_legal_glossary_match_term($extracted, $glossary);
+        if ($match !== null) {
+            return ai_format_definition_reply($match['term'], $match['definition']);
         }
     }
 
-    // Free-text contains a glossary term with define/meaning intent nearby
-    $wantsDef = (bool) preg_match('/\b(define|definition|meaning|glossary|d[eé]finition|d[eé]finir|signification|glossaire|qu[\'’]?est-ce)\b/iu', $q);
+    $wantsDef = ai_wants_legal_definition($message);
     if ($wantsDef) {
         foreach ($glossary as $key => $def) {
             $aliases = preg_split('/\s*\/\s*/', mb_strtolower($key)) ?: [mb_strtolower($key)];
             foreach ($aliases as $alias) {
                 $alias = trim((string) $alias);
                 if ($alias !== '' && preg_match('/\b' . preg_quote($alias, '/') . '\b/iu', $q)) {
-                    $label = ai_mauritius_law_is_fr() ? 'Définition' : 'Definition';
-                    return $label . ': ' . $key . "\n" . $def;
+                    return ai_format_definition_reply($key, $def);
                 }
             }
         }
     }
 
     return null;
+}
+
+/**
+ * Answer definition requests from the legal glossary (and related sources).
+ */
+function ai_try_legal_definition_reply(string $message): ?string
+{
+    if (!ai_wants_legal_definition($message)) {
+        return null;
+    }
+
+    $q = mb_strtolower(trim($message));
+
+    $wantsFullGlossary = (bool) preg_match(
+        '/\b((all\s+)?(the\s+)?(core\s+|essential\s+|main\s+|legal\s+)?definitions|legal\s+glossary|glossary\s+of\s+law|d[eé]finitions?\s+(du|de\s+la|d[\'’]un|essentielles?|juridiques?)|glossaire\s+juridique|toutes\s+les\s+d[eé]finitions)\b/iu',
+        $q
+    );
+    if ($wantsFullGlossary) {
+        return ai_legal_glossary_formatted() . "\n\n" . ai_mauritius_law_disclaimer();
+    }
+
+    $lookup = ai_legal_glossary_lookup($message);
+    if ($lookup !== null) {
+        return $lookup;
+    }
+
+    return null;
+}
+
+function ai_mauritius_law_disclaimer_short(): string
+{
+    if (ai_mauritius_law_is_fr()) {
+        return 'Avertissement : aperçu éducatif uniquement — pas un conseil juridique formel.';
+    }
+
+    return 'Disclaimer: educational overview only — not formal legal advice.';
 }
 
 function ai_mauritius_law_disclaimer(): string
@@ -319,7 +446,7 @@ function ai_try_mauritius_law_reply(string $message): ?string
 
     // Single definition only (no Mauritius/system dump) when that is all they asked.
     if ($lookup && !$wantsFullGlossary && !$wantsMauritiusLaws && !$wantsListLaws && !$wantsSystem && !$wantsBranches && !$wantsLegalSystem) {
-        return $lookup . "\n\n" . ai_mauritius_law_disclaimer();
+        return $lookup;
     }
 
     $parts = [];

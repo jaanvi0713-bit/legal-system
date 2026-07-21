@@ -179,7 +179,7 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
                         <p><?= __e('users.section.access_help') ?></p>
                     </div>
                     <div class="form-grid">
-                        <div class="entity-field-row">
+                        <div class="entity-field-row entity-field-row--2">
                             <div class="form-group">
                                 <label for="username"><?= __e('form.username') ?> <span class="req">*</span></label>
                                 <input id="username" name="username" required value="<?= e($row['username']) ?>">
@@ -188,6 +188,8 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
                                 <label for="password"><?= $isEdit ? __e('form.new_password') : __e('form.password') ?><?= $isEdit ? '' : ' <span class="req">*</span>' ?></label>
                                 <input id="password" name="password" placeholder="<?= $isEdit ? __e('form.password_keep') : __e('form.password_default') ?>">
                             </div>
+                        </div>
+                        <div class="entity-field-row entity-field-row--2">
                             <div class="form-group">
                                 <label for="user-role"><?= __e('common.role') ?> <span class="req">*</span></label>
                                 <select name="role" id="user-role" required>
@@ -196,8 +198,6 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
                                     <?php endforeach; ?>
                                 </select>
                             </div>
-                        </div>
-                        <div class="entity-field-row entity-field-row--2">
                             <div class="form-group">
                                 <label for="is_active"><?= __e('common.status') ?> <span class="req">*</span></label>
                                 <select id="is_active" name="is_active" required>

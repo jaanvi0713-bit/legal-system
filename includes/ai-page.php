@@ -340,7 +340,7 @@ function render_ai_page(string $portal): void
                     <?php endforeach; ?>
                 </div>
 
-                <form id="ai-compose-form" class="ai-compose-wrap" data-session-id="<?= (int) $sessionId ?>" data-ai-endpoint="<?= e(app_config('url') . '/api/ai-chat.php') ?>" data-app-url="<?= e(rtrim((string) app_config('url'), '/')) ?>">
+                <form id="ai-compose-form" class="ai-compose-wrap" data-no-saving="1" data-session-id="<?= (int) $sessionId ?>" data-ai-endpoint="<?= e(app_config('url') . '/api/ai-chat.php') ?>" data-app-url="<?= e(rtrim((string) app_config('url'), '/')) ?>">
                     <div id="ai-attach-list" class="ai-attach-list" hidden></div>
                     <div class="ai-compose-bar">
                         <button type="button" class="ai-attach" id="ai-attach-btn" title="<?= __e('ai.attach_files') ?>" aria-label="<?= __e('ai.attach_files') ?>">
@@ -348,7 +348,7 @@ function render_ai_page(string $portal): void
                         </button>
                         <input type="file" id="ai-file-input" class="ai-file-input" multiple accept=".pdf,.doc,.docx,.txt,.csv,.jpg,.jpeg,.png,.webp,.xls,.xlsx" hidden>
                         <input type="text" id="ai-message" placeholder="<?= e($placeholder) ?>" autocomplete="off">
-                        <button class="ai-send" type="submit" aria-label="<?= __e('ai.send') ?>">
+                        <button class="ai-send" type="button" id="ai-send-btn" aria-label="<?= __e('ai.send') ?>">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12l15-7-4 15-4-5-7-3z"/></svg>
                         </button>
                     </div>

@@ -477,10 +477,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const input = document.getElementById('ai-message');
     const messages = document.getElementById('ai-messages');
     if (!aiForm || !messages) return;
-    const sessionId = aiForm.dataset.sessionId;
+    const sessionId = parseInt(aiForm.dataset.sessionId || '0', 10);
     const value = (text || '').trim();
     const files = aiPendingFiles.slice();
     if ((!value && !files.length) || aiSending) return;
+    if (!sessionId) {
+      const i18n = window.LEXORA_I18N || {};
+      alert(i18n.service_error || 'Unable to reach the AI service. Please try again.');
+      return;
+    }
     aiSending = true;
 
     const welcome = messages.querySelector('.ai-welcome');
@@ -532,10 +537,10 @@ document.addEventListener('DOMContentLoaded', () => {
         (_, label, url) => linkHtml(url, label)
       );
       escaped = escaped.replace(
-        /(?<!href=")(https?:\/\/[^\s<]+)/gi,
-        (_, url) => linkHtml(url, url.replace(/[.,);]+$/, ''))
+        /(^|[\s>])(https?:\/\/[^\s<]+)/gi,
+        (match, prefix, url) => prefix + linkHtml(url, url.replace(/[.,);]+$/, ''))
       );
-      return escaped;
+      return escaped.replace(/\n/g, '<br>');
     };
 
     try {
@@ -546,15 +551,22 @@ document.addEventListener('DOMContentLoaded', () => {
         fd.append('session_id', String(sessionId));
         fd.append('message', value);
         files.forEach((f) => fd.append('files[]', f, f.name));
-        res = await fetch(endpoint, { method: 'POST', body: fd });
+        res = await fetch(endpoint, { method: 'POST', body: fd, credentials: 'same-origin' });
       } else {
         res = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ session_id: Number(sessionId), message: value }),
+          credentials: 'same-origin',
+          body: JSON.stringify({ session_id: sessionId, message: value }),
         });
       }
-      const data = await res.json();
+      const rawBody = await res.text();
+      let data = {};
+      try {
+        data = rawBody ? JSON.parse(rawBody) : {};
+      } catch (parseErr) {
+        throw new Error('Invalid AI response');
+      }
       const reply = data.reply || data.error || i18n.no_response || 'No response.';
       thinkingText.setAttribute('data-ai-raw', reply);
       thinkingText.innerHTML = renderAiHtml(reply);
@@ -586,6 +598,35 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   if (aiForm) {
+    aiForm.dataset.noSaving = '1';
+    const sendBtn = document.getElementById('ai-send-btn');
+    const triggerAiSend = () => {
+      const input = document.getElementById('ai-message');
+      sendAiMessage(input ? input.value : '');
+    };
+
+    if (sendBtn) {
+      sendBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        triggerAiSend();
+      });
+    }
+
+    const aiInput = document.getElementById('ai-message');
+    if (aiInput) {
+      aiInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          triggerAiSend();
+        }
+      });
+    }
+
+    aiForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      triggerAiSend();
+    });
+
     const attachBtn = document.getElementById('ai-attach-btn') || document.querySelector('.ai-attach');
     const fileInput = document.getElementById('ai-file-input');
     const attachListEl = document.getElementById('ai-attach-list');
@@ -619,6 +660,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderAiAttachList();
       });
     }
+
     if (attachListEl) {
       attachListEl.addEventListener('click', (e) => {
         const btn = e.target.closest('[data-remove-idx]');
@@ -629,13 +671,6 @@ document.addEventListener('DOMContentLoaded', () => {
         renderAiAttachList();
       });
     }
-
-    aiForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      aiForm.dataset.noSaving = '1';
-      const input = document.getElementById('ai-message');
-      await sendAiMessage(input ? input.value : '');
-    });
   }
 
   initSelectWraps();

@@ -9,6 +9,7 @@ $tabs = [
     'profile' => 'settings.tab.profile',
     'notifications' => 'settings.tab.notifications',
     'branding' => 'settings.tab.branding',
+    'ai' => 'settings.tab.ai',
     'email' => 'settings.tab.email',
     'payments' => 'settings.tab.payments',
     'roles' => 'settings.tab.roles',
@@ -115,7 +116,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         foreach ([
             'company_name', 'company_email', 'company_phone', 'company_address',
             'company_website', 'company_registration', 'company_vat', 'branding_font',
-            'branding_accent', 'theme', 'ai_enabled',
+            'branding_accent', 'theme',
             'social_facebook', 'social_instagram', 'social_linkedin',
             'business_hours', 'company_description',
         ] as $key) {
@@ -177,6 +178,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
         }
         flash('success', __('settings.branding.saved'));
+    } elseif ($section === 'ai') {
+        set_setting($pdo, 'ai_enabled', post('ai_enabled', '0') === '1' ? '1' : '0');
+
+        $apiKey = trim((string) post('ai_api_key', ''));
+        if ($apiKey !== '') {
+            set_setting($pdo, 'ai_api_key', $apiKey);
+        }
+
+        foreach (['ai_model', 'ai_base_url'] as $key) {
+            set_setting($pdo, $key, trim((string) post($key, '')));
+        }
+
+        $maxTokens = max(256, (int) post('ai_max_tokens', '4096'));
+        set_setting($pdo, 'ai_max_tokens', (string) $maxTokens);
+
+        $temperature = max(0.0, min(1.0, (float) post('ai_temperature', '0.3')));
+        set_setting($pdo, 'ai_temperature', (string) $temperature);
+
+        foreach (['ai_prompt_admin', 'ai_prompt_lawyer', 'ai_prompt_client'] as $key) {
+            if (isset($_POST[$key])) {
+                set_setting($pdo, $key, trim((string) post($key, '')));
+            }
+        }
+
+        flash('success', __('settings.ai.saved'));
     } elseif ($section === 'email') {
         foreach (['smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from', 'smtp_encryption'] as $key) {
             set_setting($pdo, $key, post($key));
@@ -704,6 +730,82 @@ require __DIR__ . '/../includes/header.php';
                 </div>
             </div>
             <script src="<?= e($base) ?>/assets/js/logo-cropper.js?v=<?= (int) @filemtime(__DIR__ . '/../assets/js/logo-cropper.js') ?>"></script>
+
+        <?php elseif ($tab === 'ai'): ?>
+            <?php
+            $aiKeyStored = trim((string) $get('ai_api_key', app_config('ai_api_key', '')));
+            $aiKeyPreview = $aiKeyStored !== '' ? str_repeat('•', min(20, max(8, strlen($aiKeyStored)))) : '';
+            ?>
+            <form method="post" class="settings-form">
+                <?= csrf_field() ?>
+                <input type="hidden" name="settings_tab" value="ai">
+                <div class="settings-block">
+                    <div class="settings-block-head">
+                        <h3><?= __e('settings.ai.title') ?></h3>
+                        <p><?= __e('settings.ai.help') ?></p>
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group full">
+                            <label class="checkbox-label">
+                                <input type="checkbox" name="ai_enabled" value="1" <?= $get('ai_enabled', '1') === '1' ? 'checked' : '' ?>>
+                                <?= __e('settings.ai.enabled') ?>
+                            </label>
+                            <span class="field-hint"><?= __e('settings.ai.enabled_help') ?></span>
+                        </div>
+                        <div class="entity-field-row entity-field-row--2">
+                            <div class="form-group">
+                                <label for="ai_api_key"><?= __e('settings.ai.api_key') ?></label>
+                                <input type="password" id="ai_api_key" name="ai_api_key" value="" placeholder="<?= $aiKeyPreview !== '' ? e($aiKeyPreview) : 'sk-...' ?>" autocomplete="new-password">
+                                <span class="field-hint"><?= __e('settings.ai.api_key_help') ?></span>
+                            </div>
+                            <div class="form-group">
+                                <label for="ai_model"><?= __e('settings.ai.model') ?></label>
+                                <input id="ai_model" name="ai_model" value="<?= e($get('ai_model', app_config('ai_model', 'gpt-4o-mini'))) ?>" placeholder="gpt-4o-mini">
+                                <span class="field-hint"><?= __e('settings.ai.model_help') ?></span>
+                            </div>
+                        </div>
+                        <div class="entity-field-row entity-field-row--2">
+                            <div class="form-group">
+                                <label for="ai_base_url"><?= __e('settings.ai.base_url') ?></label>
+                                <input id="ai_base_url" name="ai_base_url" value="<?= e($get('ai_base_url', app_config('ai_base_url', 'https://api.openai.com/v1'))) ?>" placeholder="https://api.openai.com/v1">
+                                <span class="field-hint"><?= __e('settings.ai.base_url_help') ?></span>
+                            </div>
+                            <div class="form-group">
+                                <label for="ai_max_tokens"><?= __e('settings.ai.max_tokens') ?></label>
+                                <input id="ai_max_tokens" name="ai_max_tokens" type="number" min="256" max="16384" value="<?= e($get('ai_max_tokens', (string) app_config('ai_max_tokens', 4096))) ?>">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="ai_temperature"><?= __e('settings.ai.temperature') ?></label>
+                            <input id="ai_temperature" name="ai_temperature" type="number" min="0" max="1" step="0.1" value="<?= e($get('ai_temperature', (string) app_config('ai_temperature', 0.3))) ?>">
+                            <span class="field-hint"><?= __e('settings.ai.temperature_help') ?></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-block">
+                    <div class="settings-block-head">
+                        <h3><?= __e('settings.branding.ai_prompts') ?></h3>
+                        <p><?= __e('settings.ai.prompts_help') ?></p>
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group full">
+                            <label for="ai_prompt_admin"><?= __e('settings.branding.ai_prompt_admin') ?></label>
+                            <textarea id="ai_prompt_admin" name="ai_prompt_admin" rows="3" placeholder="<?= e(__('ai.system.admin')) ?>"><?= e($get('ai_prompt_admin')) ?></textarea>
+                        </div>
+                        <div class="form-group full">
+                            <label for="ai_prompt_lawyer"><?= __e('settings.branding.ai_prompt_lawyer') ?></label>
+                            <textarea id="ai_prompt_lawyer" name="ai_prompt_lawyer" rows="3" placeholder="<?= e(__('ai.system.lawyer')) ?>"><?= e($get('ai_prompt_lawyer')) ?></textarea>
+                        </div>
+                        <div class="form-group full">
+                            <label for="ai_prompt_client"><?= __e('settings.branding.ai_prompt_client') ?></label>
+                            <textarea id="ai_prompt_client" name="ai_prompt_client" rows="3" placeholder="<?= e(__('ai.system.client')) ?>"><?= e($get('ai_prompt_client')) ?></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-actions"><button class="btn btn-primary" type="submit"><?= __e('settings.ai.save') ?></button></div>
+            </form>
 
         <?php elseif ($tab === 'email'): ?>
             <form method="post" class="settings-form">

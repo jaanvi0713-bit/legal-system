@@ -1,10 +1,11 @@
 <?php
 /**
- * AI chat API — built-in (offline) legal assistant only.
+ * AI chat API — built-in Mauritius law assistant (no external API required).
  */
 header('Content-Type: application/json; charset=utf-8');
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/ai-mauritius-law.php';
+require_once __DIR__ . '/../includes/ai-mauritius-corpus.php';
 
 if (!is_logged_in()) {
     http_response_code(401);
@@ -84,7 +85,7 @@ exit;
  */
 function generate_ai_reply(PDO $pdo, array $user, string $portal, string $message, array $attachments = []): string
 {
-    // Deterministic math first — more reliable than asking the LLM to arithmetic.
+    // Deterministic math first — more reliable than pattern matching.
     if (!$attachments) {
         $calc = ai_try_calculate($message, $pdo, $user, $portal);
         if ($calc !== null) {
@@ -93,6 +94,42 @@ function generate_ai_reply(PDO $pdo, array $user, string $portal, string $messag
     }
 
     $context = build_portal_context($pdo, $user, $portal);
+
+    // Built-in definitions first, then Mauritius law Q&A with Act/section citations.
+    if (!$attachments) {
+        $defReply = ai_try_legal_definition_reply($message);
+        if ($defReply !== null) {
+            return $defReply;
+        }
+
+        if (ai_wants_legal_definition($message)) {
+            $results = ai_mauritius_corpus_search($message, 1);
+            if ($results) {
+                return ai_mauritius_format_definition_from_corpus($results[0]);
+            }
+
+            $fr = current_lang() === 'fr';
+            $count = ai_legal_glossary_count();
+            $extracted = ai_legal_glossary_extract_term($message);
+            $suggestions = $extracted !== null ? ai_legal_glossary_suggest($extracted) : ai_legal_glossary_suggest($message);
+            $suggestLine = '';
+            if ($suggestions) {
+                $suggestLine = ($fr ? "\n\nTermes proches : " : "\n\nDid you mean: ")
+                    . implode(', ', array_slice($suggestions, 0, 5));
+            }
+            return ($fr
+                ? "Je n’ai pas trouvé de définition pour ce terme. Essayez « define tort », « what is a contract », ou demandez « legal definitions » pour les {$count} termes du glossaire."
+                : "I couldn't find a definition for that term. Try « define tort », « what is negligence », or ask for « legal definitions » for all {$count} glossary terms.")
+                . $suggestLine
+                . "\n\n" . ai_mauritius_law_disclaimer_short();
+        }
+
+        $lawReply = ai_try_mauritius_corpus_reply($message);
+        if ($lawReply !== null) {
+            return $lawReply;
+        }
+    }
+
     return offline_ai_reply($pdo, $user, $portal, $message, $context, full_name($user), $attachments);
 }
 
