@@ -508,7 +508,7 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
                         <input type="hidden" name="assigned_admin_id" value="<?= $lockedAdminId ?>">
                     <?php endif; ?>
                 </div>
-                <div class="case-create-grid-3" style="margin-top:0.85rem;">
+                <div class="case-create-grid-2 case-team-lead-row">
                     <div class="form-group">
                         <label for="lead_lawyer_id"><?= __e('cases.team.lead_lawyer') ?></label>
                         <select id="lead_lawyer_id" name="lead_lawyer_id">
@@ -519,16 +519,6 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="associate_lawyer_ids"><?= __e('cases.team.associates') ?></label>
-                        <select id="associate_lawyer_ids" name="associate_lawyer_ids[]" multiple size="<?= max(3, min(6, count($lawyers) ?: 3)) ?>" class="case-associate-select">
-                            <?php foreach ($lawyers as $l): ?>
-                                <?php if ($leadLawyerId === (int) $l['id']) { continue; } ?>
-                                <option value="<?= (int) $l['id'] ?>" <?= in_array((int) $l['id'], $associateLawyerIds, true) ? 'selected' : '' ?>><?= e(full_name($l)) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                        <p class="muted" style="margin-top:0.25rem;font-size:0.8rem;"><?= __e('cases.team.associates_help') ?></p>
-                    </div>
-                    <div class="form-group">
                         <label for="status"><?= __e('common.status') ?></label>
                         <select id="status" name="status">
                             <?php foreach (['open','active','pending','on_hold','closed','reopened'] as $s): ?>
@@ -536,6 +526,39 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
                             <?php endforeach; ?>
                         </select>
                     </div>
+                </div>
+                <div class="form-group case-associates-field">
+                    <label id="associateLawyersLabel"><?= __e('cases.team.associates') ?></label>
+                    <?php if (!$lawyers): ?>
+                    <p class="muted"><?= __e('cases.team.no_lawyers') ?></p>
+                    <?php else: ?>
+                    <div class="case-assoc-dropdown" id="caseAssocDropdown" data-placeholder="<?= __e('cases.team.associates_placeholder') ?>">
+                        <button type="button" class="case-assoc-trigger" id="caseAssocTrigger" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="associateLawyersLabel">
+                            <span class="case-assoc-trigger-text" id="caseAssocTriggerText"><?= __e('cases.team.associates_placeholder') ?></span>
+                            <span class="case-assoc-caret" aria-hidden="true"></span>
+                        </button>
+                        <div class="case-assoc-menu" id="caseAssocMenu" hidden role="listbox" aria-multiselectable="true" aria-labelledby="associateLawyersLabel">
+                            <?php foreach ($lawyers as $l):
+                                $lid = (int) $l['id'];
+                                $isLead = $leadLawyerId === $lid;
+                                $isAssoc = in_array($lid, $associateLawyerIds, true) && !$isLead;
+                            ?>
+                            <label class="case-assoc-option<?= $isLead ? ' is-lead' : '' ?>" data-lawyer-id="<?= $lid ?>">
+                                <input type="checkbox"
+                                       name="associate_lawyer_ids[]"
+                                       value="<?= $lid ?>"
+                                       <?= $isAssoc ? 'checked' : '' ?>
+                                       <?= $isLead ? 'disabled' : '' ?>>
+                                <span class="case-assoc-option-name"><?= e(full_name($l)) ?></span>
+                                <?php if ($isLead): ?>
+                                <span class="case-assoc-option-tag"><?= __e('cases.team.lead') ?></span>
+                                <?php endif; ?>
+                            </label>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                    <p class="muted case-associates-help"><?= __e('cases.team.associates_help') ?></p>
+                    <?php endif; ?>
                 </div>
                 <?php if ($isEdit): ?>
                     <input type="hidden" name="court_name" value="<?= e($case['court_name'] ?? '') ?>">
@@ -707,6 +730,87 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
         if (e.target.matches('.case-fee-net, #caseNonvatRate, #caseVatRate')) recalc();
       });
       recalc();
+
+      var leadSelect = document.getElementById('lead_lawyer_id');
+      var assocDrop = document.getElementById('caseAssocDropdown');
+      var assocTrigger = document.getElementById('caseAssocTrigger');
+      var assocTriggerText = document.getElementById('caseAssocTriggerText');
+      var assocMenu = document.getElementById('caseAssocMenu');
+      var leadTagLabel = <?= json_encode(__('cases.team.lead')) ?>;
+      var selectedMany = <?= json_encode(__('cases.team.associates_selected')) ?>;
+
+      function assocChecked() {
+        if (!assocMenu) return [];
+        return Array.prototype.slice.call(assocMenu.querySelectorAll('input[type="checkbox"]:checked:not(:disabled)'));
+      }
+
+      function updateAssocLabel() {
+        if (!assocDrop || !assocTriggerText) return;
+        var checked = assocChecked();
+        var placeholder = assocDrop.getAttribute('data-placeholder') || '';
+        if (!checked.length) {
+          assocTriggerText.textContent = placeholder;
+          assocTriggerText.classList.add('is-placeholder');
+          return;
+        }
+        assocTriggerText.classList.remove('is-placeholder');
+        if (checked.length === 1) {
+          var nameEl = checked[0].closest('.case-assoc-option');
+          nameEl = nameEl ? nameEl.querySelector('.case-assoc-option-name') : null;
+          assocTriggerText.textContent = nameEl ? nameEl.textContent : placeholder;
+          return;
+        }
+        assocTriggerText.textContent = selectedMany.replace(':count', String(checked.length));
+      }
+
+      function setAssocOpen(open) {
+        if (!assocDrop || !assocTrigger || !assocMenu) return;
+        assocDrop.classList.toggle('is-open', open);
+        assocTrigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+        assocMenu.hidden = !open;
+      }
+
+      function syncAssociateDropdown() {
+        if (!assocMenu) return;
+        var leadId = leadSelect ? String(leadSelect.value || '') : '';
+        assocMenu.querySelectorAll('.case-assoc-option').forEach(function (row) {
+          var input = row.querySelector('input[type="checkbox"]');
+          if (!input) return;
+          var isLead = leadId !== '' && String(input.value) === leadId;
+          row.classList.toggle('is-lead', isLead);
+          input.disabled = isLead;
+          if (isLead) {
+            input.checked = false;
+            if (!row.querySelector('.case-assoc-option-tag')) {
+              var tag = document.createElement('span');
+              tag.className = 'case-assoc-option-tag';
+              tag.textContent = leadTagLabel;
+              row.appendChild(tag);
+            }
+          } else {
+            var existing = row.querySelector('.case-assoc-option-tag');
+            if (existing) existing.remove();
+          }
+        });
+        updateAssocLabel();
+      }
+
+      if (assocTrigger && assocMenu) {
+        assocTrigger.addEventListener('click', function (e) {
+          e.preventDefault();
+          setAssocOpen(assocMenu.hidden);
+        });
+        assocMenu.addEventListener('change', updateAssocLabel);
+        document.addEventListener('click', function (e) {
+          if (!assocDrop || assocDrop.contains(e.target)) return;
+          setAssocOpen(false);
+        });
+        document.addEventListener('keydown', function (e) {
+          if (e.key === 'Escape') setAssocOpen(false);
+        });
+      }
+      if (leadSelect) leadSelect.addEventListener('change', syncAssociateDropdown);
+      syncAssociateDropdown();
     })();
     </script>
     <?php require __DIR__ . '/../includes/footer.php'; exit;

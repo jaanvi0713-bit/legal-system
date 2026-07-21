@@ -39,7 +39,9 @@ $threadId = (int) ($contactThread['id'] ?? 0);
                 <?= csrf_field() ?>
                 <input type="hidden" name="form_action" value="delete">
                 <input type="hidden" name="thread_id" value="<?= $threadId ?>">
-                <button class="btn btn-row-delete btn-sm" type="submit"><?= __e('common.delete') ?></button>
+                <button class="contact-icon-btn is-danger" type="submit" title="<?= __e('common.delete') ?>" aria-label="<?= __e('common.delete') ?>">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+                </button>
             </form>
             <?php endif; ?>
         </div>
@@ -62,10 +64,14 @@ $threadId = (int) ($contactThread['id'] ?? 0);
                 <time><?= e(format_datetime($msg['created_at'])) ?></time>
             </header>
             <div class="contact-message-body" data-contact-message-body><?= nl2br(e($msgBody)) ?></div>
-            <div class="contact-message-actions row-actions">
-                <button type="button" class="btn btn-row-open btn-sm contact-copy-btn" data-copy-text="<?= e($msgBody) ?>"><?= __e('common.copy') ?></button>
+            <div class="contact-message-actions">
+                <button type="button" class="contact-icon-btn contact-copy-btn" data-copy-text="<?= e($msgBody) ?>" title="<?= __e('common.copy') ?>" aria-label="<?= __e('common.copy') ?>">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+                </button>
                 <?php if ($isOwn): ?>
-                <button type="button" class="btn btn-row-edit btn-sm contact-edit-toggle" aria-expanded="false"><?= __e('common.edit') ?></button>
+                <button type="button" class="contact-icon-btn contact-edit-toggle" aria-expanded="false" title="<?= __e('common.edit') ?>" aria-label="<?= __e('common.edit') ?>">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                </button>
                 <?php endif; ?>
             </div>
             <?php if ($isOwn): ?>
@@ -96,10 +102,12 @@ $threadId = (int) ($contactThread['id'] ?? 0);
         <input type="hidden" name="thread_id" value="<?= $threadId ?>">
         <div class="contact-reply-head">
             <label for="contact-reply-body"><?= __e('contact.reply') ?></label>
-            <button class="btn btn-primary btn-sm" type="submit"><?= __e('contact.send_reply') ?></button>
         </div>
         <div class="form-group full">
             <textarea id="contact-reply-body" name="body" required rows="4" placeholder="<?= __e('contact.reply_ph') ?>"></textarea>
+        </div>
+        <div class="contact-reply-actions">
+            <button class="btn btn-primary btn-sm" type="submit"><?= __e('contact.send_reply') ?></button>
         </div>
     </form>
     <?php endif; ?>
@@ -114,9 +122,13 @@ $threadId = (int) ($contactThread['id'] ?? 0);
       const text = btn.getAttribute('data-copy-text') || '';
       try {
         await navigator.clipboard.writeText(text);
-        const prev = btn.textContent;
-        btn.textContent = <?= json_encode(__('contact.copied')) ?>;
-        setTimeout(() => { btn.textContent = prev; }, 1400);
+        btn.classList.add('is-copied');
+        const prev = btn.getAttribute('title') || '';
+        btn.setAttribute('title', <?= json_encode(__('contact.copied')) ?>);
+        setTimeout(() => {
+          btn.classList.remove('is-copied');
+          btn.setAttribute('title', prev);
+        }, 1400);
       } catch (e) {
         window.prompt(<?= json_encode(__('contact.copy_prompt')) ?>, text);
       }
