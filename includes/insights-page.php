@@ -525,17 +525,18 @@ function insights_billing_tables_client(PDO $pdo, int $uid): array
 
 function insights_billing_tables_lawyer(PDO $pdo, int $uid): array
 {
+    $accessSql = lawyer_case_access_sql('c');
     $invStmt = $pdo->prepare("
         SELECT i.id, i.invoice_number, i.total, i.status, i.case_id,
                COALESCE(NULLIF(TRIM(u.company_name),''), CONCAT(u.first_name,' ',u.last_name)) AS client_name
         FROM invoices i
         JOIN cases c ON c.id = i.case_id
         JOIN users u ON u.id = i.client_id
-        WHERE c.lawyer_id = ? AND i.status IN ('sent','partial','overdue','paid')
+        WHERE $accessSql AND i.status IN ('sent','partial','overdue','paid')
         ORDER BY FIELD(i.status,'overdue','partial','sent','paid'), i.id DESC
         LIMIT 3
     ");
-    $invStmt->execute([$uid]);
+    $invStmt->execute([$uid, $uid]);
     $invoices = $invStmt->fetchAll();
 
     $rcpStmt = $pdo->prepare("
@@ -544,11 +545,11 @@ function insights_billing_tables_lawyer(PDO $pdo, int $uid): array
         FROM payments p
         JOIN invoices i ON i.id = p.invoice_id
         JOIN cases c ON c.id = i.case_id
-        WHERE c.lawyer_id = ?
+        WHERE $accessSql
         ORDER BY p.paid_at DESC, p.id DESC
         LIMIT 3
     ");
-    $rcpStmt->execute([$uid]);
+    $rcpStmt->execute([$uid, $uid]);
     $receipts = $rcpStmt->fetchAll();
 
     return [
@@ -866,8 +867,8 @@ function insights_hub_lawyer(PDO $pdo, int $uid, array $months6): array
     $todayStmt = $pdo->prepare("SELECT COUNT(*) FROM appointments WHERE lawyer_id=? AND DATE(scheduled_at)=CURDATE() AND status IN ('scheduled','confirmed','rescheduled','pending')");
     $todayStmt->execute([$uid]);
     $today = (int) $todayStmt->fetchColumn();
-    $hearStmt = $pdo->prepare("SELECT COUNT(*) FROM court_hearings h JOIN cases c ON c.id=h.case_id WHERE c.lawyer_id=? AND h.status='scheduled' AND h.hearing_date >= NOW()");
-    $hearStmt->execute([$uid]);
+    $hearStmt = $pdo->prepare("SELECT COUNT(*) FROM court_hearings h JOIN cases c ON c.id=h.case_id WHERE " . lawyer_case_access_sql('c') . " AND h.status='scheduled' AND h.hearing_date >= NOW()");
+    $hearStmt->execute([$uid, $uid]);
     $hearings = (int) $hearStmt->fetchColumn();
     $clientsStmt = $pdo->prepare('SELECT COUNT(DISTINCT client_id) FROM cases WHERE lawyer_id=?');
     $clientsStmt->execute([$uid]);
@@ -1017,8 +1018,8 @@ function insights_hub_lawyer(PDO $pdo, int $uid, array $months6): array
             $apptStmt = $pdo->prepare("SELECT title label, DATE_FORMAT(scheduled_at, '%d %b %H:%i') value FROM appointments WHERE lawyer_id=? AND status IN ('scheduled','confirmed','rescheduled','pending') AND scheduled_at >= NOW() ORDER BY scheduled_at ASC LIMIT 5");
             $apptStmt->execute([$uid]);
             $apptsList = $apptStmt->fetchAll();
-            $hearStmt = $pdo->prepare("SELECT CONCAT(COALESCE(c.case_number, CONCAT('#', c.id)), ' — ', DATE_FORMAT(h.hearing_date, '%d %b')) label, COALESCE(h.court_name, h.hearing_type, 'Hearing') value FROM court_hearings h JOIN cases c ON c.id=h.case_id WHERE c.lawyer_id=? AND h.status='scheduled' AND h.hearing_date >= NOW() ORDER BY h.hearing_date ASC LIMIT 5");
-            $hearStmt->execute([$uid]);
+            $hearStmt = $pdo->prepare("SELECT CONCAT(COALESCE(c.case_number, CONCAT('#', c.id)), ' — ', DATE_FORMAT(h.hearing_date, '%d %b')) label, COALESCE(h.court_name, h.hearing_type, 'Hearing') value FROM court_hearings h JOIN cases c ON c.id=h.case_id WHERE " . lawyer_case_access_sql('c') . " AND h.status='scheduled' AND h.hearing_date >= NOW() ORDER BY h.hearing_date ASC LIMIT 5");
+            $hearStmt->execute([$uid, $uid]);
             $hears = $hearStmt->fetchAll();
             return [
                 'overview' => array_map(static fn($r) => [

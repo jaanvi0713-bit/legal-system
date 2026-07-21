@@ -680,10 +680,17 @@ function notify_payment_events(
     }
 
     if ($caseId > 0) {
-        $lawStmt = $pdo->prepare('SELECT lawyer_id FROM cases WHERE id = ?');
-        $lawStmt->execute([$caseId]);
-        $lawyerId = (int) ($lawStmt->fetchColumn() ?: 0);
-        if ($lawyerId > 0) {
+        ensure_case_lawyers_table($pdo);
+        $lawyerIds = case_lawyer_ids($pdo, $caseId);
+        if (!$lawyerIds) {
+            $lawStmt = $pdo->prepare('SELECT lawyer_id FROM cases WHERE id = ?');
+            $lawStmt->execute([$caseId]);
+            $fallback = (int) ($lawStmt->fetchColumn() ?: 0);
+            if ($fallback > 0) {
+                $lawyerIds = [$fallback];
+            }
+        }
+        foreach ($lawyerIds as $lawyerId) {
             create_notification(
                 $pdo,
                 $lawyerId,
@@ -693,7 +700,7 @@ function notify_payment_events(
                     'from' => $fromName !== '' ? $fromName : __('common.client'),
                 ]),
                 'payment',
-                '../lawyer/cases.php?id=' . $caseId,
+                '../lawyer/cases.php?action=view&id=' . $caseId,
                 $createdBy
             );
         }
@@ -2651,3 +2658,5 @@ function build_overview_svg(array $labels, array $values, string $ariaLabel): st
         . '<g class="glass-svg-labels">' . $labelsHtml . '</g>'
         . '</svg>';
 }
+
+require_once __DIR__ . '/case-team.php';

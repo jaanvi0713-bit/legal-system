@@ -33,6 +33,10 @@ if ($clientLabel === '' && !empty($case['client_first'])) {
     $clientLabel = trim(($case['client_first'] ?? '') . ' ' . ($case['client_last'] ?? ''));
 }
 $lawyerLabel = trim((string) ($case['lawyer_name'] ?? ''));
+if (!empty($caseTeamLabel)) {
+    $lawyerLabel = (string) $caseTeamLabel;
+}
+$myCaseTasks = $myCaseTasks ?? [];
 $nonvatItems = array_values(array_filter($feeItems, static fn($f) => ($f['section'] ?? '') === 'nonvat'));
 $vatItems = array_values(array_filter($feeItems, static fn($f) => ($f['section'] ?? '') === 'vat'));
 ?>
@@ -82,8 +86,21 @@ $vatItems = array_values(array_filter($feeItems, static fn($f) => ($f['section']
             </div>
             <div class="case-create-grid-2">
                 <?php $field(__('common.client'), $clientLabel !== '' ? $clientLabel : $dash); ?>
-                <?php $field(__('common.lawyer'), $lawyerLabel !== '' ? $lawyerLabel : __('form.unassigned_simple')); ?>
+                <?php $field(__('cases.team.title'), $lawyerLabel !== '' ? $lawyerLabel : __('form.unassigned_simple')); ?>
             </div>
+            <?php if ($myCaseTasks): ?>
+            <div class="case-create-section" style="margin-top:0.85rem;">
+                <h3 style="margin:0 0 0.5rem;"><?= __e('lawyer.tasks.my_case_tasks') ?></h3>
+                <div class="list-stack">
+                    <?php foreach ($myCaseTasks as $taskRow): ?>
+                        <div class="list-item">
+                            <strong><?= e($taskRow['title']) ?></strong>
+                            <span class="muted"><?= e(format_date($taskRow['due_date'])) ?> · <?= status_badge($taskRow['status']) ?></span>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <?php endif; ?>
             <?php if (!empty($case['client_email']) || !empty($case['client_phone'])): ?>
             <div class="case-create-grid-2" style="margin-top:0.85rem;">
                 <?php $field(__('common.email'), (string) ($case['client_email'] ?? '')); ?>

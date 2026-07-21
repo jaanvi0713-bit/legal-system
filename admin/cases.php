@@ -18,7 +18,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ensure_case_create_columns($pdo);
         $editId = (int) post('id');
         $clientId = (int) post('client_id');
-        $lawyerId = post('lawyer_id') !== '' ? (int) post('lawyer_id') : null;
+        $leadLawyerId = post('lead_lawyer_id') !== '' ? (int) post('lead_lawyer_id') : (post('lawyer_id') !== '' ? (int) post('lawyer_id') : null);
+        $associateIds = array_values(array_unique(array_filter(array_map('intval', (array) post('associate_lawyer_ids', [])), static fn(int $id): bool => $id > 0)));
+        $lawyerId = $leadLawyerId;
         $assignedAdminId = $hasAssignedAdminColumn && post('assigned_admin_id') !== '' ? (int) post('assigned_admin_id') : null;
         if ($hasAssignedAdminColumn && !$assignedAdminId) {
             $soleAdmins = $pdo->query("SELECT id FROM users WHERE role = 'admin' AND is_active=1 LIMIT 2")->fetchAll(PDO::FETCH_COLUMN);
@@ -56,6 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             flash('success', __('flash.case.updated'));
             $caseId = $editId;
+            sync_case_lawyers($pdo, $caseId, $leadLawyerId, $associateIds, (int) current_user()['id']);
         } else {
             $caseNumber = generate_case_number($pdo);
             if ($hasAssignedAdminColumn) {
@@ -78,6 +81,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ]);
             }
             $caseId = (int) $pdo->lastInsertId();
+            sync_case_lawyers($pdo, $caseId, $leadLawyerId, $associateIds, (int) current_user()['id']);
             flash('success', __('flash.case.created', ['number' => $caseNumber]));
             if ($lawyerId) {
                 create_notification($pdo, (int) $lawyerId, 'New case assigned', $caseNumber . ' assigned to you.', 'case', '../lawyer/cases.php?id=' . $caseId, current_user()['id']);
@@ -338,6 +342,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash('success', 'Case deleted.');
         redirect('cases.php');
     }
+    if ($fa === 'save_task') {
+        ensure_case_tasks_table($pdo);
+        $caseId = (int) post('case_id');
+        $result = save_case_task($pdo, $caseId, [
+            'id' => (int) post('task_id'),
+            'title' => post('title'),
+            'description' => post('description'),
+            'assigned_to' => post('assigned_to'),
+            'due_date' => post('due_date'),
+            'status' => post('status') ?: 'open',
+        ], (int) current_user()['id']);
+        if (!$result['ok']) {
+            flash('error', (string) ($result['error'] ?? __('cases.tasks.error.save_failed')));
+            redirect('cases.php?action=view&id=' . $caseId . '&tab=tasks');
+        }
+        flash('success', __('cases.tasks.flash.saved'));
+        redirect('cases.php?action=view&id=' . $caseId . '&tab=tasks');
+    }
+    if ($fa === 'delete_task') {
+        ensure_case_tasks_table($pdo);
+        $caseId = (int) post('case_id');
+        $taskId = (int) post('task_id');
+        delete_case_task($pdo, $caseId, $taskId);
+        flash('success', __('cases.tasks.flash.deleted'));
+        redirect('cases.php?action=view&id=' . $caseId . '&tab=tasks');
+    }
 }
 
 $clients = $pdo->query("SELECT id, first_name, last_name FROM users WHERE role='client' ORDER BY first_name")->fetchAll();
@@ -381,6 +411,16 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
     }
     $currencySym = trim(currency_symbol());
     $isEdit = (bool) $id;
+    $caseTeam = $id ? case_lawyers_for_case($pdo, $id) : [];
+    $leadLawyerId = (int) ($case['lawyer_id'] ?? 0);
+    $associateLawyerIds = [];
+    foreach ($caseTeam as $teamRow) {
+        if (($teamRow['role'] ?? '') === 'lead') {
+            $leadLawyerId = (int) $teamRow['lawyer_id'];
+        } else {
+            $associateLawyerIds[] = (int) $teamRow['lawyer_id'];
+        }
+    }
     $pageTitle = $isEdit ? __('cases.edit') : __('cases.create_new');
     $bodyClass = 'page-case-create';
     require __DIR__ . '/../includes/header.php';
@@ -462,16 +502,25 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
                         <input type="hidden" name="assigned_admin_id" value="<?= $lockedAdminId ?>">
                     <?php endif; ?>
                 </div>
-                <?php if ($isEdit): ?>
-                <div class="case-create-grid-2" style="margin-top:0.85rem;">
+                <div class="case-create-grid-3" style="margin-top:0.85rem;">
                     <div class="form-group">
-                        <label for="lawyer_id"><?= __e('common.lawyer') ?></label>
-                        <select id="lawyer_id" name="lawyer_id">
+                        <label for="lead_lawyer_id"><?= __e('cases.team.lead_lawyer') ?></label>
+                        <select id="lead_lawyer_id" name="lead_lawyer_id">
                             <option value=""><?= __e('form.unassigned_simple') ?></option>
                             <?php foreach ($lawyers as $l): ?>
-                                <option value="<?= (int) $l['id'] ?>" <?= (int) $case['lawyer_id'] === (int) $l['id'] ? 'selected' : '' ?>><?= e(full_name($l)) ?></option>
+                                <option value="<?= (int) $l['id'] ?>" <?= $leadLawyerId === (int) $l['id'] ? 'selected' : '' ?>><?= e(full_name($l)) ?></option>
                             <?php endforeach; ?>
                         </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="associate_lawyer_ids"><?= __e('cases.team.associates') ?></label>
+                        <select id="associate_lawyer_ids" name="associate_lawyer_ids[]" multiple size="1" style="min-height:2.5rem;height:auto;">
+                            <?php foreach ($lawyers as $l): ?>
+                                <?php if ($leadLawyerId === (int) $l['id']) { continue; } ?>
+                                <option value="<?= (int) $l['id'] ?>" <?= in_array((int) $l['id'], $associateLawyerIds, true) ? 'selected' : '' ?>><?= e(full_name($l)) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <p class="muted" style="margin-top:0.25rem;font-size:0.8rem;"><?= __e('cases.team.associates_help') ?></p>
                     </div>
                     <div class="form-group">
                         <label for="status"><?= __e('common.status') ?></label>
@@ -482,9 +531,6 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
                         </select>
                     </div>
                 </div>
-                <?php else: ?>
-                    <input type="hidden" name="lawyer_id" value="">
-                <?php endif; ?>
                 <?php if ($isEdit): ?>
                     <input type="hidden" name="court_name" value="<?= e($case['court_name'] ?? '') ?>">
                     <input type="hidden" name="court_location" value="<?= e($case['court_location'] ?? '') ?>">
@@ -697,6 +743,9 @@ if ($action === 'view' && $id) {
     $hearings = $pdo->prepare('SELECT * FROM court_hearings WHERE case_id=? ORDER BY hearing_date DESC');
     $hearings->execute([$id]);
     $hearings = $hearings->fetchAll();
+    ensure_case_tasks_table($pdo);
+    $caseTasks = case_tasks_for_case($pdo, $id);
+    $caseTeamRows = case_lawyers_for_case($pdo, $id);
     $invoicesAll = $pdo->prepare('SELECT i.*, CONCAT(u.first_name," ",u.last_name) AS creator_name FROM invoices i LEFT JOIN users u ON u.id=i.created_by WHERE i.case_id=? ORDER BY i.created_at DESC');
     $invoicesAll->execute([$id]);
     $invoicesAll = $invoicesAll->fetchAll();
@@ -811,6 +860,7 @@ if ($action === 'view' && $id) {
         'invoices' => __('cases.tab.invoices'),
         'receipts' => __('cases.tab.receipts'),
         'checklist' => __('cases.tab.checklist'),
+        'tasks' => __('cases.tab.tasks'),
         'deadlines' => __('cases.tab.deadlines'),
         'notes' => __('cases.tab.notes'),
         'activity' => __('cases.tab.activity'),
@@ -823,7 +873,7 @@ if ($action === 'view' && $id) {
 
     $checklist = [
         [__('cases.checklist.client_details'), !empty($case['client_email'])],
-        [__('cases.checklist.lawyer_assigned'), !empty($case['lawyer_id'])],
+        [__('cases.checklist.team_assigned'), count($caseTeamRows) > 0 || !empty($case['lawyer_id'])],
         [__('cases.checklist.description'), !empty(trim((string) $case['description']))],
         [__('cases.checklist.document'), count($docs) > 0],
         [__('cases.checklist.invoice'), count($invoicesAll) > 0],
@@ -984,8 +1034,12 @@ if ($action === 'view' && $id) {
                         <strong><?= e($case['client_email'] ?: __('common.em_dash')) ?></strong>
                     </div>
                     <div>
+                        <span class="case-hub-label"><?= __e('cases.team.title') ?></span>
+                        <strong><?= e(case_lawyers_label($pdo, $id) ?: ($case['lawyer_name'] ?: __('common.unassigned'))) ?></strong>
+                    </div>
+                    <div>
                         <span class="case-hub-label"><?= __e('cases.hub.assigned_admin') ?></span>
-                        <strong><?= e($case['assigned_admin_name'] ?: ($case['created_by_name'] ?: ($case['lawyer_name'] ?: __('common.unassigned')))) ?></strong>
+                        <strong><?= e($case['assigned_admin_name'] ?: ($case['created_by_name'] ?: __('common.unassigned'))) ?></strong>
                     </div>
                 </div>
 
@@ -1542,6 +1596,103 @@ if ($action === 'view' && $id) {
             </div>
         </section>
 
+        <?php elseif ($tab === 'tasks'):
+            $editTaskId = (int) get('task_id', 0);
+            $editingTask = null;
+            if ($editTaskId) {
+                foreach ($caseTasks as $taskRow) {
+                    if ((int) $taskRow['id'] === $editTaskId) {
+                        $editingTask = $taskRow;
+                        break;
+                    }
+                }
+            }
+            $showTaskForm = $compose === 'task' || $editingTask;
+        ?>
+        <section class="panel case-hub-card">
+            <div class="panel-header">
+                <h2><?= __e('cases.tab.tasks') ?></h2>
+                <a class="btn btn-primary btn-sm" href="<?= e($tabUrl('tasks')) ?>&compose=task"><?= __e('cases.tasks.add') ?></a>
+            </div>
+            <?php if ($showTaskForm): ?>
+            <form method="post" class="form-grid entity-inline-form" style="margin-bottom:1rem;">
+                <?= csrf_field() ?>
+                <input type="hidden" name="form_action" value="save_task">
+                <input type="hidden" name="case_id" value="<?= $id ?>">
+                <input type="hidden" name="task_id" value="<?= (int) ($editingTask['id'] ?? 0) ?>">
+                <div class="entity-field-row entity-field-row--2">
+                    <div class="form-group"><label><?= __e('common.title') ?> <span class="req">*</span></label><input name="title" required value="<?= e($editingTask['title'] ?? '') ?>"></div>
+                    <div class="form-group"><label><?= __e('cases.tasks.assignee') ?></label>
+                        <select name="assigned_to">
+                            <option value=""><?= __e('cases.tasks.unassigned') ?></option>
+                            <?php foreach ($caseTeamRows as $teamLawyer): ?>
+                                <option value="<?= (int) $teamLawyer['lawyer_id'] ?>" <?= (int) ($editingTask['assigned_to'] ?? 0) === (int) $teamLawyer['lawyer_id'] ? 'selected' : '' ?>>
+                                    <?= e(trim(($teamLawyer['first_name'] ?? '') . ' ' . ($teamLawyer['last_name'] ?? ''))) ?><?= ($teamLawyer['role'] ?? '') === 'lead' ? ' (' . __('cases.team.lead') . ')' : ' (' . __('cases.team.associate') . ')' ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+                <div class="entity-field-row entity-field-row--2">
+                    <div class="form-group"><label><?= __e('cases.tasks.due_date') ?></label><input type="date" name="due_date" value="<?= e($editingTask['due_date'] ?? '') ?>"></div>
+                    <div class="form-group"><label><?= __e('common.status') ?></label>
+                        <select name="status">
+                            <?php foreach (case_task_statuses() as $taskStatus): ?>
+                                <option value="<?= e($taskStatus) ?>" <?= ($editingTask['status'] ?? 'open') === $taskStatus ? 'selected' : '' ?>><?= e(__('cases.tasks.status.' . $taskStatus)) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group full"><label><?= __e('common.description') ?></label><textarea name="description" rows="3"><?= e($editingTask['description'] ?? '') ?></textarea></div>
+                <div class="form-actions full">
+                    <button class="btn btn-primary btn-sm" type="submit"><?= __e($editingTask ? 'common.save' : 'cases.tasks.add') ?></button>
+                    <a class="btn btn-secondary btn-sm" href="<?= e($tabUrl('tasks')) ?>"><?= __e('common.cancel') ?></a>
+                </div>
+            </form>
+            <?php endif; ?>
+            <div class="table-wrap">
+                <table class="case-table">
+                    <thead>
+                        <tr>
+                            <th><?= __e('common.title') ?></th>
+                            <th><?= __e('cases.tasks.assignee') ?></th>
+                            <th><?= __e('cases.tasks.due_date') ?></th>
+                            <th><?= __e('common.status') ?></th>
+                            <th class="col-actions"><?= __e('common.actions') ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($caseTasks as $taskRow): ?>
+                        <tr>
+                            <td>
+                                <strong><?= e($taskRow['title']) ?></strong>
+                                <?php if (!empty($taskRow['description'])): ?><div class="muted"><?= e($taskRow['description']) ?></div><?php endif; ?>
+                            </td>
+                            <td><?= e($taskRow['assignee_name'] ?: __('cases.tasks.unassigned')) ?></td>
+                            <td><?= e(format_date($taskRow['due_date'])) ?></td>
+                            <td><?= status_badge($taskRow['status']) ?></td>
+                            <td class="col-actions">
+                                <div class="row-actions">
+                                    <a class="btn btn-row-edit btn-sm" href="<?= e($tabUrl('tasks')) ?>&task_id=<?= (int) $taskRow['id'] ?>"><?= __e('common.edit') ?></a>
+                                    <form method="post" class="inline-form" onsubmit="return confirm('<?= __e('cases.tasks.confirm_delete') ?>');">
+                                        <?= csrf_field() ?>
+                                        <input type="hidden" name="form_action" value="delete_task">
+                                        <input type="hidden" name="case_id" value="<?= $id ?>">
+                                        <input type="hidden" name="task_id" value="<?= (int) $taskRow['id'] ?>">
+                                        <button class="btn btn-row-delete btn-sm" type="submit"><?= __e('common.delete') ?></button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                    <?php if (!$caseTasks): ?>
+                        <tr><td colspan="5" class="muted"><?= __e('cases.tasks.empty') ?></td></tr>
+                    <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
         <?php elseif ($tab === 'deadlines'): ?>
         <section class="panel case-hub-card">
             <div class="panel-header"><h2><?= __e('cases.deadlines_title') ?></h2><a class="btn btn-primary btn-sm" href="court.php?action=create&case_id=<?= $id ?>"><?= __e('cases.add_hearing') ?></a></div>
@@ -1571,7 +1722,7 @@ if ($action === 'view' && $id) {
             <form method="post" class="form-grid entity-inline-form" style="margin-bottom:1rem;">
                 <?= csrf_field() ?><input type="hidden" name="form_action" value="note"><input type="hidden" name="case_id" value="<?= $id ?>">
                 <div class="form-group full"><label><?= __e('cases.add_note') ?></label><textarea name="note" required rows="2" placeholder="<?= __e('cases.add_note_ph') ?>"></textarea></div>
-                <div class="entity-field-row entity-field-row--2">
+                <div class="entity-field-row entity-field-row--2 entity-field-row--actions">
                     <div class="form-group"><label><input type="checkbox" name="is_private" value="1"> <?= __e('cases.private_note') ?></label></div>
                     <div class="form-group"><button class="btn btn-primary btn-sm" type="submit"><?= __e('cases.add_note') ?></button></div>
                 </div>

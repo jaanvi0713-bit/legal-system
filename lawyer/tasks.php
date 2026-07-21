@@ -4,6 +4,23 @@ require_role(['lawyer']);
 $pdo = db();
 $uid = (int) current_user()['id'];
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf();
+    if (post('form_action') === 'task_status') {
+        $taskId = (int) post('task_id');
+        $status = (string) post('status');
+        $result = update_case_task_status_for_lawyer($pdo, $taskId, $uid, $status);
+        if (!$result['ok']) {
+            flash('error', (string) ($result['error'] ?? __('cases.tasks.error.save_failed')));
+        } else {
+            flash('success', __('cases.tasks.flash.updated'));
+        }
+        redirect('tasks.php');
+    }
+}
+
+$caseTasksAll = case_tasks_for_lawyer($pdo, $uid);
+
 $pendingAll = $pdo->prepare("SELECT a.*, CONCAT(c.first_name,' ',c.last_name) AS client_name FROM appointments a LEFT JOIN users c ON c.id=a.client_id WHERE a.lawyer_id=? AND a.status='pending' ORDER BY a.scheduled_at");
 $pendingAll->execute([$uid]);
 $pendingAll = $pendingAll->fetchAll();
@@ -40,16 +57,19 @@ $slicePage = static function (array $items, string $param) use ($perPage): array
 $pendingPage = $slicePage($pendingAll, 'pending');
 $notesPage = $slicePage($notesAll, 'notes');
 $upcomingPage = $slicePage($upcomingAll, 'page');
+$caseTasksPage = $slicePage($caseTasksAll, 'ctasks');
 
 $pending = $pendingPage['items'];
 $notes = $notesPage['items'];
 $upcoming = $upcomingPage['items'];
+$caseTasks = $caseTasksPage['items'];
 
-$tasksPagerQs = static function (array $pager, int $targetPage) use ($pendingPage, $notesPage, $upcomingPage): string {
+$tasksPagerQs = static function (array $pager, int $targetPage) use ($pendingPage, $notesPage, $upcomingPage, $caseTasksPage): string {
     $q = [
         'pending' => $pendingPage['page'],
         'notes' => $notesPage['page'],
         'page' => $upcomingPage['page'],
+        'ctasks' => $caseTasksPage['page'],
     ];
     $q[$pager['param']] = $targetPage;
     $parts = [];
@@ -95,6 +115,66 @@ $portal = 'lawyer';
 $activeNav = 'tasks';
 require __DIR__ . '/../includes/header.php';
 ?>
+<div class="panel case-list-panel" style="margin-bottom:1rem;">
+    <div class="case-list-head">
+        <div class="case-list-title">
+            <h2><?= __e('lawyer.tasks.case_tasks') ?></h2>
+        </div>
+    </div>
+    <div class="table-wrap case-table-wrap">
+        <table class="case-table">
+            <thead>
+                <tr>
+                    <th><?= __e('common.case') ?></th>
+                    <th><?= __e('common.title') ?></th>
+                    <th><?= __e('cases.tasks.due_date') ?></th>
+                    <th><?= __e('common.status') ?></th>
+                    <th class="col-actions"><?= __e('common.actions') ?></th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($caseTasks as $task): ?>
+                <tr>
+                    <td>
+                        <strong><?= e($task['case_number']) ?></strong>
+                        <div class="muted"><?= e(t_content((string) ($task['case_title'] ?? ''))) ?></div>
+                    </td>
+                    <td><?= e($task['title']) ?></td>
+                    <td><?= e(format_date($task['due_date'])) ?></td>
+                    <td><?= status_badge($task['status']) ?></td>
+                    <td class="col-actions">
+                        <div class="row-actions">
+                            <?php if ($task['status'] === 'open'): ?>
+                            <form method="post" class="inline-form">
+                                <?= csrf_field() ?>
+                                <input type="hidden" name="form_action" value="task_status">
+                                <input type="hidden" name="task_id" value="<?= (int) $task['id'] ?>">
+                                <input type="hidden" name="status" value="in_progress">
+                                <button class="btn btn-row-edit btn-sm" type="submit"><?= __e('cases.tasks.start') ?></button>
+                            </form>
+                            <?php endif; ?>
+                            <?php if (in_array($task['status'], ['open', 'in_progress'], true)): ?>
+                            <form method="post" class="inline-form">
+                                <?= csrf_field() ?>
+                                <input type="hidden" name="form_action" value="task_status">
+                                <input type="hidden" name="task_id" value="<?= (int) $task['id'] ?>">
+                                <input type="hidden" name="status" value="done">
+                                <button class="btn btn-row-open btn-sm" type="submit"><?= __e('cases.tasks.complete') ?></button>
+                            </form>
+                            <?php endif; ?>
+                            <a class="btn btn-row-edit btn-sm" href="cases.php?action=view&id=<?= (int) $task['case_id'] ?>"><?= __e('common.view') ?></a>
+                        </div>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            <?php if (!$caseTasks): ?>
+                <tr><td colspan="5" class="muted"><?= __e('lawyer.tasks.case_tasks_empty') ?></td></tr>
+            <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php $renderTasksPager($caseTasksPage, 'cases.tasks.pagination.aria', 'cases.tasks.pager.showing_one', 'cases.tasks.pager.showing_many'); ?>
+</div>
 <div class="grid grid-2">
     <div class="panel">
         <div class="panel-header"><h2><?= __e('lawyer.tasks.pending_responses') ?></h2><a href="appointments.php"><?= __e('common.open') ?></a></div>

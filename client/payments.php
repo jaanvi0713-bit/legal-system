@@ -36,17 +36,42 @@ $invoices = $invoices->fetchAll();
 $payments = $pdo->prepare('SELECT * FROM payments WHERE client_id=? ORDER BY paid_at DESC');
 $payments->execute([$uid]);
 $payments = $payments->fetchAll();
+$invPerPage = 4;
+$paymentsPerPage = 10;
+$totalInvoices = count($invoices);
+$invPage = max(1, (int) get('inv_page', 1));
+$invTotalPages = max(1, (int) ceil($totalInvoices / $invPerPage));
+if ($invPage > $invTotalPages) {
+    $invPage = $invTotalPages;
+}
+$invOffset = ($invPage - 1) * $invPerPage;
+$pageInvoices = array_slice($invoices, $invOffset, $invPerPage);
+$invShownFrom = $totalInvoices === 0 ? 0 : $invOffset + 1;
+$invShownTo = min($invOffset + count($pageInvoices), $totalInvoices);
 $totalPayments = count($payments);
-$perPage = 10;
 $page = max(1, (int) get('page', 1));
-$totalPages = max(1, (int) ceil($totalPayments / $perPage));
+$totalPages = max(1, (int) ceil($totalPayments / $paymentsPerPage));
 if ($page > $totalPages) {
     $page = $totalPages;
 }
-$offset = ($page - 1) * $perPage;
-$pagePayments = array_slice($payments, $offset, $perPage);
+$offset = ($page - 1) * $paymentsPerPage;
+$pagePayments = array_slice($payments, $offset, $paymentsPerPage);
 $shownFrom = $totalPayments === 0 ? 0 : $offset + 1;
 $shownTo = min($offset + count($pagePayments), $totalPayments);
+$invoicesPagerUrl = static function (int $targetInvPage) use ($page): string {
+    $qs = ['inv_page' => max(1, $targetInvPage)];
+    if ($page > 1) {
+        $qs['page'] = $page;
+    }
+    return '?' . http_build_query($qs);
+};
+$paymentsPagerUrl = static function (int $targetPage) use ($invPage): string {
+    $qs = ['page' => max(1, $targetPage)];
+    if ($invPage > 1) {
+        $qs['inv_page'] = $invPage;
+    }
+    return '?' . http_build_query($qs);
+};
 $outstanding = 0;
 foreach ($invoices as $i) {
     if (in_array($i['status'], ['sent', 'partial', 'overdue', 'draft'], true)) {
@@ -67,13 +92,17 @@ require __DIR__ . '/../includes/header.php';
 ?>
 <div class="stat-card"><div class="stat-label"><?= __e('payments.outstanding_balance') ?></div><div class="stat-value"><?= e(money($outstanding)) ?></div></div>
 <div class="grid grid-2">
-    <div class="panel">
-        <h2><?= __e('payments.my_invoices') ?></h2>
-        <div class="table-wrap">
-            <table>
+    <div class="panel case-list-panel">
+        <div class="case-list-head">
+            <div class="case-list-title">
+                <h2><?= __e('payments.my_invoices') ?></h2>
+            </div>
+        </div>
+        <div class="table-wrap case-table-wrap">
+            <table class="case-table">
                 <thead><tr><th><?= __e('finance.invoice_number') ?></th><th><?= __e('common.total') ?></th><th><?= __e('finance.paid') ?></th><th><?= __e('common.status') ?></th></tr></thead>
                 <tbody>
-                <?php foreach ($invoices as $i): ?>
+                <?php foreach ($pageInvoices as $i): ?>
                     <tr>
                         <td><strong><?= e($i['invoice_number']) ?></strong><div class="muted"><?= e(t_content($i['title'])) ?></div></td>
                         <td><?= e(money($i['total'])) ?></td>
@@ -81,8 +110,31 @@ require __DIR__ . '/../includes/header.php';
                         <td><?= status_badge($i['status']) ?></td>
                     </tr>
                 <?php endforeach; ?>
+                <?php if (!$pageInvoices): ?>
+                    <tr><td colspan="4" class="case-empty muted"><?= __e('finance.no_invoices') ?></td></tr>
+                <?php endif; ?>
                 </tbody>
             </table>
+        </div>
+        <div class="case-list-foot payments-invoices-foot">
+            <?php if ($invTotalPages > 1): ?>
+            <nav class="case-list-pager" aria-label="<?= __e('payments.invoices.pagination.aria') ?>">
+                <?php if ($invPage > 1): ?>
+                <a class="case-page-btn" href="<?= e($invoicesPagerUrl($invPage - 1)) ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
+                <?php else: ?>
+                <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
+                <?php endif; ?>
+                <?php for ($p = 1; $p <= $invTotalPages; $p++): ?>
+                <a class="case-page-btn<?= $p === $invPage ? ' is-active' : '' ?>" href="<?= e($invoicesPagerUrl($p)) ?>"<?= $p === $invPage ? ' aria-current="page"' : '' ?>><?= $p ?></a>
+                <?php endfor; ?>
+                <?php if ($invPage < $invTotalPages): ?>
+                <a class="case-page-btn" href="<?= e($invoicesPagerUrl($invPage + 1)) ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
+                <?php else: ?>
+                <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
+                <?php endif; ?>
+            </nav>
+            <?php endif; ?>
+            <p class="case-list-footer muted"><?= e(__($totalInvoices === 1 ? 'payments.invoices.pager.showing_one' : 'payments.invoices.pager.showing_many', ['from' => (int) $invShownFrom, 'to' => (int) $invShownTo, 'total' => (int) $totalInvoices])) ?></p>
         </div>
     </div>
     <div class="panel">
@@ -154,15 +206,15 @@ require __DIR__ . '/../includes/header.php';
         <?php if ($totalPages > 1): ?>
         <nav class="case-list-pager" aria-label="<?= __e('payments.pagination.aria') ?>">
             <?php if ($page > 1): ?>
-            <a class="case-page-btn" href="?page=<?= $page - 1 ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
+            <a class="case-page-btn" href="<?= e($paymentsPagerUrl($page - 1)) ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
             <?php else: ?>
             <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
             <?php endif; ?>
             <?php for ($p = 1; $p <= $totalPages; $p++): ?>
-            <a class="case-page-btn<?= $p === $page ? ' is-active' : '' ?>" href="?page=<?= $p ?>"<?= $p === $page ? ' aria-current="page"' : '' ?>><?= $p ?></a>
+            <a class="case-page-btn<?= $p === $page ? ' is-active' : '' ?>" href="<?= e($paymentsPagerUrl($p)) ?>"<?= $p === $page ? ' aria-current="page"' : '' ?>><?= $p ?></a>
             <?php endfor; ?>
             <?php if ($page < $totalPages): ?>
-            <a class="case-page-btn" href="?page=<?= $page + 1 ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
+            <a class="case-page-btn" href="<?= e($paymentsPagerUrl($page + 1)) ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
             <?php else: ?>
             <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
             <?php endif; ?>

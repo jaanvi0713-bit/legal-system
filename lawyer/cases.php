@@ -9,13 +9,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     $fa = post('form_action');
     $caseId = (int) post('case_id');
-    $own = $pdo->prepare('SELECT id, client_id FROM cases WHERE id=? AND lawyer_id=?');
-    $own->execute([$caseId, $uid]);
+    if (!lawyer_can_access_case($pdo, $uid, $caseId)) { flash('error', __('error.case.not_assigned')); redirect('cases.php'); }
+    $own = $pdo->prepare('SELECT id, client_id FROM cases WHERE id=?');
+    $own->execute([$caseId]);
     $case = $own->fetch();
     if (!$case) { flash('error', __('error.case.not_assigned')); redirect('cases.php'); }
 
     if ($fa === 'status') {
-        $pdo->prepare('UPDATE cases SET status=? WHERE id=? AND lawyer_id=?')->execute([post('status'), $caseId, $uid]);
+        $pdo->prepare('UPDATE cases SET status=? WHERE id=?')->execute([post('status'), $caseId]);
         create_notification($pdo, (int)$case['client_id'], 'notify.case_update', 'notify.msg.case_update_status', 'case', '../client/cases.php', $uid);
         flash('success', __('flash.case.updated'));
     }
@@ -54,9 +55,9 @@ if (($action === 'view' || $id > 0) && $id) {
          FROM cases c
          JOIN users u ON u.id = c.client_id
          LEFT JOIN users lw ON lw.id = c.lawyer_id
-         WHERE c.id = ? AND c.lawyer_id = ?"
+         WHERE c.id = ? AND " . lawyer_case_access_sql('c')
     );
-    $stmt->execute([$id, $uid]);
+    $stmt->execute([$id, $uid, $uid]);
     $case = $stmt->fetch();
     if (!$case) {
         flash('error', __('flash.case.not_found'));
@@ -67,6 +68,11 @@ if (($action === 'view' || $id > 0) && $id) {
     }
     $feeItems = case_fee_items($pdo, $id);
     $viewBackUrl = 'cases.php';
+    $caseTeamLabel = case_lawyers_label($pdo, $id);
+    $myCaseTasks = array_values(array_filter(
+        case_tasks_for_lawyer($pdo, $uid),
+        static fn(array $task): bool => (int) ($task['case_id'] ?? 0) === $id
+    ));
     $notes = $pdo->prepare('SELECT n.*, CONCAT(u.first_name," ",u.last_name) AS author FROM case_notes n JOIN users u ON u.id=n.user_id WHERE n.case_id=? ORDER BY n.created_at DESC');
     $notes->execute([$id]);
     $notes = $notes->fetchAll();
@@ -82,7 +88,7 @@ if (($action === 'view' || $id > 0) && $id) {
             <form method="post" class="form-grid entity-inline-form" style="margin-bottom:1rem;">
                 <?= csrf_field() ?><input type="hidden" name="form_action" value="note"><input type="hidden" name="case_id" value="<?= $id ?>">
                 <div class="form-group full"><label><?= __e('cases.add_note') ?></label><textarea name="note" required rows="2"></textarea></div>
-                <div class="entity-field-row entity-field-row--2">
+                <div class="entity-field-row entity-field-row--2 entity-field-row--actions">
                     <div class="form-group"><label><input type="checkbox" name="is_private" value="1"> <?= __e('lawyer.cases.private') ?></label></div>
                     <div class="form-group"><button class="btn btn-primary btn-sm" type="submit"><?= __e('cases.add_note') ?></button></div>
                 </div>
@@ -120,8 +126,8 @@ if (($action === 'view' || $id > 0) && $id) {
     exit;
 }
 
-$rows = $pdo->prepare("SELECT c.*, CONCAT(u.first_name,' ',u.last_name) AS client_name FROM cases c JOIN users u ON u.id=c.client_id WHERE c.lawyer_id=? ORDER BY c.updated_at DESC");
-$rows->execute([$uid]);
+$rows = $pdo->prepare("SELECT c.*, CONCAT(u.first_name,' ',u.last_name) AS client_name FROM cases c JOIN users u ON u.id=c.client_id WHERE " . lawyer_case_access_sql('c') . " ORDER BY c.updated_at DESC");
+$rows->execute([$uid, $uid]);
 $rows = $rows->fetchAll();
 $totalCases = count($rows);
 $perPage = 10;

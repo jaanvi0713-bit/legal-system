@@ -5,12 +5,17 @@ $pdo = db();
 $user = current_user();
 $uid = (int) $user['id'];
 
-$cases = $pdo->prepare("SELECT c.*, CONCAT(u.first_name,' ',u.last_name) AS client_name FROM cases c JOIN users u ON u.id=c.client_id WHERE c.lawyer_id=? ORDER BY c.updated_at DESC LIMIT 30");
-$cases->execute([$uid]);
+$cases = $pdo->prepare("SELECT c.*, CONCAT(u.first_name,' ',u.last_name) AS client_name FROM cases c JOIN users u ON u.id=c.client_id WHERE " . lawyer_case_access_sql('c') . " ORDER BY c.updated_at DESC LIMIT 30");
+$cases->execute([$uid, $uid]);
 $cases = $cases->fetchAll();
 
-$activeCases = (int) ($pdo->query("SELECT COUNT(*) FROM cases WHERE lawyer_id=$uid AND status IN ('open','active','pending','reopened','on_hold')")->fetchColumn());
-$totalCases = (int) ($pdo->query("SELECT COUNT(*) FROM cases WHERE lawyer_id=$uid")->fetchColumn());
+$accessSql = lawyer_case_access_sql('c');
+$activeStmt = $pdo->prepare("SELECT COUNT(*) FROM cases c WHERE $accessSql AND c.status IN ('open','active','pending','reopened','on_hold')");
+$activeStmt->execute([$uid, $uid]);
+$activeCases = (int) $activeStmt->fetchColumn();
+$totalStmt = $pdo->prepare("SELECT COUNT(*) FROM cases c WHERE $accessSql");
+$totalStmt->execute([$uid, $uid]);
+$totalCases = (int) $totalStmt->fetchColumn();
 
 $today = $pdo->prepare("SELECT * FROM appointments WHERE lawyer_id=? AND DATE(scheduled_at)=CURDATE() AND status IN ('scheduled','confirmed','rescheduled','pending')");
 $today->execute([$uid]);
@@ -20,8 +25,8 @@ $appointments = $pdo->prepare("SELECT a.*, CONCAT(c.first_name,' ',c.last_name) 
 $appointments->execute([$uid]);
 $appointments = $appointments->fetchAll();
 
-$hearings = $pdo->prepare("SELECT h.*, c.case_number, c.title FROM court_hearings h JOIN cases c ON c.id=h.case_id WHERE c.lawyer_id=? AND h.hearing_date >= NOW() AND h.status='scheduled' ORDER BY h.hearing_date LIMIT 30");
-$hearings->execute([$uid]);
+$hearings = $pdo->prepare("SELECT h.*, c.case_number, c.title FROM court_hearings h JOIN cases c ON c.id=h.case_id WHERE " . lawyer_case_access_sql('c') . " AND h.hearing_date >= NOW() AND h.status='scheduled' ORDER BY h.hearing_date LIMIT 30");
+$hearings->execute([$uid, $uid]);
 $hearings = $hearings->fetchAll();
 
 $pending = (int) ($pdo->query("SELECT COUNT(*) FROM appointments WHERE lawyer_id=$uid AND status='pending'")->fetchColumn());
@@ -32,15 +37,15 @@ for ($i = 11; $i >= 0; $i--) {
 }
 $openedByMonth = array_fill_keys($months, 0);
 $closedByMonth = array_fill_keys($months, 0);
-$mo = $pdo->prepare("SELECT DATE_FORMAT(created_at, '%Y-%m') AS ym, COUNT(*) AS c FROM cases WHERE lawyer_id=? AND created_at >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) GROUP BY ym");
-$mo->execute([$uid]);
+$mo = $pdo->prepare("SELECT DATE_FORMAT(created_at, '%Y-%m') AS ym, COUNT(*) AS c FROM cases c WHERE " . lawyer_case_access_sql('c') . " AND c.created_at >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) GROUP BY ym");
+$mo->execute([$uid, $uid]);
 foreach ($mo as $row) {
     if (isset($openedByMonth[$row['ym']])) {
         $openedByMonth[$row['ym']] = (int) $row['c'];
     }
 }
-$mcl = $pdo->prepare("SELECT DATE_FORMAT(COALESCE(closed_at, updated_at), '%Y-%m') AS ym, COUNT(*) AS c FROM cases WHERE lawyer_id=? AND status='closed' AND COALESCE(closed_at, updated_at) >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) GROUP BY ym");
-$mcl->execute([$uid]);
+$mcl = $pdo->prepare("SELECT DATE_FORMAT(COALESCE(closed_at, updated_at), '%Y-%m') AS ym, COUNT(*) AS c FROM cases c WHERE " . lawyer_case_access_sql('c') . " AND c.status='closed' AND COALESCE(c.closed_at, c.updated_at) >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) GROUP BY ym");
+$mcl->execute([$uid, $uid]);
 foreach ($mcl as $row) {
     if (isset($closedByMonth[$row['ym']])) {
         $closedByMonth[$row['ym']] = (int) $row['c'];

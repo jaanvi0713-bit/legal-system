@@ -1251,9 +1251,9 @@ function offline_ai_reply(PDO $pdo, array $user, string $portal, string $message
                 "SELECT d.title, d.file_name, d.uploaded_at, c.case_number
                  FROM case_documents d
                  JOIN cases c ON c.id=d.case_id
-                 WHERE c.lawyer_id=?
+                 WHERE " . lawyer_case_access_sql('c') . "
                  ORDER BY d.uploaded_at DESC LIMIT 8",
-                [$uid]
+                [$uid, $uid]
             );
         } else {
             $list = $rows(
@@ -1675,9 +1675,9 @@ function offline_ai_reply(PDO $pdo, array $user, string $portal, string $message
                 "SELECT h.id, h.hearing_date, h.court_name, c.id AS case_id, c.case_number
                  FROM court_hearings h
                  JOIN cases c ON c.id=h.case_id
-                 WHERE c.lawyer_id=? AND h.hearing_date >= NOW() AND h.status='scheduled'
+                 WHERE " . lawyer_case_access_sql('c') . " AND h.hearing_date >= NOW() AND h.status='scheduled'
                  ORDER BY h.hearing_date ASC LIMIT 8",
-                [$uid]
+                [$uid, $uid]
             );
         } elseif ($portal === 'client') {
             $list = $rows(

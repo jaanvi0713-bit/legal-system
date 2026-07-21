@@ -697,13 +697,13 @@ $mailtoHref = 'mailto:' . rawurlencode((string) $invoice['email'])
                 <div><span><?= __e('finance.issue_date') ?></span> <strong><?= e($invoice['issued_at'] ? date('d/m/Y', strtotime($invoice['issued_at'])) : '—') ?></strong></div>
                 <div><span><?= __e('finance.due_date') ?></span> <strong><?= e($invoice['due_date'] ? date('d/m/Y', strtotime($invoice['due_date'])) : '—') ?></strong></div>
             </div>
-        </div>
-        <div class="inv-doc-billto">
-            <strong><?= __e('finance.bill_to') ?></strong>
-            <p class="inv-doc-client"><?= e(full_name($invoice)) ?></p>
-            <?php if (!empty($invoice['client_company'])): ?><p><?= e($invoice['client_company']) ?></p><?php endif; ?>
-            <?php if (!empty($invoice['address'])): ?><p><?= nl2br(e($invoice['address'])) ?></p><?php endif; ?>
-            <?php if (!empty($invoice['email'])): ?><p><?= e($invoice['email']) ?></p><?php endif; ?>
+            <div class="inv-doc-billto">
+                <strong><?= __e('finance.bill_to') ?></strong>
+                <p class="inv-doc-client"><?= e(full_name($invoice)) ?></p>
+                <?php if (!empty($invoice['client_company'])): ?><p><?= e($invoice['client_company']) ?></p><?php endif; ?>
+                <?php if (!empty($invoice['address'])): ?><p><?= nl2br(e($invoice['address'])) ?></p><?php endif; ?>
+                <?php if (!empty($invoice['email'])): ?><p><?= e($invoice['email']) ?></p><?php endif; ?>
+            </div>
         </div>
     </section>
 

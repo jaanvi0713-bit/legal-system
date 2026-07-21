@@ -8,8 +8,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     try {
         $caseId = (int) post('case_id');
-        $check = $pdo->prepare('SELECT client_id FROM cases WHERE id=? AND lawyer_id=?');
-        $check->execute([$caseId, $uid]);
+        if (!lawyer_can_access_case($pdo, $uid, $caseId)) throw new RuntimeException(__('error.upload.select_case'));
+        $check = $pdo->prepare('SELECT client_id FROM cases WHERE id=?');
+        $check->execute([$caseId]);
         $clientId = $check->fetchColumn();
         if (!$clientId) throw new RuntimeException(__('error.upload.select_case'));
         $file = handle_upload($_FILES['document'] ?? []);
@@ -23,11 +24,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     redirect('documents.php');
 }
 
-$docs = $pdo->prepare("SELECT d.*, c.case_number FROM case_documents d LEFT JOIN cases c ON c.id=d.case_id WHERE c.lawyer_id=? OR d.uploaded_by=? ORDER BY d.created_at DESC");
-$docs->execute([$uid, $uid]);
+$docs = $pdo->prepare("SELECT d.*, c.case_number FROM case_documents d LEFT JOIN cases c ON c.id=d.case_id WHERE " . lawyer_case_access_sql('c') . " OR d.uploaded_by=? ORDER BY d.created_at DESC");
+$docs->execute([$uid, $uid, $uid]);
 $docs = $docs->fetchAll();
-$cases = $pdo->prepare('SELECT id, case_number, title FROM cases WHERE lawyer_id=?');
-$cases->execute([$uid]);
+$cases = $pdo->prepare('SELECT id, case_number, title FROM cases c WHERE ' . lawyer_case_access_sql('c'));
+$cases->execute([$uid, $uid]);
 $cases = $cases->fetchAll();
 
 $pageTitle = __('page.document_management');

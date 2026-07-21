@@ -57,9 +57,10 @@ function portal_backup_payload_build(PDO $pdo, array $user, string $portal): arr
     $company = (string) get_setting($pdo, 'company_name', app_config('name', 'LEGAL PRO'));
 
     if ($portal === 'lawyer') {
+        $accessSql = lawyer_case_access_sql('c');
         $caseIds = array_map(
             static fn(array $row): int => (int) ($row['id'] ?? 0),
-            portal_backup_rows($pdo, 'SELECT id FROM cases WHERE lawyer_id = ? ORDER BY id', [$uid])
+            portal_backup_rows($pdo, "SELECT c.id FROM cases c WHERE $accessSql ORDER BY c.id", [$uid, $uid])
         );
         $caseIdClause = $caseIds ? implode(',', array_map('intval', $caseIds)) : '0';
 
@@ -68,9 +69,9 @@ function portal_backup_payload_build(PDO $pdo, array $user, string $portal): arr
             'SELECT c.*, CONCAT(cl.first_name, " ", cl.last_name) AS client_name, cl.email AS client_email
              FROM cases c
              JOIN users cl ON cl.id = c.client_id
-             WHERE c.lawyer_id = ?
+             WHERE ' . $accessSql . '
              ORDER BY c.updated_at DESC',
-            [$uid]
+            [$uid, $uid]
         );
         $notes = $caseIds
             ? portal_backup_rows($pdo, 'SELECT * FROM case_notes WHERE case_id IN (' . $caseIdClause . ') ORDER BY created_at DESC')
@@ -106,9 +107,9 @@ function portal_backup_payload_build(PDO $pdo, array $user, string $portal): arr
             'SELECT DISTINCT u.id, u.first_name, u.last_name, u.email, u.phone, u.company_name, u.address
              FROM users u
              WHERE u.role = "client"
-               AND (u.assigned_lawyer_id = ? OR u.id IN (SELECT client_id FROM cases WHERE lawyer_id = ?))
+               AND (u.assigned_lawyer_id = ? OR u.id IN (SELECT client_id FROM cases c2 WHERE ' . lawyer_case_access_sql('c2') . '))
              ORDER BY u.first_name, u.last_name',
-            [$uid, $uid]
+            [$uid, $uid, $uid]
         );
         $messages = portal_backup_rows(
             $pdo,

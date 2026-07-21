@@ -195,8 +195,5 @@ $listColumns = [
 $listShowingTpl = __('appointments.showing', ['shown' => $totalCount, 'total' => $totalCount]);
 $listTotalOneTpl = __('appointments.total_one', ['count' => ':count']);
 $listTotalManyTpl = __('appointments.total_many', ['count' => ':count']);
-$listHeroActionHtml = $canRequest
-    ? '<a class="btn btn-primary" href="appointments.php?action=request">' . __e('client.appointments.request') . '</a>'
-    : '';
 require __DIR__ . '/../includes/entity-list-panel.php';
 require __DIR__ . '/../includes/footer.php';

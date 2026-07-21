@@ -13,8 +13,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $fa = post('form_action');
     if ($fa === 'save') {
         $caseId = (int) post('case_id');
-        $check = $pdo->prepare('SELECT id, client_id, lawyer_id FROM cases WHERE id=? AND lawyer_id=?');
-        $check->execute([$caseId, $uid]);
+        if (!lawyer_can_access_case($pdo, $uid, $caseId)) {
+            flash('error', __('error.case.invalid'));
+            redirect('court.php');
+        }
+        $check = $pdo->prepare('SELECT id, client_id, lawyer_id FROM cases WHERE id=?');
+        $check->execute([$caseId]);
         $ownedCase = $check->fetch();
         if (!$ownedCase) {
             flash('error', __('error.case.invalid'));
@@ -22,8 +26,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $editId = (int) post('id');
         if ($editId) {
-            $owned = $pdo->prepare('SELECT h.id FROM court_hearings h JOIN cases c ON c.id=h.case_id WHERE h.id=? AND c.lawyer_id=?');
-            $owned->execute([$editId, $uid]);
+            $owned = $pdo->prepare('SELECT h.id FROM court_hearings h JOIN cases c ON c.id=h.case_id WHERE h.id=? AND ' . lawyer_case_access_sql('c'));
+            $owned->execute([$editId, $uid, $uid]);
             if (!$owned->fetch()) {
                 flash('error', __('error.case.invalid'));
                 redirect('court.php');
@@ -58,8 +62,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     if ($fa === 'delete') {
         $hearingId = (int) post('id');
-        $owned = $pdo->prepare('SELECT h.id FROM court_hearings h JOIN cases c ON c.id=h.case_id WHERE h.id=? AND c.lawyer_id=?');
-        $owned->execute([$hearingId, $uid]);
+        $owned = $pdo->prepare('SELECT h.id FROM court_hearings h JOIN cases c ON c.id=h.case_id WHERE h.id=? AND ' . lawyer_case_access_sql('c'));
+        $owned->execute([$hearingId, $uid, $uid]);
         if ($owned->fetch()) {
             $pdo->prepare('DELETE FROM court_hearings WHERE id=?')->execute([$hearingId]);
             flash('success', __('flash.hearing.deleted'));
@@ -70,8 +74,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$cases = $pdo->prepare('SELECT id, case_number, title, lawyer_id FROM cases WHERE lawyer_id=? ORDER BY created_at DESC');
-$cases->execute([$uid]);
+$cases = $pdo->prepare('SELECT id, case_number, title, lawyer_id FROM cases c WHERE ' . lawyer_case_access_sql('c') . ' ORDER BY created_at DESC');
+$cases->execute([$uid, $uid]);
 $cases = $cases->fetchAll();
 
 $pageTitle = __('page.court');
@@ -88,8 +92,8 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
         }
     }
     if ($id) {
-        $stmt = $pdo->prepare('SELECT h.* FROM court_hearings h JOIN cases c ON c.id=h.case_id WHERE h.id=? AND c.lawyer_id=?');
-        $stmt->execute([$id, $uid]);
+        $stmt = $pdo->prepare('SELECT h.* FROM court_hearings h JOIN cases c ON c.id=h.case_id WHERE h.id=? AND ' . lawyer_case_access_sql('c'));
+        $stmt->execute([$id, $uid, $uid]);
         $row = $stmt->fetch() ?: $row;
         if (!(int) ($row['id'] ?? 0)) {
             flash('error', __('error.case.invalid'));
@@ -118,10 +122,10 @@ $hearings = $pdo->prepare("
     JOIN cases c ON c.id = h.case_id
     JOIN users cl ON cl.id = c.client_id
     LEFT JOIN users lw ON lw.id = COALESCE(h.lawyer_id, c.lawyer_id)
-    WHERE COALESCE(h.lawyer_id, c.lawyer_id) = ?
+    WHERE (h.lawyer_id = ? OR " . lawyer_case_access_sql('c') . ")
     ORDER BY h.hearing_date DESC
 ");
-$hearings->execute([$uid]);
+$hearings->execute([$uid, $uid, $uid]);
 $hearings = $hearings->fetchAll();
 
 $totalCount = count($hearings);
