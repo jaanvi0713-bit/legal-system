@@ -20,6 +20,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $clientId = (int) post('client_id');
         $lawyerId = post('lawyer_id') !== '' ? (int) post('lawyer_id') : null;
         $assignedAdminId = $hasAssignedAdminColumn && post('assigned_admin_id') !== '' ? (int) post('assigned_admin_id') : null;
+        if ($hasAssignedAdminColumn && !$assignedAdminId) {
+            $soleAdmins = $pdo->query("SELECT id FROM users WHERE role = 'admin' AND is_active=1 LIMIT 2")->fetchAll(PDO::FETCH_COLUMN);
+            if (count($soleAdmins) === 1) {
+                $assignedAdminId = (int) $soleAdmins[0];
+            }
+        }
         $title = trim((string) post('title'));
         $description = trim((string) post('description'));
         $clientInstructions = trim((string) post('client_instructions'));
@@ -106,7 +112,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         // Optional draft quotation from fee lines (new cases only)
-        if (!$editId && (post('email_quotation') === '1' || post('email_client_letter') === '1')) {
+        if (!$editId && post('email_quotation') === '1') {
             ensure_invoice_bank_column($pdo);
             ensure_invoice_items_table($pdo);
             $feeItems = case_fee_items($pdo, $caseId);
@@ -336,7 +342,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $clients = $pdo->query("SELECT id, first_name, last_name FROM users WHERE role='client' ORDER BY first_name")->fetchAll();
 $lawyers = $pdo->query("SELECT id, first_name, last_name FROM users WHERE role='lawyer' AND is_active=1 ORDER BY first_name")->fetchAll();
-$admins = $pdo->query("SELECT id, first_name, last_name FROM users WHERE role IN ('admin','staff') AND is_active=1 ORDER BY first_name")->fetchAll();
+$admins = $pdo->query("SELECT id, first_name, last_name FROM users WHERE role = 'admin' AND is_active=1 ORDER BY first_name")->fetchAll();
 $pageTitle = __('page.cases');
 $pageSubtitle = __('page.cases.subtitle');
 $portal = 'admin';
@@ -438,7 +444,7 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
                         </select>
                         <a class="case-create-link" href="clients.php?action=create"><?= __e('cases.form.add_client_link') ?></a>
                     </div>
-                    <?php if ($hasAssignedAdminColumn): ?>
+                    <?php if ($hasAssignedAdminColumn && count($admins) > 1): ?>
                     <div class="form-group">
                         <label for="assigned_admin_id"><?= __e('cases.hub.assigned_admin') ?></label>
                         <select id="assigned_admin_id" name="assigned_admin_id">
@@ -448,6 +454,12 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
                             <?php endforeach; ?>
                         </select>
                     </div>
+                    <?php elseif ($hasAssignedAdminColumn && count($admins) === 1): ?>
+                        <?php
+                        $soleAdminId = (int) $admins[0]['id'];
+                        $lockedAdminId = (int) ($case['assigned_admin_id'] ?? 0) ?: $soleAdminId;
+                        ?>
+                        <input type="hidden" name="assigned_admin_id" value="<?= $lockedAdminId ?>">
                     <?php endif; ?>
                 </div>
                 <?php if ($isEdit): ?>
@@ -504,7 +516,6 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
                     <?php if (!$isEdit): ?>
                     <div class="case-create-checks">
                         <label><input type="checkbox" name="email_quotation" value="1" checked> <?= __e('cases.form.email_quotation') ?></label>
-                        <label><input type="checkbox" name="email_client_letter" value="1" checked> <?= __e('cases.form.email_client_letter') ?></label>
                     </div>
                     <?php endif; ?>
                 </div>
@@ -1171,7 +1182,7 @@ if ($action === 'view' && $id) {
                                 <input type="hidden" name="form_action" value="delete_doc_request">
                                 <input type="hidden" name="case_id" value="<?= $id ?>">
                                 <input type="hidden" name="request_id" value="<?= (int) $req['id'] ?>">
-                                <button type="submit" class="btn btn-danger-soft btn-sm"><?= __e('common.delete') ?></button>
+                                <button type="submit" class="btn btn-row-delete btn-sm"><?= __e('common.delete') ?></button>
                             </form>
                         </li>
                     <?php endforeach; ?>
@@ -1230,15 +1241,17 @@ if ($action === 'view' && $id) {
                             <td><span class="case-docs-source"><?= e($sourceLabel($d['uploader_role'] ?? null)) ?></span></td>
                             <td><?= e($d['uploader_name'] ?: __('common.em_dash')) ?></td>
                             <td><?= e(format_datetime($d['created_at'])) ?></td>
-                            <td class="case-docs-actions">
-                                <a class="case-docs-dl" href="../<?= e($d['file_path']) ?>" target="_blank" download title="<?= __e('common.download') ?>" aria-label="<?= __e('common.download') ?>">↓</a>
-                                <form method="post" class="inline-form" onsubmit="return confirm(<?= json_encode(__('cases.docs.delete_confirm')) ?>);">
-                                    <?= csrf_field() ?>
-                                    <input type="hidden" name="form_action" value="delete_document">
-                                    <input type="hidden" name="case_id" value="<?= $id ?>">
-                                    <input type="hidden" name="document_id" value="<?= (int) $d['id'] ?>">
-                                    <button type="submit" class="btn btn-danger-soft btn-sm"><?= __e('common.delete') ?></button>
-                                </form>
+                            <td class="col-actions">
+                                <div class="row-actions">
+                                    <a class="btn btn-row-open btn-sm" href="../<?= e($d['file_path']) ?>" target="_blank" download><?= __e('common.download') ?></a>
+                                    <form method="post" data-confirm="<?= e(__('cases.docs.delete_confirm')) ?>">
+                                        <?= csrf_field() ?>
+                                        <input type="hidden" name="form_action" value="delete_document">
+                                        <input type="hidden" name="case_id" value="<?= $id ?>">
+                                        <input type="hidden" name="document_id" value="<?= (int) $d['id'] ?>">
+                                        <button type="submit" class="btn btn-row-delete btn-sm"><?= __e('common.delete') ?></button>
+                                    </form>
+                                </div>
                             </td>
                         </tr>
                     <?php endforeach; ?>

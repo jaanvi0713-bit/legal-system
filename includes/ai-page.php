@@ -120,46 +120,45 @@ function render_ai_page(string $portal): void
         'admin' => [
             [__('ai.prompt.client_count'), __('ai.prompt.client_count_body'), 'user'],
             [__('ai.prompt.active_cases'), __('ai.prompt.active_cases_body'), 'briefcase'],
+            [__('ai.prompt.create_client'), __('ai.prompt.create_client_body'), 'user'],
+            [__('ai.prompt.create_case'), __('ai.prompt.create_case_body'), 'briefcase'],
+            [__('ai.prompt.schedule_appt'), __('ai.prompt.schedule_appt_body'), 'calendar'],
+            [__('ai.prompt.draft_email'), __('ai.prompt.draft_email_body'), 'edit'],
+            [__('ai.prompt.upload_doc'), __('ai.prompt.upload_doc_body'), 'doc'],
             [__('ai.prompt.total_revenue'), __('ai.prompt.total_revenue_body'), 'money'],
             [__('ai.prompt.calculate'), __('ai.prompt.calculate_body'), 'calc'],
             [__('ai.prompt.appointments'), __('ai.prompt.appointments_body'), 'calendar'],
             [__('ai.prompt.recent_payments'), __('ai.prompt.recent_payments_body'), 'doc'],
             [__('ai.prompt.overdue_invoices'), __('ai.prompt.overdue_invoices_body'), 'alert'],
             [__('ai.prompt.notifications'), __('ai.prompt.notifications_body'), 'bell'],
-            [__('ai.prompt.revenue_by_month'), __('ai.prompt.revenue_by_month_body'), 'chart'],
             [__('ai.prompt.dashboard_overview'), __('ai.prompt.dashboard_overview_body'), 'grid'],
-            [__('ai.prompt.new_case_draft'), __('ai.prompt.new_case_draft_body'), 'edit'],
-            [__('ai.prompt.lawyer_workload'), __('ai.prompt.lawyer_workload_body'), 'users'],
-            [__('ai.prompt.court_schedule'), __('ai.prompt.court_schedule_body'), 'court'],
             [__('ai.prompt.mauritius_laws'), __('ai.prompt.mauritius_laws_body'), 'doc'],
-            [__('ai.prompt.legal_definitions'), __('ai.prompt.legal_definitions_body'), 'tasks'],
         ],
         'lawyer' => [
             [__('ai.prompt.my_cases'), __('ai.prompt.my_cases_body'), 'briefcase'],
+            [__('ai.prompt.schedule_appt'), __('ai.prompt.schedule_appt_lawyer_body'), 'calendar'],
+            [__('ai.prompt.cancel_appt'), __('ai.prompt.cancel_appt_body'), 'alert'],
+            [__('ai.prompt.draft_email'), __('ai.prompt.draft_email_body'), 'edit'],
+            [__('ai.prompt.upload_doc'), __('ai.prompt.upload_doc_body'), 'doc'],
             [__('ai.prompt.todays_appointments'), __('ai.prompt.todays_appointments_body'), 'calendar'],
             [__('ai.prompt.upcoming_hearings'), __('ai.prompt.upcoming_hearings_body'), 'court'],
             [__('ai.prompt.calculate'), __('ai.prompt.calculate_body'), 'calc'],
-            [__('ai.prompt.pending_tasks'), __('ai.prompt.pending_tasks_body'), 'tasks'],
             [__('ai.prompt.my_clients'), __('ai.prompt.my_clients_body'), 'user'],
             [__('ai.prompt.notifications'), __('ai.prompt.notifications_body'), 'bell'],
-            [__('ai.prompt.draft_letter'), __('ai.prompt.draft_letter_body'), 'edit'],
             [__('ai.prompt.case_timeline'), __('ai.prompt.case_timeline_body'), 'chart'],
-            [__('ai.prompt.document_qa'), __('ai.prompt.document_qa_body'), 'doc'],
             [__('ai.prompt.mauritius_laws'), __('ai.prompt.mauritius_laws_body'), 'court'],
-            [__('ai.prompt.legal_definitions'), __('ai.prompt.legal_definitions_body'), 'tasks'],
         ],
         default => [
             [__('ai.prompt.my_cases'), __('ai.prompt.my_cases_client_body'), 'briefcase'],
+            [__('ai.prompt.schedule_appt'), __('ai.prompt.schedule_appt_client_body'), 'calendar'],
+            [__('ai.prompt.cancel_appt'), __('ai.prompt.cancel_appt_body'), 'alert'],
+            [__('ai.prompt.upload_doc'), __('ai.prompt.upload_doc_client_body'), 'doc'],
+            [__('ai.prompt.draft_email'), __('ai.prompt.draft_email_client_body'), 'edit'],
             [__('ai.prompt.documents'), __('ai.prompt.documents_body'), 'doc'],
             [__('ai.prompt.appointments'), __('ai.prompt.appointments_client_body'), 'calendar'],
             [__('ai.prompt.outstanding_balance'), __('ai.prompt.outstanding_balance_body'), 'money'],
-            [__('ai.prompt.calculate'), __('ai.prompt.calculate_body'), 'calc'],
             [__('ai.prompt.notifications'), __('ai.prompt.notifications_body'), 'bell'],
-            [__('ai.prompt.invoice_help'), __('ai.prompt.invoice_help_body'), 'doc'],
-            [__('ai.prompt.court_dates'), __('ai.prompt.court_dates_body'), 'court'],
-            [__('ai.prompt.checklist'), __('ai.prompt.checklist_body'), 'tasks'],
             [__('ai.prompt.mauritius_laws'), __('ai.prompt.mauritius_laws_body'), 'court'],
-            [__('ai.prompt.legal_definitions'), __('ai.prompt.legal_definitions_body'), 'doc'],
         ],
     };
 
@@ -340,7 +339,7 @@ function render_ai_page(string $portal): void
                     <?php endforeach; ?>
                 </div>
 
-                <form id="ai-compose-form" class="ai-compose-wrap" data-no-saving="1" data-session-id="<?= (int) $sessionId ?>" data-ai-endpoint="<?= e(app_config('url') . '/api/ai-chat.php') ?>" data-app-url="<?= e(rtrim((string) app_config('url'), '/')) ?>">
+                <form id="ai-compose-form" class="ai-compose-wrap" data-no-saving="1" data-session-id="<?= (int) $sessionId ?>" data-ai-endpoint="../api/ai-chat.php" data-app-url="<?= e(rtrim((string) app_config('url'), '/')) ?>">
                     <div id="ai-attach-list" class="ai-attach-list" hidden></div>
                     <div class="ai-compose-bar">
                         <button type="button" class="ai-attach" id="ai-attach-btn" title="<?= __e('ai.attach_files') ?>" aria-label="<?= __e('ai.attach_files') ?>">

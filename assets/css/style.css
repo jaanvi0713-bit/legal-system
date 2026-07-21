@@ -2519,6 +2519,78 @@ html[data-theme="dark"] .btn-secondary {
 .ai-msg-body .ai-inline-link:hover {
     color: color-mix(in srgb, var(--primary) 80%, #000);
 }
+.ai-draft-card {
+    margin-top: 0.85rem;
+    padding: 1rem 1.05rem 1.1rem;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--panel);
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+    white-space: normal;
+    max-width: 28rem;
+}
+.ai-draft-card-head {
+    display: grid;
+    gap: 0.15rem;
+    margin-bottom: 0.85rem;
+}
+.ai-draft-eyebrow {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--primary);
+}
+.ai-draft-card-head strong {
+    font-size: 1.05rem;
+    color: var(--ink-soft);
+    font-weight: 600;
+}
+.ai-draft-form {
+    display: grid;
+    gap: 0.55rem;
+}
+.ai-draft-row {
+    display: grid;
+    grid-template-columns: 6.5rem minmax(0, 1fr);
+    gap: 0.55rem;
+    align-items: start;
+}
+.ai-draft-row label {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--ink);
+    padding-top: 0.55rem;
+}
+.ai-draft-row input,
+.ai-draft-row textarea {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 0.5rem 0.7rem;
+    background: var(--panel-soft);
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.9rem;
+}
+.ai-draft-row textarea {
+    min-height: 2.6rem;
+    resize: vertical;
+}
+.ai-draft-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.55rem;
+    justify-content: flex-end;
+}
+@media (max-width: 560px) {
+    .ai-draft-row {
+        grid-template-columns: 1fr;
+        gap: 0.25rem;
+    }
+    .ai-draft-row label { padding-top: 0; }
+}
 .ai-bot-mark {
     width: 40px; height: 40px; border-radius: 12px;
     display: grid; place-items: center;
@@ -7008,18 +7080,28 @@ html[data-theme="dark"] .inv-gen-summary {
     background: var(--panel);
 }
 
-.case-docs-table-wrap { overflow-x: auto; }
+.case-docs-table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--panel);
+}
 .case-docs-table {
     width: 100%;
     border-collapse: collapse;
+    table-layout: auto;
 }
 .case-docs-table th,
 .case-docs-table td {
-    padding: 0.85rem 0.7rem;
+    padding: 0.85rem 0.75rem;
     text-align: left;
     border-bottom: 1px solid var(--line);
     vertical-align: top;
     font-size: 0.9rem;
+    background: transparent;
+}
+.case-docs-table tbody tr:last-child td {
+    border-bottom: none;
 }
 .case-docs-table th {
     font-size: 0.72rem;
@@ -7027,6 +7109,7 @@ html[data-theme="dark"] .inv-gen-summary {
     letter-spacing: 0.05em;
     text-transform: uppercase;
     color: var(--ink-soft);
+    background: var(--panel-soft);
 }
 .case-docs-table strong {
     color: var(--ink);
@@ -7036,11 +7119,11 @@ html[data-theme="dark"] .inv-gen-summary {
     display: inline-flex;
     padding: 0.2rem 0.65rem;
     border-radius: 999px;
-    background: var(--panel-soft);
-    border: 1px solid var(--line);
+    background: rgba(var(--primary-rgb), 0.1);
+    border: 1px solid rgba(var(--primary-rgb), 0.18);
     font-size: 0.8rem;
     font-weight: 600;
-    color: var(--ink);
+    color: var(--primary);
 }
 .case-docs-ai {
     margin-top: 0.35rem;
@@ -7054,10 +7137,10 @@ html[data-theme="dark"] .inv-gen-summary {
 }
 .case-docs-ai summary::-webkit-details-marker { display: none; }
 .case-docs-ai summary::after {
-    content: " â–¾";
+    content: " \25BE";
     font-size: 0.75rem;
 }
-.case-docs-ai[open] summary::after { content: " â–´"; }
+.case-docs-ai[open] summary::after { content: " \25B4"; }
 .case-docs-ai p {
     margin: 0.4rem 0 0;
     font-size: 0.82rem;
@@ -7065,22 +7148,47 @@ html[data-theme="dark"] .inv-gen-summary {
     line-height: 1.45;
     max-width: 28rem;
 }
-.case-docs-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
+/* Keep as table-cell — flex on <td> breaks row background/borders */
+td.case-docs-actions {
+    display: table-cell;
+    vertical-align: middle;
     white-space: nowrap;
+    width: 1%;
+}
+td.case-docs-actions > a,
+td.case-docs-actions > .btn,
+td.case-docs-actions > form {
+    display: inline-flex;
+    vertical-align: middle;
+    align-items: center;
+    justify-content: center;
+    margin: 0 0.4rem 0 0;
+}
+td.case-docs-actions > form:last-child,
+td.case-docs-actions > a:last-child {
+    margin-right: 0;
 }
 .case-docs-dl {
     width: 2rem;
     height: 2rem;
-    display: inline-grid;
-    place-items: center;
+    min-width: 2rem;
+    min-height: 2rem;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
     border-radius: 8px;
     background: rgba(var(--primary-rgb), 0.1);
     color: var(--primary);
     text-decoration: none;
+    font-size: 1rem;
     font-weight: 700;
+    line-height: 1;
+    box-sizing: border-box;
+    padding: 0;
+}
+.case-docs-dl svg {
+    display: block;
+    flex-shrink: 0;
 }
 .case-docs-dl:hover {
     background: rgba(var(--primary-rgb), 0.16);

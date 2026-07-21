@@ -3,12 +3,21 @@
  * AI chat API — built-in Mauritius law assistant (no external API required).
  */
 header('Content-Type: application/json; charset=utf-8');
+
+ob_start();
+
+try {
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/ai-mauritius-law.php';
 require_once __DIR__ . '/../includes/ai-mauritius-corpus.php';
+require_once __DIR__ . '/../includes/ai-actions.php';
+require_once __DIR__ . '/../includes/ai-llm.php';
 
 if (!is_logged_in()) {
     http_response_code(401);
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
     echo json_encode(['error' => __('api.error.unauthorized')], JSON_UNESCAPED_UNICODE);
     exit;
 }
@@ -34,6 +43,9 @@ if ($isMultipart && !empty($_FILES['files'])) {
         $attachments = ai_collect_uploaded_files($_FILES['files']);
     } catch (Throwable $e) {
         http_response_code(422);
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
         echo json_encode(['error' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
         exit;
     }
@@ -41,6 +53,9 @@ if ($isMultipart && !empty($_FILES['files'])) {
 
 if ($sessionId <= 0 || ($message === '' && !$attachments)) {
     http_response_code(422);
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
     echo json_encode(['error' => __('api.error.session_message_required')], JSON_UNESCAPED_UNICODE);
     exit;
 }
@@ -54,6 +69,9 @@ $stmt->execute([$sessionId, $user['id']]);
 $session = $stmt->fetch();
 if (!$session) {
     http_response_code(404);
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
     echo json_encode(['error' => __('api.error.session_not_found')], JSON_UNESCAPED_UNICODE);
     exit;
 }
@@ -63,13 +81,16 @@ $ins = $pdo->prepare('INSERT INTO ai_chat_messages (session_id, role, content) V
 $ins->execute([$sessionId, 'user', $storedUserMessage]);
 
 $portal = $session['portal'];
-$reply = generate_ai_reply($pdo, $user, $portal, $message, $attachments);
+$reply = generate_ai_reply($pdo, $user, $portal, $message, $attachments, $sessionId);
 
 $ins->execute([$sessionId, 'assistant', $reply]);
 
 $titleSql = "UPDATE ai_chat_sessions SET updated_at = NOW(), title = IF(title IN ('New Chat', ?), ?, title) WHERE id = ?";
 $pdo->prepare($titleSql)->execute([__('ai.new_chat'), substr($message, 0, 60), $sessionId]);
 
+while (ob_get_level() > 0) {
+    ob_end_clean();
+}
 echo json_encode([
     'reply' => $reply,
     'attachments' => array_map(static fn(array $a): array => [
@@ -80,11 +101,28 @@ echo json_encode([
 ], JSON_UNESCAPED_UNICODE);
 exit;
 
+} catch (Throwable $e) {
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+    http_response_code(500);
+    echo json_encode([
+        'error' => 'AI processing failed: ' . $e->getMessage(),
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 /**
  * @param array<int, array<string, mixed>> $attachments
  */
-function generate_ai_reply(PDO $pdo, array $user, string $portal, string $message, array $attachments = []): string
+function generate_ai_reply(PDO $pdo, array $user, string $portal, string $message, array $attachments = [], int $sessionId = 0): string
 {
+    // Workspace mutations first (create/schedule/upload/email).
+    $actionReply = ai_try_actions($pdo, $user, $portal, $message, $attachments, $sessionId);
+    if ($actionReply !== null) {
+        return $actionReply;
+    }
+
     // Deterministic math first — more reliable than pattern matching.
     if (!$attachments) {
         $calc = ai_try_calculate($message, $pdo, $user, $portal);
@@ -127,6 +165,19 @@ function generate_ai_reply(PDO $pdo, array $user, string $portal, string $messag
         $lawReply = ai_try_mauritius_corpus_reply($message);
         if ($lawReply !== null) {
             return $lawReply;
+        }
+    }
+
+    // Live LLM when configured. Skip when files are attached — uploads are handled by
+    // actions/offline extract; remote LLM timeouts were breaking the chat UI.
+    if (!$attachments && ai_llm_is_available($pdo) && $sessionId > 0) {
+        try {
+            $llm = ai_llm_chat($pdo, $user, $portal, $sessionId, $message, $context, $attachments);
+            if (is_string($llm) && trim($llm) !== '') {
+                return $llm;
+            }
+        } catch (Throwable $e) {
+            // Fall through to offline assistant.
         }
     }
 
@@ -239,6 +290,12 @@ function ai_extract_file_text(string $absolutePath, string $ext): string
 function ai_clean_extracted_text(string $text): string
 {
     $text = str_replace("\0", '', $text);
+    if ($text !== '' && function_exists('mb_check_encoding') && !mb_check_encoding($text, 'UTF-8')) {
+        $text = function_exists('mb_convert_encoding')
+            ? (string) mb_convert_encoding($text, 'UTF-8', 'UTF-8, ISO-8859-1, Windows-1252')
+            : utf8_encode($text);
+    }
+    $text = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F]/', ' ', $text) ?? $text;
     $text = preg_replace('/[ \t]+/', ' ', $text) ?? $text;
     $text = preg_replace("/\n{3,}/", "\n\n", $text) ?? $text;
     return trim($text);
@@ -284,25 +341,30 @@ function ai_extract_pdf_text(string $path): string
     if ($raw === '') {
         return '';
     }
+    // Cap scan size — large binary PDFs can blow up preg_match_all.
+    if (strlen($raw) > 2_000_000) {
+        $raw = substr($raw, 0, 2_000_000);
+    }
     $chunks = [];
-    if (preg_match_all('/\((\\\\.|[^\\\\)]){2,}\)/s', $raw, $m)) {
+    if (@preg_match_all('/\((\\\\.|[^\\\\)]){2,}\)/s', $raw, $m)) {
         foreach ($m[0] as $token) {
             $inner = substr($token, 1, -1);
             $inner = str_replace(['\\n', '\\r', '\\t', '\\(', '\\)', '\\\\'], ["\n", '', ' ', '(', ')', '\\'], $inner);
             $inner = preg_replace('/\\\\[0-9]{3}/', '', $inner) ?? $inner;
+            $inner = preg_replace('/[^\x20-\x7E\r\n]/', ' ', $inner) ?? $inner;
             if (preg_match('/[A-Za-z0-9]{3,}/', $inner)) {
                 $chunks[] = $inner;
             }
         }
     }
-    if (preg_match_all('/[\x20-\x7E\r\n]{40,}/', $raw, $runs)) {
+    if (@preg_match_all('/[\x20-\x7E\r\n]{40,}/', $raw, $runs)) {
         foreach ($runs[0] as $run) {
             if (!str_starts_with($run, '%PDF') && preg_match('/[A-Za-z]{4,}/', $run)) {
                 $chunks[] = $run;
             }
         }
     }
-    return implode("\n", array_slice($chunks, 0, 200));
+    return ai_clean_extracted_text(implode("\n", array_slice($chunks, 0, 200)));
 }
 
 /**

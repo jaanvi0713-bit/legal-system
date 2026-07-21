@@ -100,11 +100,19 @@ function ai_llm_build_system_prompt(PDO $pdo, array $user, string $portal, strin
     $company = trim((string) get_setting($pdo, 'company_name', app_config('name', 'LEGAL PRO')));
     $name = function_exists('full_name') ? full_name($user) : trim(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? ''));
 
+    $actionsHelp = "You can guide the user to run workspace actions with clear commands. "
+        . "Supported actions (executed by the system when phrased correctly): "
+        . "create client, create lawyer, create case, schedule/cancel appointment, "
+        . "upload document to a case (with attachment), draft/send professional email, "
+        . "assign lawyer, update case status. "
+        . "If required details are missing, ask for them. Do not invent successful mutations.";
+
     $sections = [
         ai_llm_portal_system_prompt($pdo, $portal),
         __('ai.system.mauritius_law'),
         __('ai.system.citations'),
         __('ai.system.behavior'),
+        $actionsHelp,
         "Firm workspace: {$company}. User: {$name}. Portal: {$portal}.",
         "Live workspace data:\n{$portalContext}",
         "Mauritius legal system reference:\n" . ai_llm_mauritius_law_context(),
@@ -192,8 +200,8 @@ function ai_llm_request(array $config, string $systemPrompt, array $messages): ?
         ],
         CURLOPT_POSTFIELDS => $body,
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 120,
-        CURLOPT_CONNECTTIMEOUT => 15,
+        CURLOPT_TIMEOUT => max(5, (int) ($config['timeout'] ?? 25)),
+        CURLOPT_CONNECTTIMEOUT => min(8, max(3, (int) ($config['timeout'] ?? 25))),
     ]);
 
     $response = curl_exec($ch);

@@ -473,6 +473,118 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   };
 
+  const renderAiDraftCard = (card) => {
+    const fields = (card && card.fields) || {};
+    const rows = [
+      ['name', 'Name'],
+      ['email', 'Email'],
+      ['phone', 'Phone'],
+      ['address', 'Address'],
+      ['postal', 'Postal'],
+      ['country', 'Country'],
+      ['case_title', 'Case title'],
+      ['service', 'Service'],
+      ['description', 'Description'],
+    ];
+    const uid = 'ai' + Math.random().toString(36).slice(2, 8);
+    const esc = (v) => String(v == null ? '' : v)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+    let body = '';
+    rows.forEach(([key, label]) => {
+      const val = fields[key] != null ? fields[key] : '';
+      const isArea = key === 'description' || key === 'address';
+      const id = uid + '-' + key;
+      body += '<div class="ai-draft-row">'
+        + '<label for="' + id + '">' + esc(label) + '</label>'
+        + (isArea
+          ? '<textarea id="' + id + '" name="' + key + '" rows="2">' + esc(val) + '</textarea>'
+          : '<input id="' + id + '" name="' + key + '" type="text" value="' + esc(val) + '">')
+        + '</div>';
+    });
+    return '<div class="ai-draft-card" data-ai-draft-card>'
+      + '<div class="ai-draft-card-head">'
+      + '<span class="ai-draft-eyebrow">Draft preview</span>'
+      + '<strong>' + esc(card.title || 'Create Client And Case') + '</strong>'
+      + '</div>'
+      + '<form class="ai-draft-form" data-ai-draft-form onsubmit="return false;">'
+      + body
+      + '<div class="ai-draft-actions">'
+      + '<button type="button" class="btn btn-secondary btn-sm" data-ai-draft-save>Save changes</button>'
+      + '<button type="button" class="btn btn-primary btn-sm" data-ai-draft-confirm>Confirm</button>'
+      + '</div></form></div>';
+  };
+
+  const renderAiHtml = (raw) => {
+    const appBase = ((aiForm && aiForm.getAttribute('data-app-url')) || '').replace(/\/$/, '');
+    let text = String(raw || '');
+    let draftCardHtml = '';
+    const cardMatch = text.match(/\[\[AI_DRAFT_CARD\]\]\s*([\s\S]*?)\s*\[\[\/AI_DRAFT_CARD\]\]/);
+    if (cardMatch) {
+      try {
+        draftCardHtml = renderAiDraftCard(JSON.parse(cardMatch[1]));
+      } catch (e) {
+        draftCardHtml = '';
+      }
+      text = text.replace(cardMatch[0], '').trim();
+    }
+    let escaped = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+    const linkHtml = (url, label) => {
+      const clean = String(url || '').replace(/[.,);]+$/, '');
+      const sameApp = appBase && clean.indexOf(appBase) === 0;
+      const target = sameApp ? '_self' : '_blank';
+      const rel = sameApp ? '' : ' rel="noopener noreferrer"';
+      return '<a class="ai-inline-link" href="' + clean + '" target="' + target + '"' + rel + '>' + label + '</a>';
+    };
+    escaped = escaped.replace(
+      /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/gi,
+      (_, label, url) => linkHtml(url, label)
+    );
+    escaped = escaped.replace(
+      /(^|[\s>])(https?:\/\/[^\s<]+)/gi,
+      (match, prefix, url) => prefix + linkHtml(url, url.replace(/[.,);]+$/, ''))
+    );
+    return escaped.replace(/\n/g, '<br>') + draftCardHtml;
+  };
+
+  const collectAiDraftFields = (form) => {
+    const data = {};
+    form.querySelectorAll('input[name], textarea[name]').forEach((el) => {
+      data[el.name] = el.value;
+    });
+    return data;
+  };
+
+  const bindAiDraftCard = (root) => {
+    if (!root) return;
+    root.querySelectorAll('[data-ai-draft-card]').forEach((card) => {
+      if (card.dataset.bound === '1') return;
+      card.dataset.bound = '1';
+      const form = card.querySelector('[data-ai-draft-form]');
+      const saveBtn = card.querySelector('[data-ai-draft-save]');
+      const confirmBtn = card.querySelector('[data-ai-draft-confirm]');
+      if (saveBtn) {
+        saveBtn.addEventListener('click', () => {
+          const payload = collectAiDraftFields(form);
+          sendAiMessage('save changes ' + JSON.stringify(payload));
+        });
+      }
+      if (confirmBtn) {
+        confirmBtn.addEventListener('click', () => {
+          const payload = collectAiDraftFields(form);
+          sendAiMessage('confirm ' + JSON.stringify(payload));
+        });
+      }
+    });
+  };
+
   const sendAiMessage = async (text) => {
     const input = document.getElementById('ai-message');
     const messages = document.getElementById('ai-messages');
@@ -517,32 +629,6 @@ document.addEventListener('DOMContentLoaded', () => {
     thinkingText.textContent = i18n.thinking || 'Thinking…';
     messages.appendChild(thinking);
 
-    const renderAiHtml = (raw) => {
-      const appBase = (aiForm.getAttribute('data-app-url') || '').replace(/\/$/, '');
-      let escaped = String(raw || '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-      const linkHtml = (url, label) => {
-        const clean = String(url || '').replace(/[.,);]+$/, '');
-        const sameApp = appBase && clean.indexOf(appBase) === 0;
-        const target = sameApp ? '_self' : '_blank';
-        const rel = sameApp ? '' : ' rel="noopener noreferrer"';
-        return '<a class="ai-inline-link" href="' + clean + '" target="' + target + '"' + rel + '>' + label + '</a>';
-      };
-      escaped = escaped.replace(
-        /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/gi,
-        (_, label, url) => linkHtml(url, label)
-      );
-      escaped = escaped.replace(
-        /(^|[\s>])(https?:\/\/[^\s<]+)/gi,
-        (match, prefix, url) => prefix + linkHtml(url, url.replace(/[.,);]+$/, ''))
-      );
-      return escaped.replace(/\n/g, '<br>');
-    };
-
     try {
       const endpoint = aiForm.getAttribute('data-ai-endpoint') || '../api/ai-chat.php';
       let res;
@@ -565,17 +651,28 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         data = rawBody ? JSON.parse(rawBody) : {};
       } catch (parseErr) {
-        throw new Error('Invalid AI response');
+        const snippet = (rawBody || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+        throw new Error(
+          snippet
+            ? ('AI service returned an invalid response (HTTP ' + res.status + ').')
+            : ('Empty AI response (HTTP ' + res.status + ').')
+        );
+      }
+      if (!res.ok && data.error) {
+        throw new Error(String(data.error));
       }
       const reply = data.reply || data.error || i18n.no_response || 'No response.';
       thinkingText.setAttribute('data-ai-raw', reply);
       thinkingText.innerHTML = renderAiHtml(reply);
+      bindAiDraftCard(thinkingText);
       const stack = thinking.querySelector('.ai-msg-stack');
       if (stack && !stack.querySelector('.ai-msg-actions')) {
         stack.insertAdjacentHTML('beforeend', aiActionsHtml('assistant'));
       }
     } catch (err) {
-      const fail = i18n.service_error || 'Unable to reach the AI service. Please try again.';
+      const fail = (err && err.message)
+        ? String(err.message)
+        : (i18n.service_error || 'Unable to reach the AI service. Please try again.');
       thinkingText.setAttribute('data-ai-raw', fail);
       thinkingText.textContent = fail;
       const stack = thinking.querySelector('.ai-msg-stack');
@@ -589,6 +686,13 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   bindAiMessageActions(document.getElementById('ai-messages'));
+
+  document.querySelectorAll('#ai-messages .ai-msg-body[data-ai-raw]').forEach((el) => {
+    const raw = el.getAttribute('data-ai-raw') || '';
+    if (raw.indexOf('[[AI_DRAFT_CARD]]') === -1) return;
+    el.innerHTML = renderAiHtml(raw);
+    bindAiDraftCard(el);
+  });
 
   window.lexoraSendAiMessage = sendAiMessage;
   window.__aiPendingFilesRef = {
