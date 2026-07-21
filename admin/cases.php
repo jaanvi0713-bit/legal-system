@@ -1805,7 +1805,7 @@ if ($action === 'view' && $id) {
                             <th><?= __e('finance.method') ?></th>
                             <th><?= __e('finance.invoice_number') ?></th>
                             <th><?= __e('common.date') ?></th>
-                            <th class="is-right"><?= __e('common.actions') ?></th>
+                            <th class="col-actions"><?= __e('common.actions') ?></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1821,15 +1821,17 @@ if ($action === 'view' && $id) {
                             <td><?= e(__('payment.method.' . ($p['payment_method'] ?: 'other'))) ?></td>
                             <td><?= e($p['invoice_number'] ?: __('common.em_dash')) ?></td>
                             <td><?= e(format_datetime($p['paid_at'])) ?></td>
-                            <td class="is-right case-row-actions inv-row-actions">
-                                <a class="btn btn-row-open btn-sm" href="receipt.php?id=<?= (int) $p['id'] ?>&from=<?= e(urlencode($caseRcpReturn)) ?>"><?= __e('common.view') ?></a>
-                                <form method="post" action="receipt.php" class="inline-form" onsubmit="return confirm(<?= json_encode(__('finance.delete_receipt_confirm', ['number' => $p['receipt_number'] ?: ('#' . $p['id'])]), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>)">
-                                    <?= csrf_field() ?>
-                                    <input type="hidden" name="form_action" value="delete_payment">
-                                    <input type="hidden" name="payment_id" value="<?= (int) $p['id'] ?>">
-                                    <input type="hidden" name="return_to" value="<?= e($caseRcpReturn) ?>">
-                                    <button class="btn btn-row-delete btn-sm" type="submit"><?= __e('common.delete') ?></button>
-                                </form>
+                            <td class="col-actions">
+                                <div class="row-actions">
+                                    <a class="btn btn-row-open btn-sm" href="receipt.php?id=<?= (int) $p['id'] ?>&from=<?= e(urlencode($caseRcpReturn)) ?>"><?= __e('common.view') ?></a>
+                                    <form method="post" action="receipt.php" onsubmit="return confirm(<?= json_encode(__('finance.delete_receipt_confirm', ['number' => $p['receipt_number'] ?: ('#' . $p['id'])]), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>)">
+                                        <?= csrf_field() ?>
+                                        <input type="hidden" name="form_action" value="delete_payment">
+                                        <input type="hidden" name="payment_id" value="<?= (int) $p['id'] ?>">
+                                        <input type="hidden" name="return_to" value="<?= e($caseRcpReturn) ?>">
+                                        <button class="btn btn-row-delete btn-sm" type="submit"><?= __e('common.delete') ?></button>
+                                    </form>
+                                </div>
                             </td>
                         </tr>
                     <?php endforeach; ?>
