@@ -143,7 +143,58 @@ $iconCal = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-wi
         </div>
     </div>
 
-    <section class="panel tasks-section tasks-section--primary">
+    <div class="tasks-split">
+        <section class="panel tasks-section">
+            <div class="tasks-section-head">
+                <div>
+                    <h2><?= __e('lawyer.tasks.pending_responses') ?></h2>
+                </div>
+                <a class="tasks-section-link" href="appointments.php"><?= __e('common.open') ?></a>
+            </div>
+            <div class="tasks-feed">
+                <?php foreach ($pending as $a): ?>
+                <article class="tasks-feed-item">
+                    <div class="tasks-feed-mark" aria-hidden="true"><?= $iconAppt ?></div>
+                    <div class="tasks-feed-body">
+                        <strong><?= e(t_content($a['title'])) ?></strong>
+                        <span class="muted"><?= e(format_datetime($a['scheduled_at'])) ?> · <?= e($a['client_name'] ?: __('common.client')) ?></span>
+                    </div>
+                    <div class="tasks-feed-side"><?= status_badge($a['status']) ?></div>
+                </article>
+                <?php endforeach; ?>
+                <?php if (!$pending): ?>
+                <div class="tasks-empty tasks-empty--compact"><?= __e('lawyer.tasks.empty') ?></div>
+                <?php endif; ?>
+            </div>
+            <?php $renderTasksPager($pendingPage, 'tasks.pagination.aria', 'tasks.pager.showing_one', 'tasks.pager.showing_many'); ?>
+        </section>
+
+        <section class="panel tasks-section">
+            <div class="tasks-section-head">
+                <div>
+                    <h2><?= __e('lawyer.tasks.unread') ?></h2>
+                </div>
+                <a class="tasks-section-link" href="notifications.php"><?= __e('common.all') ?></a>
+            </div>
+            <div class="tasks-feed">
+                <?php foreach ($notes as $n): ?>
+                <article class="tasks-feed-item">
+                    <div class="tasks-feed-mark is-alert" aria-hidden="true"><?= $iconBell ?></div>
+                    <div class="tasks-feed-body">
+                        <strong><?= e(t_stored($n['title'])) ?></strong>
+                        <span class="muted"><?= e(t_stored($n['message'])) ?></span>
+                    </div>
+                </article>
+                <?php endforeach; ?>
+                <?php if (!$notes): ?>
+                <div class="tasks-empty tasks-empty--compact"><?= __e('lawyer.tasks.caught_up') ?></div>
+                <?php endif; ?>
+            </div>
+            <?php $renderTasksPager($notesPage, 'notifications.pagination.aria', 'notifications.pager.showing_one', 'notifications.pager.showing_many'); ?>
+        </section>
+    </div>
+
+    <section class="panel tasks-section">
         <div class="tasks-section-head">
             <div>
                 <h2><?= __e('lawyer.tasks.case_tasks') ?></h2>
@@ -205,57 +256,6 @@ $iconCal = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-wi
         <?php $renderTasksPager($caseTasksPage, 'cases.tasks.pagination.aria', 'cases.tasks.pager.showing_one', 'cases.tasks.pager.showing_many'); ?>
         <?php endif; ?>
     </section>
-
-    <div class="tasks-split">
-        <section class="panel tasks-section">
-            <div class="tasks-section-head">
-                <div>
-                    <h2><?= __e('lawyer.tasks.pending_responses') ?></h2>
-                </div>
-                <a class="tasks-section-link" href="appointments.php"><?= __e('common.open') ?></a>
-            </div>
-            <div class="tasks-feed">
-                <?php foreach ($pending as $a): ?>
-                <article class="tasks-feed-item">
-                    <div class="tasks-feed-mark" aria-hidden="true"><?= $iconAppt ?></div>
-                    <div class="tasks-feed-body">
-                        <strong><?= e(t_content($a['title'])) ?></strong>
-                        <span class="muted"><?= e(format_datetime($a['scheduled_at'])) ?> · <?= e($a['client_name'] ?: __('common.client')) ?></span>
-                    </div>
-                    <div class="tasks-feed-side"><?= status_badge($a['status']) ?></div>
-                </article>
-                <?php endforeach; ?>
-                <?php if (!$pending): ?>
-                <div class="tasks-empty tasks-empty--compact"><?= __e('lawyer.tasks.empty') ?></div>
-                <?php endif; ?>
-            </div>
-            <?php $renderTasksPager($pendingPage, 'tasks.pagination.aria', 'tasks.pager.showing_one', 'tasks.pager.showing_many'); ?>
-        </section>
-
-        <section class="panel tasks-section">
-            <div class="tasks-section-head">
-                <div>
-                    <h2><?= __e('lawyer.tasks.unread') ?></h2>
-                </div>
-                <a class="tasks-section-link" href="notifications.php"><?= __e('common.all') ?></a>
-            </div>
-            <div class="tasks-feed">
-                <?php foreach ($notes as $n): ?>
-                <article class="tasks-feed-item">
-                    <div class="tasks-feed-mark is-alert" aria-hidden="true"><?= $iconBell ?></div>
-                    <div class="tasks-feed-body">
-                        <strong><?= e(t_stored($n['title'])) ?></strong>
-                        <span class="muted"><?= e(t_stored($n['message'])) ?></span>
-                    </div>
-                </article>
-                <?php endforeach; ?>
-                <?php if (!$notes): ?>
-                <div class="tasks-empty tasks-empty--compact"><?= __e('lawyer.tasks.caught_up') ?></div>
-                <?php endif; ?>
-            </div>
-            <?php $renderTasksPager($notesPage, 'notifications.pagination.aria', 'notifications.pager.showing_one', 'notifications.pager.showing_many'); ?>
-        </section>
-    </div>
 
     <section class="panel tasks-section">
         <div class="tasks-section-head">

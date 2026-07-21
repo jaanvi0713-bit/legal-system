@@ -134,6 +134,28 @@ if (($action === 'view' || $id > 0) && $id) {
 $rows = $pdo->prepare("SELECT c.*, CONCAT(u.first_name,' ',u.last_name) AS client_name FROM cases c JOIN users u ON u.id=c.client_id WHERE " . lawyer_case_access_sql('c') . " ORDER BY c.updated_at DESC");
 $rows->execute([$uid, $uid]);
 $rows = $rows->fetchAll();
+$filterClientId = (int) get('client_id', 0);
+$filterClientName = '';
+if ($filterClientId > 0) {
+    $rows = array_values(array_filter(
+        $rows,
+        static fn(array $c): bool => (int) ($c['client_id'] ?? 0) === $filterClientId
+    ));
+    foreach ($rows as $c) {
+        $filterClientName = trim((string) ($c['client_name'] ?? ''));
+        if ($filterClientName !== '') {
+            break;
+        }
+    }
+    if ($filterClientName === '') {
+        $nameStmt = $pdo->prepare('SELECT first_name, last_name FROM users WHERE id = ? AND role = "client" LIMIT 1');
+        $nameStmt->execute([$filterClientId]);
+        $nameRow = $nameStmt->fetch();
+        if ($nameRow) {
+            $filterClientName = trim(full_name($nameRow));
+        }
+    }
+}
 $totalCases = count($rows);
 $perPage = 10;
 $page = max(1, (int) get('page', 1));
@@ -145,13 +167,20 @@ $offset = ($page - 1) * $perPage;
 $pageRows = array_slice($rows, $offset, $perPage);
 $shownFrom = $totalCases === 0 ? 0 : $offset + 1;
 $shownTo = min($offset + count($pageRows), $totalCases);
+$pagerQuery = $filterClientId > 0 ? '&client_id=' . $filterClientId : '';
 require __DIR__ . '/../includes/header.php';
 ?>
 <div class="panel case-list-panel">
     <div class="case-list-head">
         <div class="case-list-title">
-            <h2><?= __e('lawyer.cases.assigned') ?></h2>
+            <h2><?= $filterClientName !== '' ? e(__('lawyer.cases.for_client', ['name' => $filterClientName])) : __e('lawyer.cases.assigned') ?></h2>
+            <?php if ($filterClientName !== ''): ?>
+            <p class="muted" style="margin:0.35rem 0 0;"><?= __e('lawyer.cases.filtered_by_client') ?></p>
+            <?php endif; ?>
         </div>
+        <?php if ($filterClientId > 0): ?>
+        <a class="btn btn-secondary btn-sm" href="cases.php"><?= __e('lawyer.cases.clear_client_filter') ?></a>
+        <?php endif; ?>
     </div>
     <div class="table-wrap case-table-wrap">
         <table class="case-table">
@@ -192,15 +221,15 @@ require __DIR__ . '/../includes/header.php';
         <?php if ($totalPages > 1): ?>
         <nav class="case-list-pager" aria-label="<?= __e('cases.pagination.aria') ?>">
             <?php if ($page > 1): ?>
-            <a class="case-page-btn" href="?page=<?= $page - 1 ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
+            <a class="case-page-btn" href="?page=<?= $page - 1 ?><?= e($pagerQuery) ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
             <?php else: ?>
             <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
             <?php endif; ?>
             <?php for ($p = 1; $p <= $totalPages; $p++): ?>
-            <a class="case-page-btn<?= $p === $page ? ' is-active' : '' ?>" href="?page=<?= $p ?>"<?= $p === $page ? ' aria-current="page"' : '' ?>><?= $p ?></a>
+            <a class="case-page-btn<?= $p === $page ? ' is-active' : '' ?>" href="?page=<?= $p ?><?= e($pagerQuery) ?>"<?= $p === $page ? ' aria-current="page"' : '' ?>><?= $p ?></a>
             <?php endfor; ?>
             <?php if ($page < $totalPages): ?>
-            <a class="case-page-btn" href="?page=<?= $page + 1 ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
+            <a class="case-page-btn" href="?page=<?= $page + 1 ?><?= e($pagerQuery) ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
             <?php else: ?>
             <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
             <?php endif; ?>

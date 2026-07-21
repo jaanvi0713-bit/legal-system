@@ -473,6 +473,90 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   };
 
+  const renderAiIntakeCard = (card) => {
+    const esc = (v) => String(v == null ? '' : v)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+    const items = Array.isArray(card && card.items) ? card.items : [];
+    const progress = (card && card.progress) || {};
+    const done = Number(progress.done || 0);
+    const total = Number(progress.total || items.length || 0);
+    const ready = !!(card && card.ready);
+    const docs = Array.isArray(card && card.docs) ? card.docs : [];
+    const missingLabels = Array.isArray(card && card.missing_labels) ? card.missing_labels : [];
+    const formatText = String((card && (card.format || card.example)) || '');
+    const requiredItems = items.filter((item) => item.required);
+    const optionalItems = items.filter((item) => !item.required);
+
+    const rowHtml = (item) => {
+      const doneItem = item.status === 'done';
+      const state = doneItem ? 'is-done' : (item.required ? 'is-required' : 'is-optional');
+      const mark = doneItem ? '✓' : (item.required ? '!' : '·');
+      const value = doneItem
+        ? esc(item.value || 'Saved')
+        : '<span class="ai-intake-missing">Missing</span>';
+      return '<div class="ai-intake-row ' + state + '">'
+        + '<span class="ai-intake-mark" aria-hidden="true">' + mark + '</span>'
+        + '<span class="ai-intake-label">' + esc(item.label || item.key || '') + '</span>'
+        + '<span class="ai-intake-value">' + value + '</span>'
+        + '</div>';
+    };
+
+    let sections = '';
+    if (requiredItems.length) {
+      sections += '<div class="ai-intake-section">'
+        + '<div class="ai-intake-section-label">Required</div>'
+        + requiredItems.map(rowHtml).join('')
+        + '</div>';
+    }
+    if (optionalItems.length) {
+      sections += '<div class="ai-intake-section">'
+        + '<div class="ai-intake-section-label">Optional</div>'
+        + optionalItems.map(rowHtml).join('')
+        + '</div>';
+    }
+
+    let footer = '';
+    if (ready) {
+      footer = '<div class="ai-intake-next is-ready">'
+        + '<span class="ai-intake-next-label">Ready to create</span>'
+        + '<strong>Reply <em>confirm</em> to create this client</strong>'
+        + '<p>To change a value, paste the format again with updates, or say <em>cancel</em>.</p>'
+        + '</div>';
+    } else {
+      footer = '<div class="ai-intake-next">'
+        + '<span class="ai-intake-next-label">Paste this format</span>'
+        + '<strong>Fill the lines below and send in one message</strong>'
+        + (missingLabels.length
+          ? '<p class="ai-intake-how">Still needed: ' + esc(missingLabels.join(', ')) + '</p>'
+          : '<p class="ai-intake-how">Required: First name, Last name, Email, Username, Temporary password</p>')
+        + '<pre class="ai-intake-example ai-intake-format">' + esc(formatText) + '</pre>'
+        + '<p class="ai-intake-hint">You can leave optional lines empty. Attach an ID / intake form if helpful. Say <em>cancel</em> to abort.</p>'
+        + '</div>';
+    }
+
+    const docsHtml = docs.length
+      ? '<div class="ai-intake-docs">Documents: ' + docs.map((d) => '<span>' + esc(d) + '</span>').join('') + '</div>'
+      : '';
+
+    return '<div class="ai-intake-card" data-ai-intake-card>'
+      + '<div class="ai-intake-card-head">'
+      + '<div>'
+      + '<span class="ai-draft-eyebrow">Client intake</span>'
+      + '<strong>' + esc(card.title || 'New client intake') + '</strong>'
+      + '</div>'
+      + '<div class="ai-intake-progress" title="' + done + ' of ' + total + ' fields">'
+      + '<span>' + done + '/' + total + '</span>'
+      + '</div>'
+      + '</div>'
+      + docsHtml
+      + '<div class="ai-intake-format-block">' + footer + '</div>'
+      + sections
+      + '</div>';
+  };
+
   const renderAiDraftCard = (card) => {
     const fields = (card && card.fields) || {};
     const rows = [
@@ -606,6 +690,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let text = String(raw || '');
     let draftCardHtml = '';
     let invoiceCardHtml = '';
+    let intakeCardHtml = '';
     const cardMatch = text.match(/\[\[AI_DRAFT_CARD\]\]\s*([\s\S]*?)\s*\[\[\/AI_DRAFT_CARD\]\]/);
     if (cardMatch) {
       try {
@@ -622,7 +707,16 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch (e) {
         invoiceCardHtml = '';
       }
-      text = text.replace(invMatch[0], '[[AI_INVOICE_CARD_SLOT]]').trim();
+      text = text.replace(invMatch[0], '').trim();
+    }
+    const intakeMatch = text.match(/\[\[AI_INTAKE_CARD\]\]\s*([\s\S]*?)\s*\[\[\/AI_INTAKE_CARD\]\]/);
+    if (intakeMatch) {
+      try {
+        intakeCardHtml = renderAiIntakeCard(JSON.parse(intakeMatch[1]));
+      } catch (e) {
+        intakeCardHtml = '';
+      }
+      text = text.replace(intakeMatch[0], '').trim();
     }
     let escaped = text
       .replace(/&/g, '&amp;')
@@ -647,11 +741,15 @@ document.addEventListener('DOMContentLoaded', () => {
     );
     escaped = escaped.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     escaped = escaped.replace(/^• /gm, '&bull; ');
-    escaped = escaped.replace(/\n/g, '<br>');
-    if (invoiceCardHtml) {
-      escaped = escaped.replace('[[AI_INVOICE_CARD_SLOT]]', invoiceCardHtml);
-    }
-    return escaped + draftCardHtml;
+    escaped = escaped
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n')
+      .trim()
+      .split(/\n{2,}/)
+      .filter((part) => part.trim() !== '')
+      .map((part) => '<p>' + part.trim().replace(/\n/g, '<br>') + '</p>')
+      .join('');
+    return escaped + intakeCardHtml + invoiceCardHtml + draftCardHtml;
   };
 
   const collectAiDraftFields = (form) => {
@@ -789,7 +887,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.querySelectorAll('#ai-messages .ai-msg-body[data-ai-raw]').forEach((el) => {
     const raw = el.getAttribute('data-ai-raw') || '';
-    if (raw.indexOf('[[AI_DRAFT_CARD]]') === -1 && raw.indexOf('[[AI_INVOICE_CARD]]') === -1) return;
+    if (raw.indexOf('[[AI_DRAFT_CARD]]') === -1
+      && raw.indexOf('[[AI_INVOICE_CARD]]') === -1
+      && raw.indexOf('[[AI_INTAKE_CARD]]') === -1) return;
     el.innerHTML = renderAiHtml(raw);
     bindAiDraftCard(el);
   });

@@ -38,13 +38,13 @@ $invoiceRef = trim((string) ($payment['invoice_number'] ?? ''));
                 <div><span><?= __e('finance.invoice_reference') ?></span> <strong><?= e($invoiceRef) ?></strong></div>
                 <?php endif; ?>
             </div>
-            <div class="inv-doc-billto">
-                <strong><?= __e('finance.bill_to') ?></strong>
-                <p class="inv-doc-client"><?= e(full_name($payment)) ?></p>
-                <?php if (!empty($payment['client_company'])): ?><p><?= e($payment['client_company']) ?></p><?php endif; ?>
-                <?php if (!empty($payment['address'])): ?><p><?= nl2br(e($payment['address'])) ?></p><?php endif; ?>
-                <?php if (!empty($payment['email'])): ?><p><?= e($payment['email']) ?></p><?php endif; ?>
-            </div>
+        </div>
+        <div class="inv-doc-billto">
+            <strong><?= __e('finance.bill_to') ?></strong>
+            <p class="inv-doc-client"><?= e(full_name($payment)) ?></p>
+            <?php if (!empty($payment['client_company'])): ?><p><?= e($payment['client_company']) ?></p><?php endif; ?>
+            <?php if (!empty($payment['address'])): ?><p><?= nl2br(e($payment['address'])) ?></p><?php endif; ?>
+            <?php if (!empty($payment['email'])): ?><p><?= e($payment['email']) ?></p><?php endif; ?>
         </div>
     </section>
 

@@ -3,10 +3,37 @@ require_once __DIR__ . '/../includes/auth.php';
 require_role(['lawyer']);
 $pdo = db();
 $uid = (int) current_user()['id'];
+ensure_case_lawyers_table($pdo);
 
-$clients = $pdo->prepare("SELECT DISTINCT u.*, (SELECT COUNT(*) FROM cases c WHERE c.client_id=u.id AND " . lawyer_case_access_sql('c') . ") AS case_count FROM users u WHERE u.role='client' AND (u.assigned_lawyer_id=? OR u.id IN (SELECT client_id FROM cases c2 WHERE " . lawyer_case_access_sql('c2') . ")) ORDER BY u.first_name");
-$clients->execute([$uid, $uid, $uid, $uid]);
-$clients = $clients->fetchAll();
+// Placeholders: case_count (2) + assigned_lawyer (1) + case subquery (2) = 5
+$sql = 'SELECT DISTINCT u.*,
+            (
+                SELECT COUNT(*)
+                FROM cases c
+                WHERE c.client_id = u.id
+                  AND (c.lawyer_id = ? OR EXISTS (
+                        SELECT 1 FROM case_lawyers cl
+                        WHERE cl.case_id = c.id AND cl.lawyer_id = ?
+                  ))
+            ) AS case_count
+        FROM users u
+        WHERE u.role = \'client\'
+          AND (
+                u.assigned_lawyer_id = ?
+                OR u.id IN (
+                    SELECT c2.client_id
+                    FROM cases c2
+                    WHERE c2.lawyer_id = ?
+                       OR EXISTS (
+                            SELECT 1 FROM case_lawyers cl2
+                            WHERE cl2.case_id = c2.id AND cl2.lawyer_id = ?
+                       )
+                )
+          )
+        ORDER BY u.first_name';
+$clientsStmt = $pdo->prepare($sql);
+$clientsStmt->execute([$uid, $uid, $uid, $uid, $uid]);
+$clients = $clientsStmt->fetchAll();
 
 $id = (int) get('id', 0);
 $action = get('action', $id ? 'view' : 'list');
@@ -39,12 +66,10 @@ if ($action === 'view' && $id) {
         flash('error', __('flash.client.not_assigned'));
         redirect('clients.php');
     }
-    $cases = $pdo->prepare('SELECT * FROM cases WHERE client_id = ? AND lawyer_id = ? ORDER BY created_at DESC');
-    $cases->execute([$id, $uid]);
-    $clientCases = $cases->fetchAll();
     $clientLawyerName = trim((string) ($client['lawyer_name'] ?? ''));
     $viewBackUrl = 'clients.php';
     $viewMailto = (string) ($client['email'] ?? '');
+    $viewCasesUrl = 'cases.php?client_id=' . $id;
     require __DIR__ . '/../includes/header.php';
     require __DIR__ . '/../includes/client-view.php';
     require __DIR__ . '/../includes/footer.php';

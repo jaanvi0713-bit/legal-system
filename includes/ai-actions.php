@@ -127,6 +127,37 @@ function ai_try_actions(PDO $pdo, array $user, string $portal, string $message, 
             return ai_action_update_case_status($pdo, $user, $portal, $message, $q);
         }
 
+        // Extract invoice/receipt details — never starts "new client" intake.
+        // Runs before intake resume so "extract details" + INV PDF is not swallowed by an open wizard.
+        $wantsExtract = ai_actions_wants($q, [
+            'extract details', 'extract invoice', 'extract receipt', 'extract document',
+            'read invoice', 'read receipt', 'show invoice', 'show receipt',
+            'invoice details', 'receipt details', 'parse invoice', 'parse receipt',
+        ]) || in_array(trim($q), ['extract', 'details', 'extract details', 'lire', 'extraire'], true);
+        $hayForDoc = $message;
+        foreach ($attachments as $att) {
+            $hayForDoc .= ' ' . (string) ($att['file_name'] ?? '') . "\n" . (string) ($att['text'] ?? '');
+        }
+        $looksLikeSystemDoc = (bool) preg_match('/\b(INV|RCP)[-_]?\d/i', $hayForDoc);
+        $wantsCreateClient = ai_actions_wants($q, [
+            'create client', 'new client', 'add client', 'creer client', 'créer client', 'nouveau client', 'ajouter client',
+            'client from document', 'extract client', 'register client', 'onboard client',
+        ]);
+        if (
+            ai_actions_can_admin($portal, $user)
+            && !$wantsCreateClient
+            && ($attachments || $looksLikeSystemDoc)
+            && ($wantsExtract || ($looksLikeSystemDoc && $attachments && $q === ''))
+        ) {
+            $extractReply = ai_action_extract_system_document($pdo, $user, $portal, $message, $attachments);
+            if ($extractReply !== null) {
+                if ($sessionId > 0) {
+                    ai_client_draft_clear($sessionId);
+                }
+                return $extractReply;
+            }
+        }
+
         // Resume client / client+case intake only when the message looks like an answer to it.
         if ($sessionId > 0 && ai_actions_can_admin($portal, $user)) {
             $draft = ai_client_draft_get($sessionId);
@@ -139,22 +170,15 @@ function ai_try_actions(PDO $pdo, array $user, string $portal, string $message, 
             }
         }
 
-        if (ai_actions_wants($q, [
-            'create client', 'new client', 'add client', 'creer client', 'créer client', 'nouveau client', 'ajouter client',
-            'client from document', 'extract client', 'extract details', 'register client', 'onboard client',
-        ])) {
+        if ($wantsCreateClient) {
             return ai_action_create_client($pdo, $user, $portal, $message, $q, $attachments, $sessionId);
         }
 
-        // Document attached that looks like a client profile / system invoice — start intake.
-        if ($attachments && ai_actions_can_admin($portal, $user)) {
-            $fileHay = '';
-            foreach ($attachments as $att) {
-                $fileHay .= ' ' . (string) ($att['file_name'] ?? '');
-            }
+        // Profile-style document attached with create-from-document intent — start intake.
+        // Do NOT treat invoices/receipts or bare "extract details" as new-client intake.
+        if ($attachments && ai_actions_can_admin($portal, $user) && !$looksLikeSystemDoc) {
             $looksUseful = ai_client_doc_looks_like_profile($attachments)
-                || (bool) preg_match('/\b(INV|RCP)[-_]?\d/i', $fileHay)
-                || ai_actions_wants($q, ['extract', 'from document', 'from this', 'details']);
+                || ai_actions_wants($q, ['from document', 'from this document', 'client from document']);
             if ($looksUseful) {
                 return ai_action_create_client(
                     $pdo,
@@ -1106,13 +1130,18 @@ function ai_action_schedule_appointment(PDO $pdo, array $user, string $portal, s
     $slotCheck = validate_lawyer_appointment_slot($pdo, $lawyerId, $when, $duration, null, false);
     $slotWarning = '';
     if (empty($slotCheck['ok'])) {
+        $reason = $slotCheck['message'] ?? 'Selected slot is not available.';
+        $code = (string) ($slotCheck['code'] ?? '');
+        if (availability_is_hard_block($code)) {
+            return '⚠️ Could not schedule: ' . $reason
+                . ($code === 'sunday' ? "\nPlease choose a Monday–Saturday slot." : "\nPlease pick another time.");
+        }
         $cntStmt = $pdo->prepare('SELECT COUNT(*) FROM lawyer_availability_slots WHERE lawyer_id=?');
         $cntStmt->execute([$lawyerId]);
         $hasAnySlots = (int) $cntStmt->fetchColumn();
         if ($portal === 'admin' || $hasAnySlots === 0) {
-            $slotWarning = "\n\n⚠️ Note: " . ($slotCheck['message'] ?? 'Slot outside published availability') . ' — booked anyway by AI for your portal.';
+            $slotWarning = "\n\n⚠️ Note: " . $reason . ' — booked anyway by AI for your portal.';
         } else {
-            $reason = $slotCheck['message'] ?? 'Selected slot is not available.';
             return '⚠️ Could not schedule: ' . $reason . "\nAsk the lawyer to publish availability, or pick another time.";
         }
     }

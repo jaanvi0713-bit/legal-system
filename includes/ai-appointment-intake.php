@@ -528,18 +528,42 @@ function ai_action_schedule_appointment_guided(
     $slotCheck = validate_lawyer_appointment_slot($pdo, $lawyerId, $when, $duration, null, false);
     $slotWarning = '';
     if (empty($slotCheck['ok'])) {
+        $reason = $slotCheck['message'] ?? 'Outside published availability';
+        $code = (string) ($slotCheck['code'] ?? '');
+
+        // Never book Sundays / conflicts / marked-unavailable — even as admin.
+        if (availability_is_hard_block($code)) {
+            $draft['awaiting_field'] = 'when';
+            $draft['fields'] = $fields;
+            $draft['fields']['when'] = '';
+            ai_client_draft_set($sessionId, $draft);
+            return "⚠️ Could not schedule: {$reason}\n\n"
+                . "Please choose another date/time" . ($code === 'sunday' ? ' (Monday–Saturday only).' : '.');
+        }
+
         $cntStmt = $pdo->prepare('SELECT COUNT(*) FROM lawyer_availability_slots WHERE lawyer_id=?');
         $cntStmt->execute([$lawyerId]);
         $hasAnySlots = (int) $cntStmt->fetchColumn();
         if ($portal === 'admin' || $hasAnySlots === 0) {
-            $slotWarning = "\n\n⚠️ Note: " . ($slotCheck['message'] ?? 'Outside published availability') . ' — booked anyway.';
+            $whenLabel = format_datetime($when);
+            if ($hasAnySlots === 0) {
+                $slotWarning = "\n\n⚠️ Note: **{$fields['lawyer_name']}** has no published weekly availability slots yet"
+                    . ($portal === 'admin' ? ', so this was booked anyway as admin.' : ', so this was booked anyway.')
+                    . " Ask them to set availability (e.g. for {$whenLabel}).";
+            } else {
+                $slotTimeLabel = date('H:i', strtotime($when) ?: time());
+                $slotWarning = "\n\n⚠️ Note: **{$fields['lawyer_name']}** did not publish the slot **{$whenLabel}**"
+                    . " in their weekly availability"
+                    . ($portal === 'admin' ? ' — booked anyway as admin override.' : ' — booked anyway.')
+                    . "\nOpen their **Availability** page for that week to add {$slotTimeLabel} (or pick a published slot next time).";
+            }
         } else {
             $draft['awaiting_field'] = 'when';
             $draft['fields'] = $fields;
             $draft['fields']['when'] = '';
             ai_client_draft_set($sessionId, $draft);
-            $reason = $slotCheck['message'] ?? 'Selected slot is not available.';
-            return "⚠️ Could not schedule: {$reason}\n\nPick another time.";
+            return "⚠️ Could not schedule: {$reason}\n\n"
+                . "**{$fields['lawyer_name']}** has no free published slot at that time. Pick another time from their availability.";
         }
     }
 

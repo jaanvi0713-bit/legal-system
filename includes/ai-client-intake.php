@@ -85,6 +85,16 @@ function ai_client_draft_blank(): array
 function ai_client_message_is_intake_reply(string $message, string $q, array $draft, array $attachments = []): bool
 {
     if ($attachments) {
+        $hay = $message;
+        foreach ($attachments as $att) {
+            $hay .= ' ' . (string) ($att['file_name'] ?? '');
+        }
+        // Invoice/receipt extracts are not intake answers.
+        if (preg_match('/\b(INV|RCP)[-_]?\d/i', $hay)
+            && (ai_actions_wants($q, ['extract details', 'extract invoice', 'extract receipt', 'invoice details', 'receipt details'])
+                || in_array(trim($q), ['extract', 'details', ''], true))) {
+            return false;
+        }
         return true;
     }
     $trim = trim($message);
@@ -94,7 +104,7 @@ function ai_client_message_is_intake_reply(string $message, string $q, array $dr
 
     if (ai_actions_wants($q, [
         'confirm', 'yes create', 'create now', 'save client', 'oui', 'confirmer', 'go ahead',
-        'create client', 'new client', 'add client', 'extract client', 'extract details', 'register client',
+        'create client', 'new client', 'add client', 'extract client', 'register client',
     ])) {
         return true;
     }
@@ -237,62 +247,36 @@ function ai_client_extract_from_attachments(PDO $pdo, array $attachments): array
 /**
  * Resolve client from Lexora invoice/receipt numbers in filename or text.
  *
- * @return array{user:array<string,mixed>,fields:array<string,string>,note:string,document:?array}|null
+ * @return array{user:?array<string,mixed>,fields:array<string,string>,note:string,document:?array,ref:string}|null
  */
 function ai_client_lookup_system_document(PDO $pdo, string $haystack): ?array
 {
-    $invoiceNo = null;
-    if (preg_match('/\b(INV[- ]?\d{4}[- ]?[A-Z0-9]+)\b/i', $haystack, $m)) {
-        $invoiceNo = strtoupper(preg_replace('/\s+/', '', $m[1]) ?? $m[1]);
-        $invoiceNo = preg_replace('/^INV-?/', 'INV-', $invoiceNo) ?? $invoiceNo;
-    }
-    $receiptNo = null;
-    if (preg_match('/\b(RCP[- ]?\d{4}[- ]?[A-Z0-9]+)\b/i', $haystack, $m)) {
-        $receiptNo = strtoupper(preg_replace('/\s+/', '', $m[1]) ?? $m[1]);
-        $receiptNo = preg_replace('/^RCP-?/', 'RCP-', $receiptNo) ?? $receiptNo;
-    }
+    $invoiceNo = ai_client_match_doc_number($haystack, 'INV');
+    $receiptNo = ai_client_match_doc_number($haystack, 'RCP');
 
     $clientId = 0;
     $ref = '';
     $document = null;
     try {
         if ($invoiceNo) {
-            $stmt = $pdo->prepare(
-                'SELECT i.*, c.case_number, c.title AS case_title
-                 FROM invoices i
-                 LEFT JOIN cases c ON c.id = i.case_id
-                 WHERE UPPER(i.invoice_number) = ?
-                 LIMIT 1'
-            );
-            $stmt->execute([$invoiceNo]);
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
-            if (!$row) {
-                $stmt = $pdo->prepare(
-                    "SELECT i.*, c.case_number, c.title AS case_title
-                     FROM invoices i
-                     LEFT JOIN cases c ON c.id = i.case_id
-                     WHERE REPLACE(UPPER(i.invoice_number), '-', '') = ?
-                     LIMIT 1"
-                );
-                $stmt->execute([str_replace('-', '', $invoiceNo)]);
-                $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
-            }
+            $row = ai_client_find_invoice_row($pdo, $invoiceNo);
             if ($row) {
                 $clientId = (int) $row['client_id'];
                 $ref = 'invoice ' . $row['invoice_number'];
                 $document = ai_invoice_build_extract_payload($pdo, $row);
             }
         }
-        if ($clientId <= 0 && $receiptNo) {
+        if (!$document && $receiptNo) {
             $stmt = $pdo->prepare(
                 'SELECT p.*, i.invoice_number, i.case_id AS invoice_case_id, c.case_number, c.title AS case_title
                  FROM payments p
                  LEFT JOIN invoices i ON i.id = p.invoice_id
                  LEFT JOIN cases c ON c.id = i.case_id
                  WHERE UPPER(p.receipt_number) = ?
+                    OR REPLACE(UPPER(p.receipt_number), "-", "") = ?
                  LIMIT 1'
             );
-            $stmt->execute([$receiptNo]);
+            $stmt->execute([$receiptNo, str_replace('-', '', $receiptNo)]);
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
             if ($row) {
                 $clientId = (int) $row['client_id'];
@@ -300,60 +284,188 @@ function ai_client_lookup_system_document(PDO $pdo, string $haystack): ?array
                 $document = ai_receipt_build_extract_payload($pdo, $row);
             }
         }
-        if ($clientId <= 0) {
+        if (!$document) {
             return null;
         }
-        $uStmt = $pdo->prepare("SELECT * FROM users WHERE id = ? AND role = 'client' LIMIT 1");
-        $uStmt->execute([$clientId]);
-        $user = $uStmt->fetch(PDO::FETCH_ASSOC);
-        if (!$user) {
-            return null;
+
+        $user = null;
+        $fields = [];
+        if ($clientId > 0) {
+            $uStmt = $pdo->prepare("SELECT * FROM users WHERE id = ? AND role = 'client' LIMIT 1");
+            $uStmt->execute([$clientId]);
+            $user = $uStmt->fetch(PDO::FETCH_ASSOC) ?: null;
         }
     } catch (Throwable $e) {
         return null;
     }
 
-    $fields = [
-        'first_name' => (string) ($user['first_name'] ?? ''),
-        'last_name' => (string) ($user['last_name'] ?? ''),
-        'email' => (string) ($user['email'] ?? ''),
-        'phone' => (string) ($user['phone'] ?? ''),
-        'address' => (string) ($user['address'] ?? ''),
-        'company_name' => (string) ($user['company_name'] ?? ''),
-        'username' => (string) ($user['username'] ?? ''),
-        'notes' => 'Linked from ' . $ref,
-    ];
-    if (!empty($user['assigned_lawyer_id'])) {
-        $fields['assigned_lawyer_id'] = (string) (int) $user['assigned_lawyer_id'];
-        try {
-            $l = $pdo->prepare("SELECT first_name, last_name FROM users WHERE id=? AND role='lawyer'");
-            $l->execute([(int) $user['assigned_lawyer_id']]);
-            $lr = $l->fetch(PDO::FETCH_ASSOC);
-            if ($lr) {
-                $fields['assigned_lawyer'] = trim($lr['first_name'] . ' ' . $lr['last_name']);
+    if ($user) {
+        $fields = [
+            'first_name' => (string) ($user['first_name'] ?? ''),
+            'last_name' => (string) ($user['last_name'] ?? ''),
+            'email' => (string) ($user['email'] ?? ''),
+            'phone' => (string) ($user['phone'] ?? ''),
+            'address' => (string) ($user['address'] ?? ''),
+            'company_name' => (string) ($user['company_name'] ?? ''),
+            'username' => (string) ($user['username'] ?? ''),
+            'notes' => 'Linked from ' . $ref,
+        ];
+        if (!empty($user['assigned_lawyer_id'])) {
+            $fields['assigned_lawyer_id'] = (string) (int) $user['assigned_lawyer_id'];
+            try {
+                $l = $pdo->prepare("SELECT first_name, last_name FROM users WHERE id=? AND role='lawyer'");
+                $l->execute([(int) $user['assigned_lawyer_id']]);
+                $lr = $l->fetch(PDO::FETCH_ASSOC);
+                if ($lr) {
+                    $fields['assigned_lawyer'] = trim($lr['first_name'] . ' ' . $lr['last_name']);
+                }
+            } catch (Throwable $e) {
+                // ignore
             }
-        } catch (Throwable $e) {
-            // ignore
         }
-    }
 
-    if (is_array($document)) {
-        $document['client'] = [
-            'id' => (int) $user['id'],
-            'name' => trim($fields['first_name'] . ' ' . $fields['last_name']),
-            'email' => $fields['email'],
-            'phone' => $fields['phone'],
-            'company' => $fields['company_name'],
-            'address' => $fields['address'],
+        if (is_array($document)) {
+            $document['client'] = [
+                'id' => (int) $user['id'],
+                'name' => trim($fields['first_name'] . ' ' . $fields['last_name']),
+                'email' => $fields['email'],
+                'phone' => $fields['phone'],
+                'company' => $fields['company_name'],
+                'address' => $fields['address'],
+            ];
+        }
+
+        return [
+            'user' => $user,
+            'fields' => ai_client_sanitize_extracted_fields($fields),
+            'note' => '📄 Matched system ' . $ref . ' → client **' . trim($fields['first_name'] . ' ' . $fields['last_name']) . '** (already in the system).',
+            'document' => $document,
+            'ref' => $ref,
         ];
     }
 
     return [
-        'user' => $user,
-        'fields' => ai_client_sanitize_extracted_fields($fields),
-        'note' => '📄 Matched system ' . $ref . ' → client **' . trim($fields['first_name'] . ' ' . $fields['last_name']) . '** (already in the system).',
+        'user' => null,
+        'fields' => [],
+        'note' => '📄 Matched system ' . $ref . '.',
         'document' => $document,
+        'ref' => $ref,
     ];
+}
+
+/**
+ * @return non-empty-string|null
+ */
+function ai_client_match_doc_number(string $haystack, string $prefix): ?string
+{
+    $prefix = strtoupper($prefix);
+    if (!preg_match('/\b(' . preg_quote($prefix, '/') . '[- _]?\d{4}[- _]?[A-Z0-9]+)\b/i', $haystack, $m)) {
+        return null;
+    }
+    $raw = strtoupper(preg_replace('/[\s_]+/', '', $m[1]) ?? $m[1]);
+    $raw = preg_replace('/^' . preg_quote($prefix, '/') . '-?/', $prefix . '-', $raw) ?? $raw;
+    return $raw !== '' ? $raw : null;
+}
+
+/**
+ * @return array<string, mixed>|null
+ */
+function ai_client_find_invoice_row(PDO $pdo, string $invoiceNo): ?array
+{
+    $variants = array_values(array_unique(array_filter([
+        $invoiceNo,
+        str_replace('-', '', $invoiceNo),
+        preg_replace('/^INV-/i', 'INV', $invoiceNo),
+    ])));
+
+    foreach ($variants as $variant) {
+        $stmt = $pdo->prepare(
+            'SELECT i.*, c.case_number, c.title AS case_title
+             FROM invoices i
+             LEFT JOIN cases c ON c.id = i.case_id
+             WHERE UPPER(i.invoice_number) = ?
+                OR REPLACE(UPPER(i.invoice_number), "-", "") = ?
+             LIMIT 1'
+        );
+        $compact = str_replace('-', '', strtoupper($variant));
+        $stmt->execute([strtoupper($variant), $compact]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row) {
+            return $row;
+        }
+    }
+
+    // Filename sometimes truncates or adds a suffix — try prefix match on compact form.
+    $compact = str_replace('-', '', strtoupper($invoiceNo));
+    if (strlen($compact) >= 10) {
+        $stmt = $pdo->prepare(
+            'SELECT i.*, c.case_number, c.title AS case_title
+             FROM invoices i
+             LEFT JOIN cases c ON c.id = i.case_id
+             WHERE REPLACE(UPPER(i.invoice_number), "-", "") LIKE ?
+             ORDER BY i.id DESC
+             LIMIT 1'
+        );
+        $stmt->execute([$compact . '%']);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row) {
+            return $row;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Extract invoice/receipt from attachments or message — never opens client intake.
+ *
+ * @param array<int, array<string, mixed>> $attachments
+ */
+function ai_action_extract_system_document(
+    PDO $pdo,
+    array $user,
+    string $portal,
+    string $message,
+    array $attachments = []
+): ?string {
+    $haystack = $message;
+    foreach ($attachments as $att) {
+        $haystack .= ' ' . (string) ($att['file_name'] ?? '') . "\n" . (string) ($att['text'] ?? '');
+    }
+
+    $system = ai_client_lookup_system_document($pdo, $haystack);
+    if ($system && is_array($system['document'] ?? null) && !empty($system['document']['number'])) {
+        if (!empty($user['id']) && function_exists('ai_client_draft_clear')) {
+            // Avoid leaving a stale intake draft after an extract request.
+            // Session clearing is handled by caller when session id is known.
+        }
+        $existing = is_array($system['user'] ?? null) ? $system['user'] : [];
+        return ai_document_format_extract_reply($system['document'], $existing, $portal);
+    }
+
+    $invoiceNo = ai_client_match_doc_number($haystack, 'INV');
+    $receiptNo = ai_client_match_doc_number($haystack, 'RCP');
+    if ($invoiceNo || $receiptNo) {
+        $label = $invoiceNo ? ('invoice **' . $invoiceNo . '**') : ('receipt **' . $receiptNo . '**');
+        return "📄 I could not find {$label} in the system database.\n\n"
+            . "No new client was started. Check the number, or open **Billing → Invoices**.\n"
+            . "To register someone new, say **create client** (do not use an existing invoice PDF for that).";
+    }
+
+    if ($attachments) {
+        $names = [];
+        foreach ($attachments as $att) {
+            $n = trim((string) ($att['file_name'] ?? ''));
+            if ($n !== '') {
+                $names[] = $n;
+            }
+        }
+        $fileLabel = $names ? ('**' . implode('**, **', $names) . '**') : 'this file';
+        return "📄 Attached {$fileLabel}, but I could not match an invoice or receipt in the system.\n\n"
+            . "No new client was started. Attach a Lexora invoice/receipt PDF (e.g. INV-2026-…), or say **create client** to register someone new.";
+    }
+
+    return null;
 }
 
 /**
@@ -482,10 +594,10 @@ function ai_document_format_extract_reply(array $document, array $user, string $
 {
     $kind = (string) ($document['kind'] ?? 'invoice');
     $number = (string) ($document['number'] ?? '');
-    $clientName = full_name($user);
     $clientId = (int) ($user['id'] ?? 0);
+    $clientName = $clientId > 0 ? trim(full_name($user)) : '';
 
-    $clientUrl = ai_actions_portal_url($portal, 'clients.php?action=view&id=' . $clientId);
+    $clientUrl = $clientId > 0 ? ai_actions_portal_url($portal, 'clients.php?action=view&id=' . $clientId) : '';
     $docUrl = '';
     if ($kind === 'invoice' && !empty($document['id'])) {
         $docUrl = ai_actions_portal_url($portal, 'invoice.php?id=' . (int) $document['id']);
@@ -521,15 +633,22 @@ function ai_document_format_extract_reply(array $document, array $user, string $
         $json,
         '[[/AI_INVOICE_CARD]]',
         '',
-        'This client is **already registered** — a new client was not created.',
-        '• Name: **' . $clientName . '**',
-        '• Email: ' . (($user['email'] ?? '') !== '' ? $user['email'] : '—'),
-        '• Phone: ' . (($user['phone'] ?? '') !== '' ? $user['phone'] : '—'),
     ];
-    if (!empty($user['company_name'])) {
-        $lines[] = '• Company: ' . $user['company_name'];
+
+    if ($clientName !== '') {
+        $lines[] = 'This client is **already registered** — a new client was not created.';
+        $lines[] = '• Name: **' . $clientName . '**';
+        $lines[] = '• Email: ' . (($user['email'] ?? '') !== '' ? $user['email'] : '—');
+        $lines[] = '• Phone: ' . (($user['phone'] ?? '') !== '' ? $user['phone'] : '—');
+        if (!empty($user['company_name'])) {
+            $lines[] = '• Company: ' . $user['company_name'];
+        }
+        $lines[] = '';
+    } else {
+        $lines[] = 'Invoice details extracted from the system. No new client was created.';
+        $lines[] = '';
     }
-    $lines[] = '';
+
     $links = [];
     if ($clientUrl !== '') {
         $links[] = ai_actions_md_link('Open client profile', $clientUrl);
@@ -628,15 +747,23 @@ function ai_client_is_plausible_phone(?string $phone): bool
  */
 function ai_client_sanitize_extracted_fields(array $fields): array
 {
-    if (!empty($fields['first_name']) || !empty($fields['last_name'])) {
-        $f = (string) ($fields['first_name'] ?? '');
-        $l = (string) ($fields['last_name'] ?? '');
-        if (!ai_client_is_plausible_person_name($f, $l)) {
-            unset($fields['first_name'], $fields['last_name']);
-            // Bad auto-username from bogus names
-            if (!empty($fields['username']) && preg_match('/invoice|inv\.|receipt|rcp\./i', (string) $fields['username'])) {
-                unset($fields['username']);
-            }
+    foreach (['first_name', 'last_name'] as $nk) {
+        if (empty($fields[$nk])) {
+            continue;
+        }
+        $val = trim((string) $fields[$nk]);
+        // Drop greedy/corrupt captures from single-line pastes
+        if ($val === '' || preg_match('/\b(?:first_name|last_name|email|username|password|phone)\s*[:=]/i', $val)) {
+            unset($fields[$nk]);
+            continue;
+        }
+        if (ai_client_is_blocked_name_token($val)) {
+            unset($fields[$nk]);
+            continue;
+        }
+        $max = $nk === 'first_name' ? 40 : 60;
+        if (!preg_match('/^[\p{L}][\p{L}\'\-\s]{0,' . $max . '}$/u', $val)) {
+            unset($fields[$nk]);
         }
     }
     if (!empty($fields['phone']) && !ai_client_is_plausible_phone((string) $fields['phone'])) {
@@ -645,9 +772,21 @@ function ai_client_sanitize_extracted_fields(array $fields): array
     if (!empty($fields['email']) && !filter_var((string) $fields['email'], FILTER_VALIDATE_EMAIL)) {
         unset($fields['email']);
     }
+    if (!empty($fields['username']) && preg_match('/\b(?:first_name|last_name|email|password|phone)\s*[:=]/i', (string) $fields['username'])) {
+        unset($fields['username']);
+    }
     foreach (['company_name', 'address', 'notes', 'assigned_lawyer'] as $k) {
-        if (!empty($fields[$k]) && ai_client_is_blocked_name_token((string) $fields[$k])) {
+        if (empty($fields[$k])) {
+            continue;
+        }
+        $val = trim((string) $fields[$k]);
+        if (preg_match('/\b(?:lawyer|notes|note|company|address|email|phone|username|password|first_name|last_name)\s*[:=]/i', $val, $m, PREG_OFFSET_CAPTURE)) {
+            $val = trim(substr($val, 0, (int) $m[0][1]));
+        }
+        if ($val === '' || ai_client_is_blocked_name_token($val)) {
             unset($fields[$k]);
+        } else {
+            $fields[$k] = $val;
         }
     }
     return $fields;
@@ -829,7 +968,6 @@ function ai_client_merge_fields(array $fields, array $incoming, bool $overwrite 
 function ai_client_parse_user_reply(string $message, array $fields, string $awaitingField = ''): array
 {
     $incoming = [];
-    $kv = ai_actions_parse_kv($message);
     $map = [
         'first' => 'first_name', 'firstname' => 'first_name', 'first_name' => 'first_name', 'prenom' => 'first_name',
         'last' => 'last_name', 'lastname' => 'last_name', 'last_name' => 'last_name', 'nom' => 'last_name', 'surname' => 'last_name',
@@ -841,11 +979,110 @@ function ai_client_parse_user_reply(string $message, array $fields, string $awai
         'company' => 'company_name', 'company_name' => 'company_name',
         'lawyer' => 'assigned_lawyer', 'assigned_lawyer' => 'assigned_lawyer',
         'notes' => 'notes', 'note' => 'notes',
+        'temporary_password' => 'password', 'temp_password' => 'password',
     ];
+    $resolveKey = static function (string $raw) use ($map): ?string {
+        $norm = strtolower(trim($raw));
+        $norm = preg_replace('/[\s\-]+/', '_', $norm) ?? $norm;
+        $norm = preg_replace('/_+/', '_', $norm) ?? $norm;
+        $norm = trim($norm, '_');
+        return $map[$norm] ?? ($map[str_replace('_', '', $norm)] ?? null);
+    };
+
+    // Known keys used to stop values that contain spaces (company, address, lawyer, notes…)
+    $stopKeys = 'first_name|last_name|first\s*name|last\s*name|email|username|password|phone|address|company|company_name|lawyer|assigned_lawyer|notes|note|prenom|nom|user|login|pass|tel|mobile|mail';
+    $embeddedKeyRe = '/\b(?:' . $stopKeys . ')\s*[:=]/i';
+
+    $cleanValue = static function (string $val) use ($embeddedKeyRe): string {
+        $val = trim($val, " \t\"'");
+        // Cut off any accidental trailing "lawyer=…" / "notes=…" glued into the value
+        if (preg_match($embeddedKeyRe, $val, $m, PREG_OFFSET_CAPTURE)) {
+            $val = trim(substr($val, 0, (int) $m[0][1]));
+        }
+        return trim($val, " \t\"',;");
+    };
+
+    $setField = static function (string $key, string $val) use (&$incoming, $cleanValue, $embeddedKeyRe): void {
+        $val = $cleanValue($val);
+        if ($key === '' || $val === '') {
+            return;
+        }
+        $prev = (string) ($incoming[$key] ?? '');
+        if ($prev !== '' && !preg_match($embeddedKeyRe, $prev) && preg_match($embeddedKeyRe, $val)) {
+            return;
+        }
+        // Prefer cleaner / longer real values
+        if ($prev !== '' && preg_match($embeddedKeyRe, $prev) && !preg_match($embeddedKeyRe, $val)) {
+            $incoming[$key] = $val;
+            return;
+        }
+        $incoming[$key] = $val;
+    };
+
+    // 1) key=value pairs — values may include spaces, but stop before the next known key=
+    if (preg_match_all(
+        '/\b(' . $stopKeys . ')\s*[:=]\s*(?:"([^"]*)"|\'([^\']*)\'|(.*?)(?=\s+(?:' . $stopKeys . ')\s*[:=]|$))/ius',
+        $message,
+        $rows,
+        PREG_SET_ORDER
+    )) {
+        foreach ($rows as $row) {
+            $key = $resolveKey($row[1]);
+            $val = $row[2] !== '' ? $row[2] : ($row[3] !== '' ? $row[3] : ($row[4] ?? ''));
+            if ($key) {
+                $setField($key, (string) $val);
+            }
+        }
+    }
+
+    // 2) Whole-line key=value when the line has a single pair (address/company with commas)
+    foreach (preg_split('/\R/u', $message) ?: [] as $line) {
+        $line = trim($line);
+        if ($line === '') {
+            continue;
+        }
+        $pairCount = preg_match_all('/\b(?:' . $stopKeys . ')\s*[:=]/iu', $line);
+        if ($pairCount !== 1) {
+            // Still split multi-pair lines explicitly
+            if ($pairCount > 1 && preg_match_all(
+                '/\b(' . $stopKeys . ')\s*[:=]\s*(?:"([^"]*)"|\'([^\']*)\'|(.*?)(?=\s+(?:' . $stopKeys . ')\s*[:=]|$))/ius',
+                $line,
+                $lineRows,
+                PREG_SET_ORDER
+            )) {
+                foreach ($lineRows as $row) {
+                    $key = $resolveKey($row[1]);
+                    $val = $row[2] !== '' ? $row[2] : ($row[3] !== '' ? $row[3] : ($row[4] ?? ''));
+                    if ($key) {
+                        $setField($key, (string) $val);
+                    }
+                }
+            }
+            continue;
+        }
+        if (preg_match('/^(' . $stopKeys . ')\s*[:=]\s*(.*)$/ius', $line, $m)) {
+            $key = $resolveKey($m[1]);
+            if (!$key) {
+                continue;
+            }
+            $whole = $cleanValue($m[2]);
+            $prev = trim((string) ($incoming[$key] ?? ''));
+            if ($prev === '' || (strlen($whole) > strlen($prev) && str_starts_with($whole, $prev)) || preg_match($embeddedKeyRe, $prev)) {
+                $setField($key, $whole);
+            }
+        }
+    }
+
+    // 3) Legacy kv helper only for missing keys, never accept embedded key junk
+    $kv = ai_actions_parse_kv($message);
     foreach ($kv as $k => $v) {
-        $key = $map[strtolower($k)] ?? null;
-        if ($key) {
-            $incoming[$key] = $v;
+        $key = $resolveKey((string) $k);
+        if (!$key || !empty($incoming[$key])) {
+            continue;
+        }
+        $val = $cleanValue((string) $v);
+        if ($val !== '' && !preg_match($embeddedKeyRe, $val)) {
+            $setField($key, $val);
         }
     }
 
@@ -862,28 +1099,55 @@ function ai_client_parse_user_reply(string $message, array $fields, string $awai
         }
     }
 
-    [$f, $l] = ai_actions_extract_person_name($message, 'client');
-    if ($f && $l) {
-        $incoming['first_name'] = $incoming['first_name'] ?? $f;
-        $incoming['last_name'] = $incoming['last_name'] ?? $l;
+    $trim = trim($message);
+    $looksLikeFormat = $incoming !== [] || (bool) preg_match('/[a-z][a-z0-9_\s]*\s*[:=]/iu', $trim);
+
+    if (!$looksLikeFormat) {
+        [$f, $l] = ai_actions_extract_person_name($message, 'client');
+        if ($f && $l) {
+            $incoming['first_name'] = $incoming['first_name'] ?? $f;
+            $incoming['last_name'] = $incoming['last_name'] ?? $l;
+        }
     }
 
-    // Single-field answer when wizard asked for one thing
-    $trim = trim($message);
-    if ($awaitingField !== '' && $trim !== '' && !str_contains($trim, "\n") && count($incoming) === 0) {
-        if ($awaitingField === 'email' && filter_var($trim, FILTER_VALIDATE_EMAIL)) {
+    // Only use single-field fallback when the message is NOT a format paste
+    if (!$looksLikeFormat && $awaitingField !== '' && $trim !== '' && empty($incoming[$awaitingField])) {
+        $onlyEmail = (bool) filter_var($trim, FILTER_VALIDATE_EMAIL);
+        $onlyPhone = (bool) preg_match('/^\+?[\d\s\-()]{7,}$/', $trim);
+        if ($awaitingField === 'email' && $onlyEmail) {
             $incoming['email'] = $trim;
-        } elseif ($awaitingField === 'password' || $awaitingField === 'username' || $awaitingField === 'phone'
-            || $awaitingField === 'address' || $awaitingField === 'company_name' || $awaitingField === 'notes'
-            || $awaitingField === 'assigned_lawyer' || $awaitingField === 'first_name' || $awaitingField === 'last_name') {
+        } elseif (in_array($awaitingField, ['first_name', 'last_name'], true) && !$onlyEmail && !$onlyPhone) {
+            if (preg_match('/^([A-Za-zÀ-ÖØ-öø-ÿ\'\-]+)\s+([A-Za-zÀ-ÖØ-öø-ÿ\'\-]+(?:\s+[A-Za-zÀ-ÖØ-öø-ÿ\'\-]+)?)$/u', $trim, $m)
+                && $awaitingField === 'first_name'
+                && empty($fields['last_name'])
+            ) {
+                $incoming['first_name'] = $m[1];
+                $incoming['last_name'] = $m[2];
+            } else {
+                $incoming[$awaitingField] = $trim;
+            }
+        } elseif (in_array($awaitingField, [
+            'password', 'username', 'phone', 'address', 'company_name', 'notes', 'assigned_lawyer',
+        ], true)) {
             $incoming[$awaitingField] = $trim;
         }
     }
 
-    // "Jean Dupont" alone when both names missing
-    if (empty($fields['first_name']) && empty($incoming['first_name']) && preg_match('/^([A-Za-zÀ-ÖØ-öø-ÿ\'\-]+)\s+([A-Za-zÀ-ÖØ-öø-ÿ\'\-]+)$/u', $trim, $m)) {
+    if (!$looksLikeFormat && empty($fields['first_name']) && empty($incoming['first_name'])
+        && preg_match('/^([A-Za-zÀ-ÖØ-öø-ÿ\'\-]+)\s+([A-Za-zÀ-ÖØ-öø-ÿ\'\-]+)$/u', $trim, $m)
+    ) {
         $incoming['first_name'] = $m[1];
         $incoming['last_name'] = $m[2];
+    }
+
+    // Final cleanup of any still-greedy values
+    foreach (array_keys($incoming) as $nk) {
+        $cleaned = $cleanValue((string) $incoming[$nk]);
+        if ($cleaned === '') {
+            unset($incoming[$nk]);
+        } else {
+            $incoming[$nk] = $cleaned;
+        }
     }
 
     return $incoming;
@@ -922,47 +1186,182 @@ function ai_client_field_label(string $key): string
 }
 
 /**
+ * Short how-to for the field currently being asked.
+ *
+ * @return array{example:string,how:string,also:string}
+ */
+function ai_client_field_guide(string $key): array
+{
+    return match ($key) {
+        'first_name' => [
+            'example' => 'Jean',
+            'how' => 'Reply with the first name only — example: Jean',
+            'also' => 'You can also send first and last together: Jean Dupont',
+        ],
+        'last_name' => [
+            'example' => 'Dupont',
+            'how' => 'Reply with the last name only — example: Dupont',
+            'also' => 'Or use: last_name=Dupont',
+        ],
+        'email' => [
+            'example' => 'jean@example.com',
+            'how' => 'Reply with a full email — example: jean@example.com',
+            'also' => 'Or use: email=jean@example.com',
+        ],
+        'username' => [
+            'example' => 'jean.dupont',
+            'how' => 'Reply with a login username — example: jean.dupont',
+            'also' => 'Letters, numbers, dots or underscores work.',
+        ],
+        'password' => [
+            'example' => 'Temp123!',
+            'how' => 'Reply with a temporary password — example: Temp123!',
+            'also' => 'The client can change it after first login.',
+        ],
+        'phone' => [
+            'example' => '51234567',
+            'how' => 'Reply with a phone number — example: 51234567',
+            'also' => 'Or use: phone=51234567',
+        ],
+        'address' => [
+            'example' => '12 Royal Road, Port Louis',
+            'how' => 'Reply with the full address in one message',
+            'also' => 'Or use: address=12 Royal Road, Port Louis',
+        ],
+        'company_name' => [
+            'example' => 'Acme Ltd',
+            'how' => 'Reply with the company name, or type skip',
+            'also' => 'Or use: company=Acme Ltd',
+        ],
+        'assigned_lawyer' => [
+            'example' => 'Marie Laurent',
+            'how' => 'Reply with the lawyer full name, or type skip',
+            'also' => 'Or use: lawyer=Marie Laurent',
+        ],
+        'notes' => [
+            'example' => 'Preferred contact: WhatsApp',
+            'how' => 'Reply with any notes, or type skip',
+            'also' => 'Or use: notes=…',
+        ],
+        default => [
+            'example' => '',
+            'how' => 'Reply with the value for this field',
+            'also' => '',
+        ],
+    };
+}
+
+/**
+ * Blank / prefilled paste template for admin client intake.
+ *
+ * @param array<string, string> $fields
+ */
+function ai_client_intake_format_template(array $fields = []): string
+{
+    $val = static function (string $key) use ($fields): string {
+        if ($key === 'password' && trim((string) ($fields[$key] ?? '')) !== '') {
+            return (string) $fields[$key];
+        }
+        return trim((string) ($fields[$key] ?? ''));
+    };
+
+    $lines = [
+        'first_name=' . $val('first_name'),
+        'last_name=' . $val('last_name'),
+        'email=' . $val('email'),
+        'username=' . $val('username'),
+        'password=' . $val('password'),
+        'phone=' . $val('phone'),
+        'address=' . $val('address'),
+        'company=' . $val('company_name'),
+        'lawyer=' . $val('assigned_lawyer'),
+        'notes=' . $val('notes'),
+    ];
+    return implode("\n", $lines);
+}
+
+/**
+ * Filled example admins can copy and edit.
+ */
+function ai_client_intake_format_example(): string
+{
+    return implode("\n", [
+        'first_name=Jean',
+        'last_name=Dupont',
+        'email=jean@example.com',
+        'username=jean.dupont',
+        'password=Temp123!',
+        'phone=51234567',
+        'address=12 Royal Road, Port Louis',
+        'company=Acme Ltd',
+        'lawyer=',
+        'notes=',
+    ]);
+}
+
+/**
  * @param array<string, mixed> $draft
  */
-function ai_client_intake_prompt(array $draft, string $extraNote = ''): string
+function ai_client_intake_prompt(array &$draft, string $extraNote = ''): string
 {
     $fields = $draft['fields'] ?? [];
     $missing = ai_client_missing_required($fields);
-    $lines = ["👤 **New client intake**"];
-    if ($extraNote !== '') {
-        $lines[] = $extraNote;
-    }
-    if (!empty($draft['doc_names'])) {
-        $lines[] = 'Documents used: ' . implode(', ', array_map('strval', $draft['doc_names']));
-    }
-    $lines[] = '';
-    $lines[] = '**Collected so far**';
-    foreach (array_merge(ai_client_required_fields(), ai_client_optional_fields()) as $key) {
+    $required = ai_client_required_fields();
+    $items = [];
+    foreach (array_merge($required, ai_client_optional_fields()) as $key) {
         $val = trim((string) ($fields[$key] ?? ''));
-        $mark = $val !== '' ? '✅' : (in_array($key, ai_client_required_fields(), true) ? '❌' : '○');
-        $lines[] = "{$mark} " . ai_client_field_label($key) . ($val !== '' ? ": {$val}" : ' — missing');
+        $isReq = in_array($key, $required, true);
+        $display = $val;
+        if ($key === 'password' && $val !== '') {
+            $display = 'Set';
+        }
+        $items[] = [
+            'key' => $key,
+            'label' => ai_client_field_label($key),
+            'value' => $display,
+            'required' => $isReq,
+            'status' => $val !== '' ? 'done' : 'missing',
+        ];
     }
+    $doneCount = count(array_filter($items, static fn(array $item): bool => $item['status'] === 'done'));
 
     if ($missing) {
-        $next = $missing[0];
-        $lines[] = '';
-        $lines[] = '**Required next:** please send **' . ai_client_field_label($next) . '**.';
-        $lines[] = 'You can reply with just the value, or several fields like:';
-        $lines[] = '`first_name=Jean last_name=Dupont email=jean@example.com phone=51234567 username=jean.dupont password=Temp123!`';
-        $lines[] = 'Attach any ID / intake form / letter and I will extract details automatically.';
-        $lines[] = 'Say **cancel** to abort.';
         $draft['awaiting'] = 'details';
-        $draft['awaiting_field'] = $next;
+        $draft['awaiting_field'] = '';
     } else {
-        $lines[] = '';
-        $lines[] = 'All required fields are ready.';
-        $lines[] = 'Reply **confirm** to create this client, or send corrections (e.g. `phone=5…`).';
-        $lines[] = 'Say **cancel** to abort.';
         $draft['awaiting'] = 'confirm';
         $draft['awaiting_field'] = '';
     }
 
-    return implode("\n", $lines);
+    $payload = [
+        'type' => 'client_intake',
+        'title' => 'New client intake',
+        'note' => $extraNote,
+        'docs' => array_values(array_map('strval', $draft['doc_names'] ?? [])),
+        'items' => $items,
+        'progress' => [
+            'done' => $doneCount,
+            'total' => count($items),
+            'required_left' => count($missing),
+        ],
+        'ready' => $missing === [],
+        'format' => $doneCount > 0
+            ? ai_client_intake_format_template($fields)
+            : ai_client_intake_format_example(),
+        'example' => ai_client_intake_format_example(),
+        'missing_labels' => array_map('ai_client_field_label', $missing),
+    ];
+
+    $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if ($extraNote !== '') {
+        $lead = $extraNote;
+    } elseif ($missing) {
+        $lead = 'Copy the format below, fill in the details, and paste it back in one message.';
+    } else {
+        $lead = 'All required fields are ready. Review the details, then reply **confirm** to create the client.';
+    }
+
+    return $lead . "\n\n[[AI_INTAKE_CARD]]\n" . $json . "\n[[/AI_INTAKE_CARD]]";
 }
 
 /**
@@ -1003,13 +1402,16 @@ function ai_action_create_client(
     }
 
     // Parse typed answers first (except pure confirm).
+    $awaitingField = (string) ($draft['awaiting_field'] ?? '');
     if (!$isConfirm || $startedFresh) {
-        $awaitingField = (string) ($draft['awaiting_field'] ?? '');
         $msgForParse = $message;
-        // Avoid treating command words as a person name.
-        $msgForParse = preg_replace('/\b(create|new|add|register|onboard|client|from|this|document|documents|extract|intake|please|a|the)\b/iu', ' ', $msgForParse) ?? $msgForParse;
+        $isFormatPaste = (bool) preg_match('/[a-z][a-z0-9_\s]*\s*[:=]/iu', $message);
+        // Avoid treating command words as a person name — but never rewrite a format paste.
+        if (!$isFormatPaste) {
+            $msgForParse = preg_replace('/\b(create|new|add|register|onboard|client|from|this|document|documents|extract|intake|please|a|the)\b/iu', ' ', $msgForParse) ?? $msgForParse;
+        }
         $fromMsg = ai_client_parse_user_reply($msgForParse, $fields, $awaitingField);
-        $fromText = ai_client_extract_fields_from_text($msgForParse, $pdo);
+        $fromText = $isFormatPaste ? [] : ai_client_extract_fields_from_text($msgForParse, $pdo);
         $fields = ai_client_merge_fields($fields, $fromText, true);
         $fields = ai_client_merge_fields($fields, $fromMsg, true);
     }
@@ -1025,13 +1427,13 @@ function ai_action_create_client(
         }
         $draft['doc_names'] = array_values(array_unique(array_merge($draft['doc_names'] ?? [], $names)));
 
-        if ($existingClient) {
+        if ($existingClient || (is_array($pack['document'] ?? null) && !empty($pack['document']['number']))) {
             ai_client_draft_clear($sessionId);
             $doc = $pack['document'] ?? null;
             if (is_array($doc) && !empty($doc['number'])) {
-                return ai_document_format_extract_reply($doc, $existingClient, $portal);
+                return ai_document_format_extract_reply($doc, is_array($existingClient) ? $existingClient : [], $portal);
             }
-            $cid = (int) $existingClient['id'];
+            $cid = (int) ($existingClient['id'] ?? 0);
             $url = ai_actions_portal_url('admin', 'clients.php?action=view&id=' . $cid);
             return $pack['note'] . "\n\n"
                 . "This person is **already registered** — a new client was not created.\n"
@@ -1060,9 +1462,6 @@ function ai_action_create_client(
 
     // Clear any garbage already sitting in the draft from earlier bad extracts
     $fields = ai_client_sanitize_extracted_fields($fields);
-    if (!empty($fields['username']) && (empty($fields['first_name']) || empty($fields['last_name']))) {
-        unset($fields['username']);
-    }
     if (!empty($fields['username']) && preg_match('/invoice|inv\.|receipt|rcp\./i', (string) $fields['username'])) {
         unset($fields['username']);
     }
@@ -1091,14 +1490,18 @@ function ai_action_create_client(
     }
 
     if ($startedFresh && !$attachments && trim($message) !== '' && ai_actions_wants($q, ['create client', 'new client', 'add client', 'nouveau client']) && !$fromMsg && empty(ai_client_extract_fields_from_text($message, $pdo))) {
-        $extraNote = 'Let\'s register a new client. I need every required field. You can type them or attach a document (ID, intake form, letter) and I will extract what I can.';
+        $extraNote = 'Paste the format below with the client details (required lines first). You can also attach an ID or intake form.';
+    } elseif (
+        $extraNote === ''
+        && !$startedFresh
+        && $missing
+        && $fromMsg
+    ) {
+        $still = array_map('ai_client_field_label', $missing);
+        $extraNote = 'Updated. Still missing: **' . implode(', ', $still) . '**. Fill those lines in the format and paste again.';
     }
 
     $reply = ai_client_intake_prompt($draft, $extraNote);
-    // Persist awaiting_field from prompt helper
-    $missing2 = ai_client_missing_required($draft['fields']);
-    $draft['awaiting'] = $missing2 ? 'details' : 'confirm';
-    $draft['awaiting_field'] = $missing2[0] ?? '';
     ai_client_draft_set($sessionId, $draft);
 
     return $reply;

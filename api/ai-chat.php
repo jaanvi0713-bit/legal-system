@@ -129,6 +129,12 @@ function generate_ai_reply(PDO $pdo, array $user, string $portal, string $messag
         if ($calc !== null) {
             return $calc;
         }
+
+        // Structured finance answers before any LLM (avoids generic "Open page" duplicates).
+        $paymentsReply = ai_try_recent_payments_reply($pdo, $user, $portal, $message);
+        if ($paymentsReply !== null) {
+            return $paymentsReply;
+        }
     }
 
     $context = build_portal_context($pdo, $user, $portal);
@@ -946,6 +952,109 @@ function build_portal_context(PDO $pdo, array $user, string $portal): string
         . "\n" . __('ai.context.your_invoices') . "\n" . (implode("\n", $invLines) ?: __('ai.context.none'));
 }
 
+/**
+ * Deterministic recent-payments answer (one clearly labelled receipt link per payment).
+ */
+function ai_try_recent_payments_reply(PDO $pdo, array $user, string $portal, string $message): ?string
+{
+    $q = mb_strtolower(trim($message));
+    $wants = str_contains($q, 'recent payment')
+        || str_contains($q, 'summarize recent payment')
+        || str_contains($q, 'règlements récents')
+        || str_contains($q, 'reglements recents')
+        || str_contains($q, 'synthèse des règlements')
+        || str_contains($q, 'synthese des reglements')
+        || (str_contains($q, 'payment') && (str_contains($q, 'recent') || str_contains($q, 'summar')));
+    if (!$wants) {
+        return null;
+    }
+
+    $uid = (int) ($user['id'] ?? 0);
+    $base = rtrim((string) app_config('url', ''), '/');
+    $portalUrl = static function (string $path) use ($base, $portal): string {
+        return $base . '/' . $portal . '/' . ltrim($path, '/');
+    };
+    $md = static function (string $label, string $url): string {
+        return '[' . $label . '](' . $url . ')';
+    };
+    $adminPortal = ($portal === 'admin' || $portal === 'staff');
+    $payHub = $portal === 'client'
+        ? $portalUrl('payments.php')
+        : ($adminPortal ? $base . '/admin/cases.php' : $portalUrl('cases.php'));
+    // Prefer a real payments list page when it exists for admin
+    if ($adminPortal && is_file(__DIR__ . '/../admin/payments.php')) {
+        $payHub = $base . '/admin/payments.php';
+    } elseif ($adminPortal) {
+        $payHub = $base . '/admin/index.php';
+    }
+
+    $receiptUrl = static function (int $paymentId) use ($portal, $portalUrl, $base, $adminPortal, $pdo): string {
+        if ($portal === 'client') {
+            return $portalUrl('receipt.php?id=' . $paymentId);
+        }
+        $caseId = 0;
+        try {
+            $stmt = $pdo->prepare(
+                'SELECT COALESCE(i.case_id, 0) FROM payments p
+                 LEFT JOIN invoices i ON i.id = p.invoice_id
+                 WHERE p.id = ?'
+            );
+            $stmt->execute([$paymentId]);
+            $caseId = (int) $stmt->fetchColumn();
+        } catch (Throwable $e) {
+            $caseId = 0;
+        }
+        if ($adminPortal) {
+            if ($caseId > 0) {
+                return $base . '/admin/cases.php?action=view&id=' . $caseId . '&tab=receipts';
+            }
+            return $base . '/admin/receipt.php?id=' . $paymentId;
+        }
+        if ($caseId > 0) {
+            return $portalUrl('cases.php?id=' . $caseId);
+        }
+        return $portalUrl('cases.php');
+    };
+
+    $list = [];
+    try {
+        if ($portal === 'admin' || $portal === 'staff') {
+            $stmt = $pdo->query(
+                'SELECT id, amount, paid_at, payment_method, receipt_number
+                 FROM payments ORDER BY paid_at DESC, id DESC LIMIT 8'
+            );
+            $list = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+        } elseif ($portal === 'client') {
+            $stmt = $pdo->prepare(
+                'SELECT id, amount, paid_at, payment_method, receipt_number
+                 FROM payments WHERE client_id=? ORDER BY paid_at DESC, id DESC LIMIT 8'
+            );
+            $stmt->execute([$uid]);
+            $list = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+    } catch (Throwable $e) {
+        $list = [];
+    }
+
+    if (!$list) {
+        return __('ai.offline.answer.payments_none') . "\n\n" . $md(__('ai.offline.view_all_payments'), $payHub);
+    }
+
+    $lines = [];
+    foreach ($list as $p) {
+        $method = ucwords(str_replace('_', ' ', (string) ($p['payment_method'] ?? 'other')));
+        $receiptNo = trim((string) ($p['receipt_number'] ?? ''));
+        if ($receiptNo === '') {
+            $receiptNo = 'RCP-' . (int) $p['id'];
+        }
+        $lines[] = '• **' . $receiptNo . '** — ' . money($p['amount']) . ' · ' . format_datetime($p['paid_at']) . ' · ' . $method
+            . "\n  " . $md(__('ai.offline.open_receipt') . ' ' . $receiptNo, $receiptUrl((int) $p['id']));
+    }
+
+    return __('ai.offline.answer.payments', ['list' => implode("\n", $lines)])
+        . "\n\n" . $md(__('ai.offline.view_all_payments'), $payHub);
+}
+
 function offline_ai_reply(PDO $pdo, array $user, string $portal, string $message, string $context, string $name, array $attachments = []): string
 {
     $q = mb_strtolower($message);
@@ -1560,33 +1669,12 @@ function offline_ai_reply(PDO $pdo, array $user, string $portal, string $message
         str_contains($q, 'recent payment') || str_contains($q, 'summarize recent payment')
         || str_contains($q, 'règlements récents') || str_contains($q, 'reglements recents')
         || str_contains($q, 'synthèse des règlements') || str_contains($q, 'synthese des reglements')
+        || (str_contains($q, 'payment') && (str_contains($q, 'recent') || str_contains($q, 'summar')))
     ) {
-        $payHub = $financeUrl();
-        if ($portal === 'admin') {
-            $list = $rows(
-                "SELECT id, amount, paid_at, payment_method FROM payments ORDER BY paid_at DESC, id DESC LIMIT 8"
-            );
-        } elseif ($portal === 'client') {
-            $list = $rows(
-                "SELECT id, amount, paid_at, payment_method FROM payments WHERE client_id=? ORDER BY paid_at DESC, id DESC LIMIT 8",
-                [$uid]
-            );
-        } else {
-            $list = [];
+        $payReply = ai_try_recent_payments_reply($pdo, $user, $portal, $message);
+        if ($payReply !== null) {
+            return $payReply;
         }
-        if (!$list) {
-            return $withLink(__('ai.offline.answer.payments_none'), __('ai.offline.open_page'), $payHub);
-        }
-        $lines = array_map(static function (array $p) use ($receiptUrl, $md): string {
-            $method = ucwords(str_replace('_', ' ', (string) ($p['payment_method'] ?? 'other')));
-            return '• ' . money($p['amount']) . ' · ' . format_datetime($p['paid_at']) . ' · ' . $method . "\n  "
-                . $md(__('ai.offline.open_page'), $receiptUrl((int) $p['id']));
-        }, $list);
-        return $withLink(
-            __('ai.offline.answer.payments', ['list' => implode("\n", $lines)]),
-            __('ai.offline.open_page'),
-            $payHub
-        );
     }
 
     if (
@@ -1618,11 +1706,11 @@ function offline_ai_reply(PDO $pdo, array $user, string $portal, string $message
         $lines = array_map(static function (array $i) use ($invoiceUrl, $md): string {
             return '• ' . $i['invoice_number'] . ' — ' . money($i['total']) . ' (' . translate_status($i['status']) . ')'
                 . ($i['due_date'] ? ' · due ' . format_date($i['due_date']) : '')
-                . "\n  " . $md(__('ai.offline.open_page'), $invoiceUrl((int) $i['id']));
+                . "\n  " . $md(__('ai.offline.open_invoice'), $invoiceUrl((int) $i['id']));
         }, $list);
         return $withLink(
             __('ai.offline.answer.overdue', ['list' => implode("\n", $lines)]),
-            __('ai.offline.open_page'),
+            __('ai.offline.view_all_invoices'),
             $invHub
         );
     }

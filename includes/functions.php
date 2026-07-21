@@ -26,7 +26,21 @@ function e(?string $value): string
  */
 function ai_format_message(?string $text): string
 {
-    $safe = e($text);
+    $raw = (string) ($text ?? '');
+    $extraHtml = '';
+
+    if (preg_match('/\[\[AI_INTAKE_CARD\]\]\s*([\s\S]*?)\s*\[\[\/AI_INTAKE_CARD\]\]/', $raw, $m)) {
+        $extraHtml .= ai_render_intake_card_html($m[1]);
+        $raw = str_replace($m[0], '', $raw);
+    }
+    if (preg_match('/\[\[AI_INVOICE_CARD\]\]\s*([\s\S]*?)\s*\[\[\/AI_INVOICE_CARD\]\]/', $raw, $m)) {
+        $raw = str_replace($m[0], '', $raw);
+    }
+    if (preg_match('/\[\[AI_DRAFT_CARD\]\]\s*([\s\S]*?)\s*\[\[\/AI_DRAFT_CARD\]\]/', $raw, $m)) {
+        $raw = str_replace($m[0], '', $raw);
+    }
+
+    $safe = e(trim($raw));
     // [label](url) → labelled link (open in same tab for in-app navigation)
     $safe = (string) preg_replace_callback(
         '~\[([^\]]+)\]\((https?://[^)\s]+)\)~i',
@@ -54,7 +68,108 @@ function ai_format_message(?string $text): string
         },
         $safe
     );
-    return nl2br($safe, false);
+    $safe = (string) preg_replace('/\*\*([^*]+)\*\*/', '<strong>$1</strong>', $safe);
+    $safe = str_replace(["\r\n", "\r"], "\n", $safe);
+    $parts = preg_split("/\n{2,}/", trim($safe)) ?: [];
+    $parts = array_values(array_filter($parts, static fn(string $part): bool => trim($part) !== ''));
+    $html = '';
+    foreach ($parts as $part) {
+        $html .= '<p>' . nl2br(trim($part), false) . '</p>';
+    }
+    return $html . $extraHtml;
+}
+
+function ai_render_intake_card_html(string $json): string
+{
+    $card = json_decode($json, true);
+    if (!is_array($card)) {
+        return '';
+    }
+    $items = is_array($card['items'] ?? null) ? $card['items'] : [];
+    $progress = is_array($card['progress'] ?? null) ? $card['progress'] : [];
+    $done = (int) ($progress['done'] ?? 0);
+    $total = (int) ($progress['total'] ?? count($items));
+    $ready = !empty($card['ready']);
+    $docs = is_array($card['docs'] ?? null) ? $card['docs'] : [];
+    $missingLabels = is_array($card['missing_labels'] ?? null) ? $card['missing_labels'] : [];
+    $title = (string) ($card['title'] ?? 'New client intake');
+    $format = (string) ($card['format'] ?? '');
+    $example = (string) ($card['example'] ?? '');
+
+    $row = static function (array $item): string {
+        $doneItem = ($item['status'] ?? '') === 'done';
+        $required = !empty($item['required']);
+        $state = $doneItem ? 'is-done' : ($required ? 'is-required' : 'is-optional');
+        $mark = $doneItem ? '✓' : ($required ? '!' : '·');
+        $value = $doneItem
+            ? e((string) ($item['value'] ?? 'Saved'))
+            : '<span class="ai-intake-missing">Missing</span>';
+        return '<div class="ai-intake-row ' . $state . '">'
+            . '<span class="ai-intake-mark" aria-hidden="true">' . $mark . '</span>'
+            . '<span class="ai-intake-label">' . e((string) ($item['label'] ?? $item['key'] ?? '')) . '</span>'
+            . '<span class="ai-intake-value">' . $value . '</span>'
+            . '</div>';
+    };
+
+    $requiredHtml = '';
+    $optionalHtml = '';
+    foreach ($items as $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+        if (!empty($item['required'])) {
+            $requiredHtml .= $row($item);
+        } else {
+            $optionalHtml .= $row($item);
+        }
+    }
+
+    $sections = '';
+    if ($requiredHtml !== '') {
+        $sections .= '<div class="ai-intake-section"><div class="ai-intake-section-label">Required</div>' . $requiredHtml . '</div>';
+    }
+    if ($optionalHtml !== '') {
+        $sections .= '<div class="ai-intake-section"><div class="ai-intake-section-label">Optional</div>' . $optionalHtml . '</div>';
+    }
+
+    if ($ready) {
+        $footer = '<div class="ai-intake-next is-ready">'
+            . '<span class="ai-intake-next-label">Ready to create</span>'
+            . '<strong>Reply <em>confirm</em> to create this client</strong>'
+            . '<p>To change a value, paste the format again with updates, or say <em>cancel</em>.</p>'
+            . '</div>';
+    } else {
+        $formatText = $format !== '' ? $format : $example;
+        $missingText = $missingLabels
+            ? '<p class="ai-intake-how">Still needed: ' . e(implode(', ', array_map('strval', $missingLabels))) . '</p>'
+            : '<p class="ai-intake-how">Required: First name, Last name, Email, Username, Temporary password</p>';
+        $footer = '<div class="ai-intake-next">'
+            . '<span class="ai-intake-next-label">Paste this format</span>'
+            . '<strong>Fill the lines below and send in one message</strong>'
+            . $missingText
+            . '<pre class="ai-intake-example ai-intake-format">' . e($formatText) . '</pre>'
+            . '<p class="ai-intake-hint">You can leave optional lines empty. Attach an ID / intake form if helpful. Say <em>cancel</em> to abort.</p>'
+            . '</div>';
+    }
+
+    $docsHtml = '';
+    if ($docs) {
+        $docsHtml = '<div class="ai-intake-docs">Documents: ';
+        foreach ($docs as $doc) {
+            $docsHtml .= '<span>' . e((string) $doc) . '</span>';
+        }
+        $docsHtml .= '</div>';
+    }
+
+    return '<div class="ai-intake-card" data-ai-intake-card>'
+        . '<div class="ai-intake-card-head"><div>'
+        . '<span class="ai-draft-eyebrow">Client intake</span>'
+        . '<strong>' . e($title) . '</strong>'
+        . '</div><div class="ai-intake-progress"><span>' . $done . '/' . $total . '</span></div></div>'
+        . $docsHtml
+        . '<div class="ai-intake-format-block">' . $footer . '</div>'
+        . $sections
+        . '</div>';
 }
 
 function redirect(string $url): void
@@ -2527,11 +2642,11 @@ function save_lawyer_availability_matrix(PDO $pdo, int $lawyerId, string $weekSt
     }
 }
 
-/** @return array{ok:bool, message:string} */
+/** @return array{ok:bool, message:string, code?:string} */
 function validate_lawyer_appointment_slot(PDO $pdo, ?int $lawyerId, string $scheduledAt, int $durationMinutes, ?int $excludeApptId = null, bool $forUpdate = false): array
 {
     if (!$lawyerId || $lawyerId <= 0) {
-        return ['ok' => true, 'message' => ''];
+        return ['ok' => true, 'message' => '', 'code' => ''];
     }
 
     ensure_lawyer_availability_slots_table($pdo);
@@ -2540,15 +2655,15 @@ function validate_lawyer_appointment_slot(PDO $pdo, ?int $lawyerId, string $sche
     $lawyer->execute([$lawyerId]);
     $lawyerRow = $lawyer->fetch();
     if (!$lawyerRow) {
-        return ['ok' => false, 'message' => __('error.availability.lawyer_not_found')];
+        return ['ok' => false, 'message' => __('error.availability.lawyer_not_found'), 'code' => 'lawyer_not_found'];
     }
     if (($lawyerRow['availability'] ?? '') === 'unavailable') {
-        return ['ok' => false, 'message' => __('error.availability.lawyer_unavailable')];
+        return ['ok' => false, 'message' => __('error.availability.lawyer_unavailable'), 'code' => 'lawyer_unavailable'];
     }
 
     $startTs = strtotime($scheduledAt);
     if (!$startTs) {
-        return ['ok' => false, 'message' => __('error.availability.invalid_datetime')];
+        return ['ok' => false, 'message' => __('error.availability.invalid_datetime'), 'code' => 'invalid_datetime'];
     }
 
     $durationMinutes = normalize_appointment_duration($durationMinutes);
@@ -2558,17 +2673,17 @@ function validate_lawyer_appointment_slot(PDO $pdo, ?int $lawyerId, string $sche
     for ($t = $startTs; $t < $endTs; $t += $step) {
         $dow = (int) date('N', $t);
         if ($dow === 7) {
-            return ['ok' => false, 'message' => __('error.availability.sunday')];
+            return ['ok' => false, 'message' => __('error.availability.sunday'), 'code' => 'sunday'];
         }
         if ($dow < 1 || $dow > 6) {
-            return ['ok' => false, 'message' => __('error.availability.outside_days')];
+            return ['ok' => false, 'message' => __('error.availability.outside_days'), 'code' => 'outside_days'];
         }
         $slotTime = date('H:i:00', $t);
         $weekStart = availability_week_start(date('Y-m-d', $t));
         $chk = $pdo->prepare('SELECT 1 FROM lawyer_availability_slots WHERE lawyer_id=? AND week_start=? AND day_of_week=? AND slot_time=?');
         $chk->execute([$lawyerId, $weekStart, $dow, $slotTime]);
         if (!$chk->fetch()) {
-            return ['ok' => false, 'message' => __('error.availability.not_available')];
+            return ['ok' => false, 'message' => __('error.availability.not_available'), 'code' => 'not_available'];
         }
     }
 
@@ -2583,10 +2698,23 @@ function validate_lawyer_appointment_slot(PDO $pdo, ?int $lawyerId, string $sche
     );
     $conflict->execute([$lawyerId, $excludeApptId, $excludeApptId, $endTs, $startTs]);
     if ($conflict->fetch()) {
-        return ['ok' => false, 'message' => __('error.availability.conflict')];
+        return ['ok' => false, 'message' => __('error.availability.conflict'), 'code' => 'conflict'];
     }
 
-    return ['ok' => true, 'message' => ''];
+    return ['ok' => true, 'message' => '', 'code' => ''];
+}
+
+/** Hard rules that must never be overridden (even by admin AI). */
+function availability_is_hard_block(?string $code): bool
+{
+    return in_array((string) $code, [
+        'sunday',
+        'outside_days',
+        'conflict',
+        'lawyer_unavailable',
+        'lawyer_not_found',
+        'invalid_datetime',
+    ], true);
 }
 
 /** @return list<array{value:string, label:string}> */

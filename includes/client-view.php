@@ -3,13 +3,13 @@
  * Read-only client detail — mirrors the admin client entity form.
  *
  * Expects: $client (users row), $viewBackUrl
- * Optional: $clientCases (array), $clientLawyerName, $viewMailto
+ * Optional: $clientLawyerName, $viewMailto, $viewCasesUrl
  */
 $client = $client ?? [];
 $viewBackUrl = $viewBackUrl ?? 'clients.php';
-$clientCases = $clientCases ?? null;
 $clientLawyerName = $clientLawyerName ?? '';
 $viewMailto = $viewMailto ?? '';
+$viewCasesUrl = $viewCasesUrl ?? '';
 $dash = __('common.em_dash');
 
 $field = static function (string $label, string $value, bool $full = false) use ($dash): void {
@@ -43,9 +43,14 @@ $area = static function (string $label, string $value) use ($dash): void {
         </div>
         <div class="entity-form-hero-side">
             <?= status_badge(!empty($client['is_active']) ? 'active' : 'pending') ?>
-            <?php if ($viewMailto !== ''): ?>
-            <a class="btn btn-primary btn-sm" href="mailto:<?= e($viewMailto) ?>"><?= __e('lawyer.clients.contact') ?></a>
-            <?php endif; ?>
+            <div class="entity-form-hero-actions">
+                <?php if ($viewCasesUrl !== ''): ?>
+                <a class="btn btn-secondary btn-sm" href="<?= e($viewCasesUrl) ?>"><?= __e('lawyer.dash.view_cases') ?></a>
+                <?php endif; ?>
+                <?php if ($viewMailto !== ''): ?>
+                <a class="btn btn-primary btn-sm" href="mailto:<?= e($viewMailto) ?>"><?= __e('lawyer.clients.contact') ?></a>
+                <?php endif; ?>
+            </div>
         </div>
     </div>
 
@@ -101,27 +106,3 @@ $area = static function (string $label, string $value) use ($dash): void {
     </div>
 </div>
 </div>
-
-<?php if (is_array($clientCases)): ?>
-<div class="panel" style="margin-top:1rem;">
-    <h2><?= __e('clients.cases') ?></h2>
-    <div class="table-wrap">
-        <table>
-            <thead><tr><th><?= __e('common.case_number') ?></th><th><?= __e('common.title') ?></th><th><?= __e('common.status') ?></th><th><?= __e('common.filed') ?></th></tr></thead>
-            <tbody>
-            <?php foreach ($clientCases as $c): ?>
-                <tr>
-                    <td><a href="cases.php?action=view&id=<?= (int) $c['id'] ?>"><?= e($c['case_number']) ?></a></td>
-                    <td><?= e(t_content($c['title'] ?? '')) ?></td>
-                    <td><?= status_badge((string) ($c['status'] ?? '')) ?></td>
-                    <td><?= e(format_date($c['filing_date'] ?? null)) ?></td>
-                </tr>
-            <?php endforeach; ?>
-            <?php if (!$clientCases): ?>
-                <tr><td colspan="4" class="muted"><?= __e('common.no_records') ?></td></tr>
-            <?php endif; ?>
-            </tbody>
-        </table>
-    </div>
-</div>
-<?php endif; ?>

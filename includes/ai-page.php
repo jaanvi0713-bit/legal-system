@@ -140,7 +140,6 @@ function render_ai_page(string $portal): void
             [__('ai.prompt.create_client'), __('ai.prompt.create_client_body'), 'user'],
             [__('ai.prompt.create_case'), __('ai.prompt.create_case_body'), 'briefcase'],
             [__('ai.prompt.schedule_appt'), __('ai.prompt.schedule_appt_body'), 'calendar'],
-            [__('ai.prompt.delete_appt'), __('ai.prompt.delete_appt_body'), 'alert'],
             [__('ai.prompt.draft_email'), __('ai.prompt.draft_email_body'), 'edit'],
             [__('ai.prompt.upload_doc'), __('ai.prompt.upload_doc_body'), 'doc'],
             [__('ai.prompt.total_revenue'), __('ai.prompt.total_revenue_body'), 'money'],
@@ -155,7 +154,6 @@ function render_ai_page(string $portal): void
         'lawyer' => [
             [__('ai.prompt.my_cases'), __('ai.prompt.my_cases_body'), 'briefcase'],
             [__('ai.prompt.schedule_appt'), __('ai.prompt.schedule_appt_lawyer_body'), 'calendar'],
-            [__('ai.prompt.delete_appt'), __('ai.prompt.delete_appt_body'), 'alert'],
             [__('ai.prompt.cancel_appt'), __('ai.prompt.cancel_appt_body'), 'alert'],
             [__('ai.prompt.draft_email'), __('ai.prompt.draft_email_body'), 'edit'],
             [__('ai.prompt.upload_doc'), __('ai.prompt.upload_doc_body'), 'doc'],
@@ -171,7 +169,6 @@ function render_ai_page(string $portal): void
             [__('ai.prompt.my_cases'), __('ai.prompt.my_cases_client_body'), 'briefcase'],
             [__('ai.prompt.schedule_appt'), __('ai.prompt.schedule_appt_client_body'), 'calendar'],
             [__('ai.prompt.cancel_appt'), __('ai.prompt.cancel_appt_body'), 'alert'],
-            [__('ai.prompt.delete_appt'), __('ai.prompt.delete_appt_body'), 'alert'],
             [__('ai.prompt.upload_doc'), __('ai.prompt.upload_doc_client_body'), 'doc'],
             [__('ai.prompt.draft_email'), __('ai.prompt.draft_email_client_body'), 'edit'],
             [__('ai.prompt.documents'), __('ai.prompt.documents_body'), 'doc'],
@@ -316,7 +313,7 @@ function render_ai_page(string $portal): void
                             </div>
                             <div class="ai-msg-stack">
                                 <div class="msg msg-assistant ai-bubble ai-welcome">
-                                    <div class="ai-msg-body" data-ai-raw="<?= e($welcome) ?>"><?= e($welcome) ?></div>
+                                    <div class="ai-msg-body" data-ai-raw="<?= e($welcome) ?>"><?= ai_format_message($welcome) ?></div>
                                 </div>
                                 <div class="ai-msg-actions">
                                     <button type="button" class="ai-msg-action" data-ai-copy title="<?= __e('ai.copy') ?>" aria-label="<?= __e('ai.copy') ?>">
