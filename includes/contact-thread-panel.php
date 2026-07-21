@@ -15,13 +15,15 @@ $threadId = (int) ($contactThread['id'] ?? 0);
 ?>
 <section class="panel contact-thread-view" id="contactThreadView">
     <div class="contact-thread-view-head">
-        <a class="contact-back-link" href="<?= e($contactBackUrl) ?>">← <?= __e('common.back') ?></a>
-        <div class="contact-thread-view-title">
-            <h2><?= e(t_stored($contactThread['subject'])) ?></h2>
-            <p class="muted">
-                <?= e(format_datetime($contactThread['created_at'])) ?> ·
-                <?= e(($contactThread['status'] ?? 'open') === 'closed' ? __('contact.status.closed') : __('contact.status.open')) ?>
-            </p>
+        <div class="contact-thread-view-intro">
+            <a class="contact-back-link" href="<?= e($contactBackUrl) ?>">← <?= __e('common.back') ?></a>
+            <div class="contact-thread-view-title">
+                <h2><?= e(t_stored($contactThread['subject'])) ?></h2>
+                <p class="muted">
+                    <?= e(format_datetime($contactThread['created_at'])) ?> ·
+                    <?= e(($contactThread['status'] ?? 'open') === 'closed' ? __('contact.status.closed') : __('contact.status.open')) ?>
+                </p>
+            </div>
         </div>
         <div class="contact-thread-view-actions">
             <?php if ($contactCanClose && ($contactThread['status'] ?? 'open') === 'open'): ?>
@@ -92,12 +94,12 @@ $threadId = (int) ($contactThread['id'] ?? 0);
         <?= csrf_field() ?>
         <input type="hidden" name="form_action" value="reply">
         <input type="hidden" name="thread_id" value="<?= $threadId ?>">
-        <div class="form-group full">
-            <label><?= __e('contact.reply') ?></label>
-            <textarea name="body" required rows="4" placeholder="<?= __e('contact.reply_ph') ?>"></textarea>
+        <div class="contact-reply-head">
+            <label for="contact-reply-body"><?= __e('contact.reply') ?></label>
+            <button class="btn btn-primary btn-sm" type="submit"><?= __e('contact.send_reply') ?></button>
         </div>
-        <div class="form-actions full">
-            <button class="btn btn-primary" type="submit"><?= __e('contact.send_reply') ?></button>
+        <div class="form-group full">
+            <textarea id="contact-reply-body" name="body" required rows="4" placeholder="<?= __e('contact.reply_ph') ?>"></textarea>
         </div>
     </form>
     <?php endif; ?>

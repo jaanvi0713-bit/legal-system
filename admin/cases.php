@@ -83,9 +83,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $caseId = (int) $pdo->lastInsertId();
             sync_case_lawyers($pdo, $caseId, $leadLawyerId, $associateIds, (int) current_user()['id']);
             flash('success', __('flash.case.created', ['number' => $caseNumber]));
-            if ($lawyerId) {
-                create_notification($pdo, (int) $lawyerId, 'New case assigned', $caseNumber . ' assigned to you.', 'case', '../lawyer/cases.php?id=' . $caseId, current_user()['id']);
-            }
+            notify_case_team(
+                $pdo,
+                $caseId,
+                'New case assigned',
+                $caseNumber . ' assigned to you.',
+                'case',
+                '../lawyer/cases.php?id=' . $caseId,
+                (int) current_user()['id']
+            );
             create_notification($pdo, $clientId, 'Case opened', 'Your case ' . $caseNumber . ' is now in the system.', 'case', '../client/cases.php', current_user()['id']);
         }
 
@@ -514,7 +520,7 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
                     </div>
                     <div class="form-group">
                         <label for="associate_lawyer_ids"><?= __e('cases.team.associates') ?></label>
-                        <select id="associate_lawyer_ids" name="associate_lawyer_ids[]" multiple size="1" style="min-height:2.5rem;height:auto;">
+                        <select id="associate_lawyer_ids" name="associate_lawyer_ids[]" multiple size="<?= max(3, min(6, count($lawyers) ?: 3)) ?>" class="case-associate-select">
                             <?php foreach ($lawyers as $l): ?>
                                 <?php if ($leadLawyerId === (int) $l['id']) { continue; } ?>
                                 <option value="<?= (int) $l['id'] ?>" <?= in_array((int) $l['id'], $associateLawyerIds, true) ? 'selected' : '' ?>><?= e(full_name($l)) ?></option>
@@ -1719,12 +1725,17 @@ if ($action === 'view' && $id) {
         <?php elseif ($tab === 'notes'): ?>
         <section class="panel case-hub-card">
             <h2><?= __e('cases.tab.notes') ?></h2>
-            <form method="post" class="form-grid entity-inline-form" style="margin-bottom:1rem;">
+            <form method="post" class="form-grid entity-inline-form case-add-note-form" style="margin-bottom:1rem;">
                 <?= csrf_field() ?><input type="hidden" name="form_action" value="note"><input type="hidden" name="case_id" value="<?= $id ?>">
-                <div class="form-group full"><label><?= __e('cases.add_note') ?></label><textarea name="note" required rows="2" placeholder="<?= __e('cases.add_note_ph') ?>"></textarea></div>
-                <div class="entity-field-row entity-field-row--2 entity-field-row--actions">
-                    <div class="form-group"><label><input type="checkbox" name="is_private" value="1"> <?= __e('cases.private_note') ?></label></div>
-                    <div class="form-group"><button class="btn btn-primary btn-sm" type="submit"><?= __e('cases.add_note') ?></button></div>
+                <div class="case-add-note-head">
+                    <label for="case-note-input"><?= __e('cases.add_note') ?></label>
+                    <button class="btn btn-primary btn-sm" type="submit"><?= __e('cases.add_note') ?></button>
+                </div>
+                <div class="form-group full">
+                    <textarea id="case-note-input" name="note" required rows="2" placeholder="<?= __e('cases.add_note_ph') ?>"></textarea>
+                </div>
+                <div class="form-group">
+                    <label><input type="checkbox" name="is_private" value="1"> <?= __e('cases.private_note') ?></label>
                 </div>
             </form>
             <div class="list-stack">

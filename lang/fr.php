@@ -955,7 +955,7 @@ return [
     'cases.team.lead' => 'Principal',
     'cases.team.lead_lawyer' => 'Avocat principal',
     'cases.team.associates' => 'Avocats associés',
-    'cases.team.associates_help' => 'Sélectionnez les autres avocats sur ce dossier. Les tâches peuvent être assignées à tout membre de l\'équipe.',
+    'cases.team.associates_help' => 'Maintenez Ctrl (Windows) ou Cmd (Mac) pour en sélectionner plusieurs. Ils apparaissent dans la liste d’assignation des tâches.',
     'cases.tasks.add' => 'Ajouter une tâche',
     'cases.tasks.assignee' => 'Avocat assigné',
     'cases.tasks.unassigned' => 'Non assignée',

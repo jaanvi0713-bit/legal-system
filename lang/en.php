@@ -971,7 +971,7 @@ return [
     'cases.team.lead' => 'Lead',
     'cases.team.lead_lawyer' => 'Lead lawyer',
     'cases.team.associates' => 'Associate lawyers',
-    'cases.team.associates_help' => 'Select additional lawyers on this case. Tasks can be assigned to any team member.',
+    'cases.team.associates_help' => 'Hold Ctrl (Windows) or Cmd (Mac) to select multiple lawyers. They appear in the task assignee list for this case.',
     'cases.tasks.add' => 'Add task',
     'cases.tasks.assignee' => 'Assigned lawyer',
     'cases.tasks.unassigned' => 'Unassigned',

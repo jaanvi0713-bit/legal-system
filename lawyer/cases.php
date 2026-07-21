@@ -85,12 +85,17 @@ if (($action === 'view' || $id > 0) && $id) {
     <div class="grid grid-2" style="margin-top:1rem;">
         <div class="panel">
             <h2><?= __e('lawyer.cases.case_notes') ?></h2>
-            <form method="post" class="form-grid entity-inline-form" style="margin-bottom:1rem;">
+            <form method="post" class="form-grid entity-inline-form case-add-note-form" style="margin-bottom:1rem;">
                 <?= csrf_field() ?><input type="hidden" name="form_action" value="note"><input type="hidden" name="case_id" value="<?= $id ?>">
-                <div class="form-group full"><label><?= __e('cases.add_note') ?></label><textarea name="note" required rows="2"></textarea></div>
-                <div class="entity-field-row entity-field-row--2 entity-field-row--actions">
-                    <div class="form-group"><label><input type="checkbox" name="is_private" value="1"> <?= __e('lawyer.cases.private') ?></label></div>
-                    <div class="form-group"><button class="btn btn-primary btn-sm" type="submit"><?= __e('cases.add_note') ?></button></div>
+                <div class="case-add-note-head">
+                    <label for="lawyer-case-note-input"><?= __e('cases.add_note') ?></label>
+                    <button class="btn btn-primary btn-sm" type="submit"><?= __e('cases.add_note') ?></button>
+                </div>
+                <div class="form-group full">
+                    <textarea id="lawyer-case-note-input" name="note" required rows="2"></textarea>
+                </div>
+                <div class="form-group">
+                    <label><input type="checkbox" name="is_private" value="1"> <?= __e('lawyer.cases.private') ?></label>
                 </div>
             </form>
             <div class="list-stack"><?php foreach ($notes as $n): ?><div class="list-item"><strong><?= e($n['author']) ?></strong><span class="muted"><?= e(format_datetime($n['created_at'])) ?></span><div><?= nl2br(e(t_content($n['note']))) ?></div></div><?php endforeach; ?></div>

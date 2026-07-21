@@ -1597,12 +1597,26 @@ function verify_csrf(): void
 
 function post(string $key, $default = null)
 {
-    return isset($_POST[$key]) ? trim((string) $_POST[$key]) : $default;
+    if (!array_key_exists($key, $_POST)) {
+        return $default;
+    }
+    $value = $_POST[$key];
+    if (is_array($value)) {
+        return $value;
+    }
+    return trim((string) $value);
 }
 
 function get(string $key, $default = null)
 {
-    return isset($_GET[$key]) ? trim((string) $_GET[$key]) : $default;
+    if (!array_key_exists($key, $_GET)) {
+        return $default;
+    }
+    $value = $_GET[$key];
+    if (is_array($value)) {
+        return $value;
+    }
+    return trim((string) $value);
 }
 
 /** @return list<string> */

@@ -150,8 +150,9 @@ $activeNav = 'contact';
 $bodyClass = 'page-contact';
 require __DIR__ . '/../includes/header.php';
 ?>
-<div class="contact-page">
+<div class="contact-page<?= ($threadId && $activeThread) ? ' contact-page--thread' : '' ?>">
     <?php if ($threadId && $activeThread): ?>
+        <div class="contact-thread-layout">
         <?php if ($contactClient): ?>
         <?php require __DIR__ . '/../includes/contact-client-info-card.php'; ?>
         <?php endif; ?>
@@ -165,6 +166,7 @@ require __DIR__ . '/../includes/header.php';
         $contactCurrentUserId = $uid;
         require __DIR__ . '/../includes/contact-thread-panel.php';
         ?>
+        </div>
     <?php else: ?>
     <?php if ($contactClient): ?>
     <?php require __DIR__ . '/../includes/contact-client-info-card.php'; ?>
