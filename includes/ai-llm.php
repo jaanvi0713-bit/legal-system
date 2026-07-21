@@ -102,7 +102,7 @@ function ai_llm_build_system_prompt(PDO $pdo, array $user, string $portal, strin
 
     $actionsHelp = "You can guide the user to run workspace actions with clear commands. "
         . "Supported actions (executed by the system when phrased correctly): "
-        . "create client, create lawyer, create case, schedule/cancel appointment, "
+        . "create client, create lawyer, create case, schedule/cancel/delete appointment (guided), "
         . "upload document to a case (with attachment), draft/send professional email, "
         . "assign lawyer, update case status. "
         . "If required details are missing, ask for them. Do not invent successful mutations.";

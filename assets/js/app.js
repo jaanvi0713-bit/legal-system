@@ -517,10 +517,95 @@ document.addEventListener('DOMContentLoaded', () => {
       + '</div></form></div>';
   };
 
+  const renderAiInvoiceCard = (card) => {
+    const esc = (v) => String(v == null ? '' : v)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+    const kind = (card && card.kind) === 'receipt' ? 'receipt' : 'invoice';
+    const client = (card && card.client) || {};
+    const links = (card && card.links) || {};
+    const lines = Array.isArray(card && card.lines) ? card.lines : [];
+    const meta = [];
+    if (card.status_label) meta.push('<span class="ai-inv-pill">' + esc(card.status_label) + '</span>');
+    if (card.payment_label) meta.push('<span class="ai-inv-pill is-pay">' + esc(card.payment_label) + '</span>');
+    if (card.issued_fmt) meta.push('<span class="ai-inv-meta">Issued ' + esc(card.issued_fmt) + '</span>');
+    if (card.due_fmt) meta.push('<span class="ai-inv-meta">Due ' + esc(card.due_fmt) + '</span>');
+
+    let lineRows = '';
+    if (lines.length) {
+      lineRows = lines.map((line) => (
+        '<tr>'
+        + '<td>' + esc(line.description || 'Service') + '</td>'
+        + '<td class="ai-inv-num">' + esc(line.quantity != null ? line.quantity : 1) + '</td>'
+        + '<td class="ai-inv-num">' + esc(line.unit_price_fmt || '') + '</td>'
+        + '<td class="ai-inv-num">' + esc(line.total_fmt || '') + '</td>'
+        + '</tr>'
+      )).join('');
+    } else {
+      lineRows = '<tr><td colspan="4" class="muted">No line items</td></tr>';
+    }
+
+    const detailBits = [];
+    if (client.name) detailBits.push(['Bill to', client.name]);
+    if (client.email) detailBits.push(['Email', client.email]);
+    if (client.phone) detailBits.push(['Phone', client.phone]);
+    if (client.company) detailBits.push(['Company', client.company]);
+    if (client.address) detailBits.push(['Address', client.address]);
+    if (card.case_number) {
+      detailBits.push(['Case', card.case_number + (card.case_title ? ' · ' + card.case_title : '')]);
+    }
+    if (card.invoice_number && kind === 'receipt') detailBits.push(['Invoice', card.invoice_number]);
+    if (card.method) detailBits.push(['Method', card.method]);
+    if (card.title) detailBits.push(['Title', card.title]);
+
+    const detailsHtml = detailBits.map(([label, value]) => (
+      '<div class="ai-inv-detail"><span>' + esc(label) + '</span><strong>' + esc(value) + '</strong></div>'
+    )).join('');
+
+    const actions = [];
+    if (links.document) {
+      actions.push('<a class="btn btn-primary btn-sm" href="' + esc(links.document) + '">' + (kind === 'receipt' ? 'Open receipt' : 'Open invoice') + '</a>');
+    }
+    if (links.client) {
+      actions.push('<a class="btn btn-secondary btn-sm" href="' + esc(links.client) + '">Open client</a>');
+    }
+    if (links.case) {
+      actions.push('<a class="btn btn-secondary btn-sm" href="' + esc(links.case) + '">Open case</a>');
+    }
+
+    return '<div class="ai-invoice-card" data-ai-invoice-card>'
+      + '<div class="ai-invoice-card-head">'
+      + '<div>'
+      + '<span class="ai-draft-eyebrow">' + (kind === 'receipt' ? 'Receipt details' : 'Invoice details') + '</span>'
+      + '<strong>' + esc(card.number || (kind === 'receipt' ? 'Receipt' : 'Invoice')) + '</strong>'
+      + (card.description ? '<p class="ai-inv-desc">' + esc(card.description) + '</p>' : '')
+      + '</div>'
+      + '<div class="ai-inv-head-meta">' + meta.join('') + '</div>'
+      + '</div>'
+      + (detailsHtml ? '<div class="ai-inv-details">' + detailsHtml + '</div>' : '')
+      + '<div class="ai-inv-table-wrap"><table class="ai-inv-table"><thead><tr>'
+      + '<th>Service</th><th>Qty</th><th>Net</th><th>Total</th>'
+      + '</tr></thead><tbody>' + lineRows + '</tbody></table></div>'
+      + '<div class="ai-inv-totals">'
+      + '<div><span>Subtotal</span><strong>' + esc(card.subtotal_fmt || '') + '</strong></div>'
+      + '<div><span>VAT</span><strong>' + esc(card.vat_fmt || '') + '</strong></div>'
+      + '<div class="is-grand"><span>Grand total</span><strong>' + esc(card.grand_fmt || '') + '</strong></div>'
+      + (kind === 'invoice' ? (
+        '<div><span>Paid</span><strong>' + esc(card.paid_fmt || '') + '</strong></div>'
+        + '<div><span>Balance</span><strong>' + esc(card.balance_fmt || '') + '</strong></div>'
+      ) : '')
+      + '</div>'
+      + (actions.length ? '<div class="ai-inv-actions">' + actions.join('') + '</div>' : '')
+      + '</div>';
+  };
+
   const renderAiHtml = (raw) => {
     const appBase = ((aiForm && aiForm.getAttribute('data-app-url')) || '').replace(/\/$/, '');
     let text = String(raw || '');
     let draftCardHtml = '';
+    let invoiceCardHtml = '';
     const cardMatch = text.match(/\[\[AI_DRAFT_CARD\]\]\s*([\s\S]*?)\s*\[\[\/AI_DRAFT_CARD\]\]/);
     if (cardMatch) {
       try {
@@ -529,6 +614,15 @@ document.addEventListener('DOMContentLoaded', () => {
         draftCardHtml = '';
       }
       text = text.replace(cardMatch[0], '').trim();
+    }
+    const invMatch = text.match(/\[\[AI_INVOICE_CARD\]\]\s*([\s\S]*?)\s*\[\[\/AI_INVOICE_CARD\]\]/);
+    if (invMatch) {
+      try {
+        invoiceCardHtml = renderAiInvoiceCard(JSON.parse(invMatch[1]));
+      } catch (e) {
+        invoiceCardHtml = '';
+      }
+      text = text.replace(invMatch[0], '[[AI_INVOICE_CARD_SLOT]]').trim();
     }
     let escaped = text
       .replace(/&/g, '&amp;')
@@ -551,7 +645,13 @@ document.addEventListener('DOMContentLoaded', () => {
       /(^|[\s>])(https?:\/\/[^\s<]+)/gi,
       (match, prefix, url) => prefix + linkHtml(url, url.replace(/[.,);]+$/, ''))
     );
-    return escaped.replace(/\n/g, '<br>') + draftCardHtml;
+    escaped = escaped.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    escaped = escaped.replace(/^• /gm, '&bull; ');
+    escaped = escaped.replace(/\n/g, '<br>');
+    if (invoiceCardHtml) {
+      escaped = escaped.replace('[[AI_INVOICE_CARD_SLOT]]', invoiceCardHtml);
+    }
+    return escaped + draftCardHtml;
   };
 
   const collectAiDraftFields = (form) => {
@@ -689,7 +789,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.querySelectorAll('#ai-messages .ai-msg-body[data-ai-raw]').forEach((el) => {
     const raw = el.getAttribute('data-ai-raw') || '';
-    if (raw.indexOf('[[AI_DRAFT_CARD]]') === -1) return;
+    if (raw.indexOf('[[AI_DRAFT_CARD]]') === -1 && raw.indexOf('[[AI_INVOICE_CARD]]') === -1) return;
     el.innerHTML = renderAiHtml(raw);
     bindAiDraftCard(el);
   });

@@ -5,6 +5,7 @@
 
 require_once __DIR__ . '/ai-client-intake.php';
 require_once __DIR__ . '/ai-client-case-intake.php';
+require_once __DIR__ . '/ai-appointment-intake.php';
 
 /**
  * Try to run a workspace mutation from the user message.
@@ -17,10 +18,10 @@ function ai_try_actions(PDO $pdo, array $user, string $portal, string $message, 
     $q = ai_actions_normalize($message);
 
     try {
-        // Drop abandoned client / client+case intakes so they stop swallowing later requests.
-        if ($sessionId > 0 && ai_actions_can_admin($portal, $user)) {
+        // Drop abandoned intakes so they stop swallowing later requests.
+        if ($sessionId > 0) {
             $draft = ai_client_draft_get($sessionId);
-            if ($draft && in_array(($draft['type'] ?? ''), ['client', 'client_case'], true)) {
+            if ($draft && in_array(($draft['type'] ?? ''), ['client', 'client_case', 'appointment', 'appointment_delete'], true)) {
                 $age = time() - (int) ($draft['updated_at'] ?? $draft['created_at'] ?? time());
                 if ($age > 1800) {
                     ai_client_draft_clear($sessionId);
@@ -28,8 +29,8 @@ function ai_try_actions(PDO $pdo, array $user, string $portal, string $message, 
                 }
             }
 
-            if ($draft && in_array(($draft['type'] ?? ''), ['client', 'client_case'], true)) {
-                if ($q !== '' && !ai_actions_wants($q, ['cancel appointment', 'cancel meeting', 'annuler rendez-vous', 'annuler rdv'])
+            if ($draft && in_array(($draft['type'] ?? ''), ['client', 'client_case'], true) && ai_actions_can_admin($portal, $user)) {
+                if ($q !== '' && !ai_actions_wants($q, ['cancel appointment', 'cancel meeting', 'annuler rendez-vous', 'annuler rdv', 'delete appointment'])
                     && (
                         $q === 'cancel' || $q === 'abort' || $q === 'annuler' || $q === 'stop'
                         || ai_actions_wants($q, ['cancel create client', 'cancel client', 'annuler client', 'stop intake', 'cancel case'])
@@ -67,12 +68,38 @@ function ai_try_actions(PDO $pdo, array $user, string $portal, string $message, 
             return ai_action_send_email($pdo, $user, $portal, $message, $q);
         }
 
-        if (ai_actions_wants($q, ['cancel appointment', 'cancel the appointment', 'annuler rendez-vous', 'annuler le rendez-vous', 'annuler rdv', 'cancel meeting'])) {
-            return ai_action_cancel_appointment($pdo, $user, $portal, $message, $q);
+        // Resume appointment wizards before other intents.
+        if ($sessionId > 0) {
+            $draft = ai_client_draft_get($sessionId);
+            if ($draft && ($draft['type'] ?? '') === 'appointment_delete' && ai_appt_delete_message_is_reply($message, $q, $draft)) {
+                return ai_action_delete_appointment_guided($pdo, $user, $portal, $message, $q, $sessionId, (string) ($draft['mode'] ?? 'delete'));
+            }
+            if ($draft && ($draft['type'] ?? '') === 'appointment' && ai_appt_message_is_reply($message, $q, $draft)) {
+                return ai_action_schedule_appointment_guided($pdo, $user, $portal, $message, $q, $sessionId);
+            }
         }
 
-        if (ai_actions_wants($q, ['schedule appointment', 'book appointment', 'create appointment', 'new appointment', 'prendre rendez-vous', 'planifier rendez-vous', 'creer rendez-vous', 'créer rendez-vous', 'fixer un rendez-vous', 'schedule a meeting', 'book a meeting'])) {
-            return ai_action_schedule_appointment($pdo, $user, $portal, $message, $q);
+        if (ai_actions_wants($q, [
+            'delete appointment', 'delete the appointment', 'remove appointment', 'supprimer rendez-vous', 'supprimer le rendez-vous',
+            'delete meeting', 'remove meeting',
+        ])) {
+            return ai_action_delete_appointment_guided($pdo, $user, $portal, $message, $q, $sessionId, 'delete');
+        }
+
+        if (ai_actions_wants($q, [
+            'cancel appointment', 'cancel the appointment', 'annuler rendez-vous', 'annuler le rendez-vous', 'annuler rdv',
+            'cancel meeting', 'cancel my appointment', 'cancel my next appointment',
+        ])) {
+            return ai_action_delete_appointment_guided($pdo, $user, $portal, $message, $q, $sessionId, 'cancel');
+        }
+
+        if (ai_actions_wants($q, [
+            'schedule appointment', 'book appointment', 'create appointment', 'new appointment',
+            'prendre rendez-vous', 'planifier rendez-vous', 'creer rendez-vous', 'créer rendez-vous',
+            'fixer un rendez-vous', 'schedule a meeting', 'book a meeting', 'schedule an appointment',
+            'book an appointment', 'set an appointment', 'make an appointment',
+        ])) {
+            return ai_action_schedule_appointment_guided($pdo, $user, $portal, $message, $q, $sessionId);
         }
 
         if (ai_actions_wants($q, ['create case', 'new case', 'open case', 'add case', 'creer dossier', 'créer dossier', 'nouveau dossier', 'ouvrir un dossier', 'create a case', 'create a new case', 'create new case', 'create client and case', 'new client and case'])) {
@@ -248,25 +275,46 @@ function ai_actions_extract_phone(string $message): ?string
 /**
  * @return array{0:?string,1:?string} first, last
  */
-function ai_actions_extract_person_name(string $message, string $afterHint = ''): array
+function ai_actions_extract_person_name(string $message, string $afterHint = '', bool $strictPlausible = true): array
 {
-    $patterns = [
-        '/(?:client|lawyer|avocat|named?|called|pour|for)\s+([A-ZÀ-ÖØ-Ý][\w\'\-]+)\s+([A-ZÀ-ÖØ-Ý][\w\'\-]+)/u',
-        '/(?:first(?:\s*name)?|prenom|prénom)\s*[:=]?\s*([A-Za-zÀ-ÖØ-öø-ÿ\'\-]+).*(?:last(?:\s*name)?|nom)\s*[:=]?\s*([A-Za-zÀ-ÖØ-öø-ÿ\'\-]+)/iu',
-        '/\b([A-ZÀ-ÖØ-Ý][\w\'\-]+)\s+([A-ZÀ-ÖØ-Ý][\w\'\-]+)\b/u',
-    ];
+    $nameTok = '[A-Za-zÀ-ÖØ-öø-ÿ][\w\'\-]*';
+    // Stop last-name capture before role words / conjunctions.
+    $stop = '(?=\s+(?:and|et|with|avec|lawyer|avocat|client|title|titre|at|à|a|on|for|pour|tomorrow|today|demain|next|,|$))';
+
+    $patterns = [];
     if ($afterHint !== '') {
-        array_unshift($patterns, '/' . preg_quote($afterHint, '/') . '\s+([A-ZÀ-ÖØ-Ý][\w\'\-]+)\s+([A-ZÀ-ÖØ-Ý][\w\'\-]+)/iu');
+        $patterns[] = '/' . preg_quote($afterHint, '/') . '\s+(' . $nameTok . ')\s+(' . $nameTok . '(?:\s+' . $nameTok . ')?)' . $stop . '/iu';
+        $patterns[] = '/' . preg_quote($afterHint, '/') . '\s*[:=]\s*(' . $nameTok . ')\s+(' . $nameTok . '(?:\s+' . $nameTok . ')?)' . $stop . '/iu';
     }
+    $patterns[] = '/(?:client|lawyer|avocat|named?|called|pour|for)\s+(' . $nameTok . ')\s+(' . $nameTok . ')' . $stop . '/iu';
+    $patterns[] = '/(?:first(?:\s*name)?|prenom|prénom)\s*[:=]?\s*([A-Za-zÀ-ÖØ-öø-ÿ\'\-]+).*(?:last(?:\s*name)?|nom)\s*[:=]?\s*([A-Za-zÀ-ÖØ-öø-ÿ\'\-]+)/iu';
+    $patterns[] = '/\b([A-ZÀ-ÖØ-Ý][\w\'\-]+)\s+([A-ZÀ-ÖØ-Ý][\w\'\-]+)\b/u';
+
     foreach ($patterns as $p) {
-        if (preg_match($p, $message, $m)) {
-            $f = trim($m[1]);
-            $l = trim($m[2]);
-            if (function_exists('ai_client_is_plausible_person_name') && !ai_client_is_plausible_person_name($f, $l)) {
+        if (!preg_match($p, $message, $m)) {
+            continue;
+        }
+        $f = trim($m[1] ?? '');
+        $l = trim($m[2] ?? '');
+        if ($f === '' || $l === '') {
+            continue;
+        }
+        // Drop trailing junk words accidentally captured
+        $l = preg_replace('/\s+(and|et|with|avec|lawyer|avocat|client|title|titre)$/iu', '', $l) ?? $l;
+        $l = trim($l);
+        if ($l === '') {
+            continue;
+        }
+        $blockedPair = ['schedule appointment', 'create client', 'new appointment', 'open case', 'case review', 'delete appointment', 'cancel appointment'];
+        if (in_array(strtolower($f . ' ' . $l), $blockedPair, true)) {
+            continue;
+        }
+        if ($strictPlausible && function_exists('ai_client_is_plausible_person_name') && !ai_client_is_plausible_person_name($f, explode(' ', $l)[0])) {
+            if ($afterHint === '') {
                 continue;
             }
-            return [$f, $l];
         }
+        return [$f, $l];
     }
     $kv = ai_actions_parse_kv($message);
     if (!empty($kv['first']) || !empty($kv['first_name'])) {
@@ -276,6 +324,217 @@ function ai_actions_extract_person_name(string $message, string $afterHint = '')
         ];
     }
     return [null, null];
+}
+
+/**
+ * Flexible user lookup by name / email / partial full name.
+ */
+function ai_actions_find_user_by_name(PDO $pdo, string $role, ?string $first, ?string $last, ?string $email = null): ?array
+{
+    if ($email) {
+        $stmt = $pdo->prepare('SELECT * FROM users WHERE role=? AND LOWER(email)=? LIMIT 1');
+        $stmt->execute([$role, strtolower($email)]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row) {
+            return $row;
+        }
+    }
+
+    $first = trim((string) $first);
+    $last = trim((string) $last);
+    if ($first === '' && $last === '') {
+        return null;
+    }
+
+    if ($first !== '' && $last !== '') {
+        $stmt = $pdo->prepare('SELECT * FROM users WHERE role=? AND LOWER(first_name)=? AND LOWER(last_name)=? ORDER BY id DESC LIMIT 1');
+        $stmt->execute([$role, strtolower($first), strtolower($last)]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row) {
+            return $row;
+        }
+
+        // Full name LIKE (handles multi-word last names and slight spacing)
+        $full = strtolower(trim($first . ' ' . $last));
+        $stmt = $pdo->prepare(
+            "SELECT * FROM users
+             WHERE role=?
+               AND (
+                 CONCAT(LOWER(TRIM(first_name)), ' ', LOWER(TRIM(last_name))) = ?
+                 OR CONCAT(LOWER(TRIM(first_name)), ' ', LOWER(TRIM(last_name))) LIKE ?
+                 OR LOWER(TRIM(company_name)) LIKE ?
+                 OR LOWER(TRIM(username)) LIKE ?
+               )
+             ORDER BY id DESC LIMIT 1"
+        );
+        $like = '%' . $full . '%';
+        $stmt->execute([$role, $full, $like, $like, $like]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row) {
+            return $row;
+        }
+
+        // Swap first/last if user typed "Carter James"
+        $stmt = $pdo->prepare('SELECT * FROM users WHERE role=? AND LOWER(first_name)=? AND LOWER(last_name)=? ORDER BY id DESC LIMIT 1');
+        $stmt->execute([$role, strtolower($last), strtolower($first)]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row) {
+            return $row;
+        }
+    }
+
+    // First-name-only unique match
+    if ($first !== '' && $last === '') {
+        $stmt = $pdo->prepare('SELECT * FROM users WHERE role=? AND LOWER(first_name)=? ORDER BY id DESC LIMIT 2');
+        $stmt->execute([$role, strtolower($first)]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if (count($rows) === 1) {
+            return $rows[0];
+        }
+    }
+
+    // Last-name-only unique match
+    if ($last !== '' && $first === '') {
+        $stmt = $pdo->prepare('SELECT * FROM users WHERE role=? AND LOWER(last_name)=? ORDER BY id DESC LIMIT 2');
+        $stmt->execute([$role, strtolower($last)]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if (count($rows) === 1) {
+            return $rows[0];
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Resolve a user from free text (whole reply or fragment).
+ */
+function ai_actions_resolve_user(PDO $pdo, string $role, string $message, string $hint = ''): ?array
+{
+    $trim = trim($message);
+    if ($trim === '') {
+        return null;
+    }
+
+    $email = ai_actions_extract_email($trim);
+    if ($email) {
+        $byEmail = ai_actions_find_user_by_name($pdo, $role, null, null, $email);
+        if ($byEmail) {
+            return $byEmail;
+        }
+    }
+
+    $hint = $hint !== '' ? $hint : $role;
+
+    // Prefer role-hinted name extraction first ("client Raj Sharma and lawyer …")
+    [$f, $l] = ai_actions_extract_person_name($trim, $hint, false);
+    if ($f || $l) {
+        $found = ai_actions_find_user_by_name($pdo, $role, $f, $l, $email);
+        if ($found) {
+            return $found;
+        }
+    }
+
+    // Strip leading role words for plain replies ("Raj Sharma")
+    $clean = preg_replace('/^(the\s+)?(client|lawyer|avocat|for|with|to)\s+/iu', '', $trim) ?? $trim;
+    $clean = trim($clean, " \t\"'");
+    // If message still contains "and lawyer …", cut at that boundary for client lookups
+    if ($role === 'client') {
+        $clean = preg_replace('/\s+(?:and\s+)?(?:lawyer|avocat)\b.*$/iu', '', $clean) ?? $clean;
+    }
+    if ($role === 'lawyer') {
+        $clean = preg_replace('/^.*?\b(?:lawyer|avocat)\s+/iu', '', $clean) ?? $clean;
+        $clean = preg_replace('/\s+(?:and\s+)?(?:client|title|titre|at|on)\b.*$/iu', '', $clean) ?? $clean;
+    }
+    $clean = trim($clean);
+
+    if ($clean !== '' && strcasecmp($clean, $trim) !== 0) {
+        $parts = preg_split('/\s+/', $clean) ?: [];
+        if (count($parts) >= 2) {
+            $found = ai_actions_find_user_by_name($pdo, $role, $parts[0], implode(' ', array_slice($parts, 1)), $email);
+            if ($found) {
+                return $found;
+            }
+        }
+        $found = ai_actions_resolve_user_direct($pdo, $role, $clean);
+        if ($found) {
+            return $found;
+        }
+    }
+
+    $found = ai_actions_resolve_user_direct($pdo, $role, $clean !== '' ? $clean : $trim);
+    if ($found) {
+        return $found;
+    }
+
+    // Scan candidate name phrases
+    if (preg_match_all('/\b([A-Za-zÀ-ÖØ-öø-ÿ][\w\'\-]*(?:\s+[A-Za-zÀ-ÖØ-öø-ÿ][\w\'\-]*){1,2})\b/u', $clean !== '' ? $clean : $trim, $matches)) {
+        foreach ($matches[1] as $candidate) {
+            $low = strtolower($candidate);
+            if (preg_match('/\b(schedule|appointment|create|delete|cancel|lawyer|client|avocat|title|tomorrow|today)\b/u', $low)) {
+                continue;
+            }
+            $parts = preg_split('/\s+/', $candidate) ?: [];
+            if (count($parts) < 2) {
+                continue;
+            }
+            $found = ai_actions_find_user_by_name($pdo, $role, $parts[0], implode(' ', array_slice($parts, 1)));
+            if ($found) {
+                return $found;
+            }
+        }
+    }
+
+    return null;
+}
+
+function ai_actions_resolve_user_direct(PDO $pdo, string $role, string $clean): ?array
+{
+    $needle = strtolower(trim($clean));
+    if ($needle === '') {
+        return null;
+    }
+    $like = '%' . $needle . '%';
+    $stmt = $pdo->prepare(
+        "SELECT * FROM users
+         WHERE role=?
+           AND (
+             CONCAT(LOWER(TRIM(first_name)), ' ', LOWER(TRIM(last_name))) = ?
+             OR CONCAT(LOWER(TRIM(first_name)), ' ', LOWER(TRIM(last_name))) LIKE ?
+             OR LOWER(TRIM(first_name)) = ?
+             OR LOWER(TRIM(last_name)) = ?
+             OR LOWER(TRIM(company_name)) LIKE ?
+             OR LOWER(TRIM(email)) = ?
+             OR LOWER(TRIM(username)) LIKE ?
+           )
+         ORDER BY
+           CASE
+             WHEN CONCAT(LOWER(TRIM(first_name)), ' ', LOWER(TRIM(last_name))) = ? THEN 0
+             WHEN CONCAT(LOWER(TRIM(first_name)), ' ', LOWER(TRIM(last_name))) LIKE ? THEN 1
+             ELSE 2
+           END,
+           id DESC
+         LIMIT 5"
+    );
+    $stmt->execute([$role, $needle, $like, $needle, $needle, $like, $needle, $like, $needle, $like]);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    if (!$rows) {
+        return null;
+    }
+    if (count($rows) === 1) {
+        return $rows[0];
+    }
+    foreach ($rows as $row) {
+        $full = strtolower(trim(($row['first_name'] ?? '') . ' ' . ($row['last_name'] ?? '')));
+        if ($full === $needle) {
+            return $row;
+        }
+    }
+    $names = array_unique(array_map(static fn($r) => strtolower(trim(($r['first_name'] ?? '') . ' ' . ($r['last_name'] ?? ''))), $rows));
+    if (count($names) === 1) {
+        return $rows[0];
+    }
+    return null;
 }
 
 function ai_actions_extract_quoted(string $message, array $labels = ['title', 'subject', 'case']): ?string
@@ -307,7 +566,36 @@ function ai_actions_extract_datetime(string $message): ?string
     }
 
     if (preg_match('/\b(20\d{2}-\d{2}-\d{2})[ T](\d{1,2}:\d{2})(?::\d{2})?\b/', $message, $m)) {
-        return $m[1] . ' ' . (strlen($m[2]) === 4 ? '0' . $m[2] : $m[2]) . ':00';
+        $t = $m[2];
+        if (substr_count($t, ':') === 1) {
+            $t .= ':00';
+        }
+        return $m[1] . ' ' . (strlen(explode(':', $t)[0]) === 1 ? '0' . $t : $t);
+    }
+
+    $time = null;
+    if (preg_match('/\b(?:at|a|à)\s*(\d{1,2})(?:[:hH.](\d{2}))?\s*(am|pm)?\b/iu', $message, $m)
+        || preg_match('/\b(\d{1,2})(?:[:hH.](\d{2}))\s*(am|pm)\b/iu', $message, $m)
+        || preg_match('/\b(\d{1,2})\s*(am|pm)\b/iu', $message, $m)) {
+        $h = (int) $m[1];
+        $min = isset($m[2]) && $m[2] !== '' && !in_array(strtolower((string) $m[2]), ['am', 'pm'], true)
+            ? (int) $m[2]
+            : 0;
+        $ampm = strtolower((string) ($m[3] ?? ''));
+        if ($ampm === '' && isset($m[2]) && in_array(strtolower((string) $m[2]), ['am', 'pm'], true)) {
+            $ampm = strtolower((string) $m[2]);
+            $min = 0;
+        }
+        if ($ampm === 'pm' && $h < 12) {
+            $h += 12;
+        }
+        if ($ampm === 'am' && $h === 12) {
+            $h = 0;
+        }
+        $time = sprintf('%02d:%02d', $h, $min);
+    }
+    if ($time === null) {
+        $time = '10:00';
     }
 
     $rel = null;
@@ -319,22 +607,22 @@ function ai_actions_extract_datetime(string $message): ?string
         $rel = 'next ' . strtolower($m[1]);
     }
 
-    $time = '10:00';
-    if (preg_match('/\b(?:at|a|à)\s*(\d{1,2})(?:[:hH](\d{2}))?\s*(am|pm)?\b/iu', $message, $m)) {
-        $h = (int) $m[1];
-        $min = isset($m[2]) && $m[2] !== '' ? (int) $m[2] : 0;
-        $ampm = strtolower($m[3] ?? '');
-        if ($ampm === 'pm' && $h < 12) {
-            $h += 12;
-        }
-        if ($ampm === 'am' && $h === 12) {
-            $h = 0;
-        }
-        $time = sprintf('%02d:%02d', $h, $min);
-    }
-
     if ($rel !== null) {
         $ts = strtotime($rel . ' ' . $time);
+        if ($ts !== false) {
+            return date('Y-m-d H:i:s', $ts);
+        }
+    }
+
+    $monthRe = 'jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?';
+    $rawDate = null;
+    if (preg_match('/\b(\d{1,2})\s+(' . $monthRe . ')\s+(20\d{2})\b/iu', $message, $m)) {
+        $rawDate = $m[1] . ' ' . $m[2] . ' ' . $m[3];
+    } elseif (preg_match('/\b(' . $monthRe . ')\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(20\d{2})\b/iu', $message, $m)) {
+        $rawDate = $m[1] . ' ' . $m[2] . ' ' . $m[3];
+    }
+    if ($rawDate !== null) {
+        $ts = strtotime($rawDate . ' ' . $time);
         if ($ts !== false) {
             return date('Y-m-d H:i:s', $ts);
         }
@@ -347,34 +635,6 @@ function ai_actions_extract_datetime(string $message): ?string
         }
     }
 
-    return null;
-}
-
-function ai_actions_find_user_by_name(PDO $pdo, string $role, ?string $first, ?string $last, ?string $email = null): ?array
-{
-    if ($email) {
-        $stmt = $pdo->prepare('SELECT * FROM users WHERE role=? AND LOWER(email)=? LIMIT 1');
-        $stmt->execute([$role, strtolower($email)]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        if ($row) {
-            return $row;
-        }
-    }
-    if ($first && $last) {
-        $stmt = $pdo->prepare('SELECT * FROM users WHERE role=? AND LOWER(first_name)=? AND LOWER(last_name)=? ORDER BY id DESC LIMIT 1');
-        $stmt->execute([$role, strtolower($first), strtolower($last)]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        if ($row) {
-            return $row;
-        }
-        $stmt = $pdo->prepare("SELECT * FROM users WHERE role=? AND (CONCAT(LOWER(first_name),' ',LOWER(last_name)) LIKE ? OR LOWER(company_name) LIKE ?) ORDER BY id DESC LIMIT 1");
-        $like = '%' . strtolower($first . ' ' . $last) . '%';
-        $stmt->execute([$role, $like, $like]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        if ($row) {
-            return $row;
-        }
-    }
     return null;
 }
 

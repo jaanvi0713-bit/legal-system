@@ -169,13 +169,14 @@ function ai_client_attachments_text(array $attachments): string
 
 /**
  * @param array<int, array<string, mixed>> $attachments
- * @return array{fields: array<string,string>, note: string, existing_client: ?array}
+ * @return array{fields: array<string,string>, note: string, existing_client: ?array, document: ?array}
  */
 function ai_client_extract_from_attachments(PDO $pdo, array $attachments): array
 {
     $fields = [];
     $notes = [];
     $existing = null;
+    $document = null;
 
     $haystack = '';
     foreach ($attachments as $att) {
@@ -187,11 +188,13 @@ function ai_client_extract_from_attachments(PDO $pdo, array $attachments): array
         $existing = $system['user'];
         $fields = array_merge($fields, $system['fields']);
         $notes[] = $system['note'];
+        $document = $system['document'] ?? null;
         // System invoice/receipt match is enough — skip slow LLM extraction.
         return [
             'fields' => ai_client_sanitize_extracted_fields($fields),
             'note' => implode(' ', $notes),
             'existing_client' => $existing,
+            'document' => is_array($document) ? $document : null,
         ];
     }
 
@@ -227,13 +230,14 @@ function ai_client_extract_from_attachments(PDO $pdo, array $attachments): array
         'fields' => $fields,
         'note' => implode(' ', $notes),
         'existing_client' => $existing,
+        'document' => null,
     ];
 }
 
 /**
  * Resolve client from Lexora invoice/receipt numbers in filename or text.
  *
- * @return array{user:array<string,mixed>,fields:array<string,string>,note:string}|null
+ * @return array{user:array<string,mixed>,fields:array<string,string>,note:string,document:?array}|null
  */
 function ai_client_lookup_system_document(PDO $pdo, string $haystack): ?array
 {
@@ -250,28 +254,50 @@ function ai_client_lookup_system_document(PDO $pdo, string $haystack): ?array
 
     $clientId = 0;
     $ref = '';
+    $document = null;
     try {
         if ($invoiceNo) {
-            $stmt = $pdo->prepare('SELECT client_id, invoice_number FROM invoices WHERE UPPER(invoice_number) = ? LIMIT 1');
+            $stmt = $pdo->prepare(
+                'SELECT i.*, c.case_number, c.title AS case_title
+                 FROM invoices i
+                 LEFT JOIN cases c ON c.id = i.case_id
+                 WHERE UPPER(i.invoice_number) = ?
+                 LIMIT 1'
+            );
             $stmt->execute([$invoiceNo]);
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
             if (!$row) {
-                $stmt = $pdo->prepare("SELECT client_id, invoice_number FROM invoices WHERE REPLACE(UPPER(invoice_number), '-', '') = ? LIMIT 1");
+                $stmt = $pdo->prepare(
+                    "SELECT i.*, c.case_number, c.title AS case_title
+                     FROM invoices i
+                     LEFT JOIN cases c ON c.id = i.case_id
+                     WHERE REPLACE(UPPER(i.invoice_number), '-', '') = ?
+                     LIMIT 1"
+                );
                 $stmt->execute([str_replace('-', '', $invoiceNo)]);
                 $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
             }
             if ($row) {
                 $clientId = (int) $row['client_id'];
                 $ref = 'invoice ' . $row['invoice_number'];
+                $document = ai_invoice_build_extract_payload($pdo, $row);
             }
         }
         if ($clientId <= 0 && $receiptNo) {
-            $stmt = $pdo->prepare('SELECT client_id, receipt_number FROM payments WHERE UPPER(receipt_number) = ? LIMIT 1');
+            $stmt = $pdo->prepare(
+                'SELECT p.*, i.invoice_number, i.case_id AS invoice_case_id, c.case_number, c.title AS case_title
+                 FROM payments p
+                 LEFT JOIN invoices i ON i.id = p.invoice_id
+                 LEFT JOIN cases c ON c.id = i.case_id
+                 WHERE UPPER(p.receipt_number) = ?
+                 LIMIT 1'
+            );
             $stmt->execute([$receiptNo]);
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
             if ($row) {
                 $clientId = (int) $row['client_id'];
                 $ref = 'receipt ' . ($row['receipt_number'] ?? '');
+                $document = ai_receipt_build_extract_payload($pdo, $row);
             }
         }
         if ($clientId <= 0) {
@@ -311,11 +337,216 @@ function ai_client_lookup_system_document(PDO $pdo, string $haystack): ?array
         }
     }
 
+    if (is_array($document)) {
+        $document['client'] = [
+            'id' => (int) $user['id'],
+            'name' => trim($fields['first_name'] . ' ' . $fields['last_name']),
+            'email' => $fields['email'],
+            'phone' => $fields['phone'],
+            'company' => $fields['company_name'],
+            'address' => $fields['address'],
+        ];
+    }
+
     return [
         'user' => $user,
         'fields' => ai_client_sanitize_extracted_fields($fields),
         'note' => '📄 Matched system ' . $ref . ' → client **' . trim($fields['first_name'] . ' ' . $fields['last_name']) . '** (already in the system).',
+        'document' => $document,
     ];
+}
+
+/**
+ * @param array<string, mixed> $invoice
+ * @return array<string, mixed>
+ */
+function ai_invoice_build_extract_payload(PDO $pdo, array $invoice): array
+{
+    $invoiceId = (int) ($invoice['id'] ?? 0);
+    $totals = $invoiceId > 0
+        ? invoice_display_totals($pdo, $invoiceId, $invoice, false)
+        : ['lines' => [], 'subtotal' => (float) ($invoice['amount'] ?? 0), 'vat' => (float) ($invoice['tax'] ?? 0), 'grand' => (float) ($invoice['total'] ?? 0)];
+
+    $lines = [];
+    foreach (($totals['lines'] ?? []) as $line) {
+        $qty = (float) ($line['quantity'] ?? 1);
+        $unit = (float) ($line['unit_price'] ?? 0);
+        $vat = (float) ($line['vat_amount'] ?? 0);
+        $total = (float) ($line['line_total'] ?? (($qty * $unit) + $vat));
+        $lines[] = [
+            'description' => trim((string) ($line['description'] ?? 'Service')),
+            'quantity' => $qty,
+            'unit_price' => $unit,
+            'vat' => $vat,
+            'total' => $total,
+            'unit_price_fmt' => money($unit),
+            'vat_fmt' => money($vat),
+            'total_fmt' => money($total),
+        ];
+    }
+
+    $paid = $invoiceId > 0 ? invoice_paid_total($pdo, $invoiceId) : 0.0;
+    $grand = (float) ($totals['grand'] ?? ($invoice['total'] ?? 0));
+    $balance = max(0, round($grand - $paid, 2));
+    $payStatus = function_exists('invoice_payment_status') ? invoice_payment_status($invoice) : (string) ($invoice['payment_status'] ?? $invoice['status'] ?? '');
+
+    return [
+        'kind' => 'invoice',
+        'id' => $invoiceId,
+        'number' => (string) ($invoice['invoice_number'] ?? ''),
+        'title' => trim((string) ($invoice['title'] ?? '')),
+        'description' => trim((string) ($invoice['description'] ?? '')),
+        'status' => (string) ($invoice['status'] ?? ''),
+        'payment_status' => $payStatus,
+        'issued_at' => (string) ($invoice['issued_at'] ?? ''),
+        'due_date' => (string) ($invoice['due_date'] ?? ''),
+        'case_id' => (int) ($invoice['case_id'] ?? 0),
+        'case_number' => (string) ($invoice['case_number'] ?? ''),
+        'case_title' => trim((string) ($invoice['case_title'] ?? '')),
+        'lines' => $lines,
+        'subtotal' => (float) ($totals['subtotal'] ?? 0),
+        'vat' => (float) ($totals['vat'] ?? 0),
+        'grand' => $grand,
+        'paid' => $paid,
+        'balance' => $balance,
+        'subtotal_fmt' => money((float) ($totals['subtotal'] ?? 0)),
+        'vat_fmt' => money((float) ($totals['vat'] ?? 0)),
+        'grand_fmt' => money($grand),
+        'paid_fmt' => money($paid),
+        'balance_fmt' => money($balance),
+        'issued_fmt' => !empty($invoice['issued_at']) ? format_date($invoice['issued_at']) : '',
+        'due_fmt' => !empty($invoice['due_date']) ? format_date($invoice['due_date']) : '',
+        'status_label' => function_exists('translate_status') ? translate_status((string) ($invoice['status'] ?? '')) : (string) ($invoice['status'] ?? ''),
+        'payment_label' => $payStatus !== ''
+            ? (function_exists('__') && __('finance.payment_status.' . $payStatus) !== ('finance.payment_status.' . $payStatus)
+                ? __('finance.payment_status.' . $payStatus)
+                : ucfirst(str_replace('_', ' ', $payStatus)))
+            : '',
+    ];
+}
+
+/**
+ * @param array<string, mixed> $payment
+ * @return array<string, mixed>
+ */
+function ai_receipt_build_extract_payload(PDO $pdo, array $payment): array
+{
+    $amount = (float) ($payment['amount'] ?? 0);
+    return [
+        'kind' => 'receipt',
+        'id' => (int) ($payment['id'] ?? 0),
+        'number' => (string) ($payment['receipt_number'] ?? ''),
+        'title' => 'Payment receipt',
+        'description' => trim((string) ($payment['notes'] ?? $payment['method'] ?? '')),
+        'status' => (string) ($payment['status'] ?? 'paid'),
+        'payment_status' => 'paid',
+        'issued_at' => (string) ($payment['paid_at'] ?? $payment['created_at'] ?? ''),
+        'due_date' => '',
+        'case_id' => (int) ($payment['invoice_case_id'] ?? 0),
+        'case_number' => (string) ($payment['case_number'] ?? ''),
+        'case_title' => trim((string) ($payment['case_title'] ?? '')),
+        'invoice_number' => (string) ($payment['invoice_number'] ?? ''),
+        'method' => (string) ($payment['payment_method'] ?? $payment['method'] ?? ''),
+        'lines' => [[
+            'description' => trim((string) (($payment['invoice_number'] ?? '') !== '' ? ('Payment for ' . $payment['invoice_number']) : 'Payment received')),
+            'quantity' => 1,
+            'unit_price' => $amount,
+            'vat' => 0,
+            'total' => $amount,
+            'unit_price_fmt' => money($amount),
+            'vat_fmt' => money(0),
+            'total_fmt' => money($amount),
+        ]],
+        'subtotal' => $amount,
+        'vat' => 0.0,
+        'grand' => $amount,
+        'paid' => $amount,
+        'balance' => 0.0,
+        'subtotal_fmt' => money($amount),
+        'vat_fmt' => money(0),
+        'grand_fmt' => money($amount),
+        'paid_fmt' => money($amount),
+        'balance_fmt' => money(0),
+        'issued_fmt' => !empty($payment['paid_at']) ? format_date($payment['paid_at']) : (!empty($payment['created_at']) ? format_date($payment['created_at']) : ''),
+        'due_fmt' => '',
+        'status_label' => 'Paid',
+        'payment_label' => 'Paid',
+    ];
+}
+
+/**
+ * @param array<string, mixed> $document
+ * @param array<string, mixed> $user
+ */
+function ai_document_format_extract_reply(array $document, array $user, string $portal = 'admin'): string
+{
+    $kind = (string) ($document['kind'] ?? 'invoice');
+    $number = (string) ($document['number'] ?? '');
+    $clientName = full_name($user);
+    $clientId = (int) ($user['id'] ?? 0);
+
+    $clientUrl = ai_actions_portal_url($portal, 'clients.php?action=view&id=' . $clientId);
+    $docUrl = '';
+    if ($kind === 'invoice' && !empty($document['id'])) {
+        $docUrl = ai_actions_portal_url($portal, 'invoice.php?id=' . (int) $document['id']);
+    } elseif ($kind === 'receipt' && !empty($document['id'])) {
+        $docUrl = ai_actions_portal_url($portal, 'receipt.php?id=' . (int) $document['id']);
+    }
+    $caseUrl = '';
+    if (!empty($document['case_id'])) {
+        $caseUrl = ai_actions_portal_url($portal, 'cases.php?action=view&id=' . (int) $document['case_id']);
+    }
+
+    $card = $document;
+    $card['links'] = [
+        'client' => $clientUrl,
+        'document' => $docUrl,
+        'case' => $caseUrl,
+    ];
+    $json = json_encode($card, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if ($json === false) {
+        $json = '{}';
+    }
+
+    $headline = $kind === 'receipt'
+        ? "📄 Extracted receipt **{$number}**"
+        : "📄 Extracted invoice **{$number}**";
+
+    $lines = [
+        $headline,
+        '',
+        'All available details from this document are shown below.',
+        '',
+        '[[AI_INVOICE_CARD]]',
+        $json,
+        '[[/AI_INVOICE_CARD]]',
+        '',
+        'This client is **already registered** — a new client was not created.',
+        '• Name: **' . $clientName . '**',
+        '• Email: ' . (($user['email'] ?? '') !== '' ? $user['email'] : '—'),
+        '• Phone: ' . (($user['phone'] ?? '') !== '' ? $user['phone'] : '—'),
+    ];
+    if (!empty($user['company_name'])) {
+        $lines[] = '• Company: ' . $user['company_name'];
+    }
+    $lines[] = '';
+    $links = [];
+    if ($clientUrl !== '') {
+        $links[] = ai_actions_md_link('Open client profile', $clientUrl);
+    }
+    if ($docUrl !== '') {
+        $links[] = ai_actions_md_link($kind === 'receipt' ? 'Open receipt' : 'Open invoice', $docUrl);
+    }
+    if ($caseUrl !== '') {
+        $links[] = ai_actions_md_link('Open case', $caseUrl);
+    }
+    if ($links) {
+        $lines[] = implode(' · ', $links);
+    }
+    $lines[] = '';
+    $lines[] = 'To register someone new, say **create client** and type their details (or attach an intake form, not an existing invoice).';
+
+    return implode("\n", $lines);
 }
 
 function ai_client_is_blocked_name_token(string $token): bool
@@ -796,6 +1027,10 @@ function ai_action_create_client(
 
         if ($existingClient) {
             ai_client_draft_clear($sessionId);
+            $doc = $pack['document'] ?? null;
+            if (is_array($doc) && !empty($doc['number'])) {
+                return ai_document_format_extract_reply($doc, $existingClient, $portal);
+            }
             $cid = (int) $existingClient['id'];
             $url = ai_actions_portal_url('admin', 'clients.php?action=view&id=' . $cid);
             return $pack['note'] . "\n\n"

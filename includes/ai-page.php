@@ -63,6 +63,23 @@ function render_ai_page(string $portal): void
             $newId = ai_create_session_with_welcome($pdo, (int) $user['id'], $portal, $company);
             redirect($aiBase . '?session=' . $newId . '&library=1');
         }
+
+        if ($fa === 'clear_chat') {
+            $pdo->prepare('DELETE FROM ai_chat_messages WHERE session_id = ?')->execute([$sid]);
+            $pdo->prepare('INSERT INTO ai_chat_messages (session_id, role, content) VALUES (?, ?, ?)')
+                ->execute([$sid, 'assistant', ai_welcome_text($portal, $company)]);
+            $pdo->prepare('UPDATE ai_chat_sessions SET title = ?, updated_at = NOW() WHERE id = ? AND user_id = ?')
+                ->execute([__('ai.new_chat'), $sid, $user['id']]);
+            if (isset($_SESSION['ai_client_draft'][$sid])) {
+                unset($_SESSION['ai_client_draft'][$sid]);
+            }
+            flash('success', __('ai.chat_cleared'));
+            $qs = ['session' => $sid];
+            if (isset($_GET['library']) || post('library') === '1') {
+                $qs['library'] = '1';
+            }
+            redirect($aiBase . '?' . http_build_query($qs));
+        }
     }
 
     if (isset($_GET['new'])) {
@@ -123,6 +140,7 @@ function render_ai_page(string $portal): void
             [__('ai.prompt.create_client'), __('ai.prompt.create_client_body'), 'user'],
             [__('ai.prompt.create_case'), __('ai.prompt.create_case_body'), 'briefcase'],
             [__('ai.prompt.schedule_appt'), __('ai.prompt.schedule_appt_body'), 'calendar'],
+            [__('ai.prompt.delete_appt'), __('ai.prompt.delete_appt_body'), 'alert'],
             [__('ai.prompt.draft_email'), __('ai.prompt.draft_email_body'), 'edit'],
             [__('ai.prompt.upload_doc'), __('ai.prompt.upload_doc_body'), 'doc'],
             [__('ai.prompt.total_revenue'), __('ai.prompt.total_revenue_body'), 'money'],
@@ -137,6 +155,7 @@ function render_ai_page(string $portal): void
         'lawyer' => [
             [__('ai.prompt.my_cases'), __('ai.prompt.my_cases_body'), 'briefcase'],
             [__('ai.prompt.schedule_appt'), __('ai.prompt.schedule_appt_lawyer_body'), 'calendar'],
+            [__('ai.prompt.delete_appt'), __('ai.prompt.delete_appt_body'), 'alert'],
             [__('ai.prompt.cancel_appt'), __('ai.prompt.cancel_appt_body'), 'alert'],
             [__('ai.prompt.draft_email'), __('ai.prompt.draft_email_body'), 'edit'],
             [__('ai.prompt.upload_doc'), __('ai.prompt.upload_doc_body'), 'doc'],
@@ -152,6 +171,7 @@ function render_ai_page(string $portal): void
             [__('ai.prompt.my_cases'), __('ai.prompt.my_cases_client_body'), 'briefcase'],
             [__('ai.prompt.schedule_appt'), __('ai.prompt.schedule_appt_client_body'), 'calendar'],
             [__('ai.prompt.cancel_appt'), __('ai.prompt.cancel_appt_body'), 'alert'],
+            [__('ai.prompt.delete_appt'), __('ai.prompt.delete_appt_body'), 'alert'],
             [__('ai.prompt.upload_doc'), __('ai.prompt.upload_doc_client_body'), 'doc'],
             [__('ai.prompt.draft_email'), __('ai.prompt.draft_email_client_body'), 'edit'],
             [__('ai.prompt.documents'), __('ai.prompt.documents_body'), 'doc'],
@@ -269,6 +289,15 @@ function render_ai_page(string $portal): void
                         </span>
                         <?= __e('ai.library') ?>
                     </button>
+                    <form method="post" class="ai-toolbar-form" data-confirm="<?= __e('ai.confirm_clear_chat') ?>">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="form_action" value="clear_chat">
+                        <input type="hidden" name="session_id" value="<?= (int) $sessionId ?>">
+                        <?php if ($libraryOpen): ?>
+                        <input type="hidden" name="library" value="1">
+                        <?php endif; ?>
+                        <button class="btn btn-outline-brand btn-sm" type="submit"><?= __e('ai.clear_chat') ?></button>
+                    </form>
                     <a class="btn btn-outline-brand btn-sm" href="?new=1<?= $libraryOpen ? '&library=1' : '' ?>"><?= __e('ai.new_chat_btn') ?></a>
                 </div>
             </div>
