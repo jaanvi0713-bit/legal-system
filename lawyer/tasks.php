@@ -1,4 +1,8 @@
 <?php
+header('Cache-Control: no-cache, no-store, must-revalidate, max-age=0, post-check=0, pre-check=0');
+header('Pragma: no-cache');
+header('Expires: ' . gmdate('D, d M Y H:i:s', time() - 3600) . ' GMT');
+header('Last-Modified: ' . gmdate('D, d M Y H:i:s') . ' GMT');
 require_once __DIR__ . '/../includes/auth.php';
 require_role(['lawyer']);
 $pdo = db();
@@ -33,7 +37,7 @@ $notesAll = $pdo->prepare('SELECT * FROM notifications WHERE user_id=? AND is_re
 $notesAll->execute([$uid]);
 $notesAll = $notesAll->fetchAll();
 
-$perPage = 10;
+$perPage = 3;
 $slicePage = static function (array $items, string $param) use ($perPage): array {
     $total = count($items);
     $page = max(1, (int) get($param, 1));
@@ -123,6 +127,7 @@ $iconAppt = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-w
 $iconBell = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M18 16v-5a6 6 0 1 0-12 0v5"/><path d="M5 16h14"/><path d="M10 19a2 2 0 0 0 4 0"/></svg>';
 $iconCal = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>';
 ?>
+<!-- CACHE CLEAR: <?= time() ?> -->
 <div class="tasks-page">
     <div class="tasks-summary">
         <div class="tasks-stat">

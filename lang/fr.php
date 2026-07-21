@@ -953,6 +953,7 @@ return [
     'cases.checklist_title' => 'Liste de contrôle du dossier',
     'cases.team.title' => 'Équipe juridique',
     'cases.team.lead' => 'Principal',
+    'cases.team.associate' => 'Associé',
     'cases.team.lead_lawyer' => 'Avocat principal',
     'cases.team.associates' => 'Avocats associés',
     'cases.team.associates_help' => 'Cliquez pour ouvrir la liste et sélectionner les avocats de soutien. L’avocat principal ne peut pas être aussi associé.',

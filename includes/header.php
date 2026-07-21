@@ -51,6 +51,9 @@ $gradInfo = "linear-gradient(135deg, {$accent} 0%, {$accentDeep} 100%)";
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate, max-age=0">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title><?= e($pageTitle ?? __('page.dashboard')) ?> · <?= e($appName) ?></title>
     <?php if ($companyFavicon !== ''): ?><link rel="icon" href="<?= e($base . '/' . ltrim($companyFavicon, '/')) ?>"><?php endif; ?>
     <script>
