@@ -149,7 +149,7 @@ $gradInfo = "linear-gradient(135deg, {$accent} 0%, {$accentDeep} 100%)";
     <aside class="sidebar">
         <div class="sidebar-brand">
             <div class="brand-left">
-                <div class="brand-mark" aria-hidden="true"><?php if ($companyLogo !== ''): ?><img src="<?= e($base . '/' . ltrim($companyLogo, '/')) ?>" alt=""><?php else: ?><?= nav_icon('logo') ?><?php endif; ?></div>
+                <?= brand_mark_html('brand-mark', db(), $base) ?>
                 <div class="brand-text">
                     <div class="brand-name"><?= e($brandName) ?></div>
                     <div class="brand-portal"><?= e(__('portal.' . $portal)) ?></div>

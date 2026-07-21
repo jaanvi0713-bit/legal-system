@@ -194,7 +194,7 @@ $mailtoHref = 'mailto:' . rawurlencode((string) $payment['email'])
                 <input type="hidden" name="form_action" value="delete_payment">
                 <input type="hidden" name="payment_id" value="<?= (int) $payment['id'] ?>">
                 <input type="hidden" name="return_to" value="<?= e($returnTo) ?>">
-                <button class="btn btn-row-delete btn-sm" type="submit"><?= __e('common.delete') ?></button>
+                <button class="btn btn-secondary btn-sm" type="submit"><?= __e('common.delete') ?></button>
             </form>
         </div>
     </div>

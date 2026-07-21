@@ -626,8 +626,8 @@ $mailtoHref = 'mailto:' . rawurlencode((string) $invoice['email'])
     . '&body=' . rawurlencode('Please find your invoice ' . $invoice['invoice_number'] . ' for ' . money($invoice['total']) . '. View it in your client portal.');
 ?>
 <div class="inv-doc-toolbar no-print">
-    <a class="btn btn-secondary btn-sm inv-doc-back" href="<?= e($returnTo) ?>"><?= __e('common.back') ?></a>
-    <div class="inv-doc-actions">
+    <div class="inv-doc-toolbar-start">
+        <a class="btn btn-secondary btn-sm inv-doc-back" href="<?= e($returnTo) ?>"><?= __e('common.back') ?></a>
         <?php if ($bankOptions): ?>
         <form method="post" class="inv-bank-switch">
             <?= csrf_field() ?>
@@ -646,37 +646,36 @@ $mailtoHref = 'mailto:' . rawurlencode((string) $invoice['email'])
                 <?php endforeach; ?>
             </select>
         </form>
-        <span class="inv-doc-actions-sep" aria-hidden="true"></span>
         <?php endif; ?>
-        <div class="inv-doc-action-btns">
-            <button type="button" class="btn btn-primary btn-sm inv-doc-print-btn" onclick="window.print()"><?= __e('finance.print_save_pdf') ?></button>
-            <form method="post">
-                <?= csrf_field() ?>
-                <input type="hidden" name="form_action" value="email_client">
-                <input type="hidden" name="invoice_id" value="<?= (int) $invoice['id'] ?>">
-                <input type="hidden" name="return_to" value="<?= e($returnTo) ?>">
-                <button class="btn btn-secondary btn-sm" type="submit"><?= __e('finance.email_client') ?></button>
-            </form>
-            <?php if ($showPayNow && $clientPayUrl): ?>
-            <a class="btn btn-primary btn-sm inv-pay-now-btn" href="<?= e($clientPayUrl) ?>" target="_blank" rel="noopener"><?= __e('finance.pay_now') ?> | <?= e(money($amountDue)) ?></a>
-            <?php elseif ($payStatus === 'paid' || $invoice['status'] === 'paid'): ?>
-            <span class="inv-pay-status-inline"><?= payment_status_badge('paid') ?></span>
-            <?php elseif ($payStatus === 'failed'): ?>
-            <span class="inv-pay-status-inline"><?= payment_status_badge('failed') ?></span>
-            <?php elseif ($payStatus === 'pending'): ?>
-            <span class="inv-pay-status-inline"><?= payment_status_badge('pending') ?></span>
-            <?php endif; ?>
-            <?php if ($invoiceCaseId > 0): ?>
-            <a class="btn btn-accent btn-sm" href="<?= e($paymentUrl) ?>"><?= __e('finance.record_payment') ?></a>
-            <?php endif; ?>
-        </div>
+    </div>
+    <div class="inv-doc-action-btns">
+        <button type="button" class="btn btn-primary btn-sm inv-doc-print-btn" onclick="window.print()"><?= __e('finance.print_save_pdf') ?></button>
+        <form method="post">
+            <?= csrf_field() ?>
+            <input type="hidden" name="form_action" value="email_client">
+            <input type="hidden" name="invoice_id" value="<?= (int) $invoice['id'] ?>">
+            <input type="hidden" name="return_to" value="<?= e($returnTo) ?>">
+            <button class="btn btn-secondary btn-sm" type="submit"><?= __e('finance.email_client') ?></button>
+        </form>
+        <?php if ($showPayNow && $clientPayUrl): ?>
+        <a class="btn btn-primary btn-sm inv-pay-now-btn" href="<?= e($clientPayUrl) ?>" target="_blank" rel="noopener"><?= __e('finance.pay_now') ?> | <?= e(money($amountDue)) ?></a>
+        <?php elseif ($payStatus === 'paid' || $invoice['status'] === 'paid'): ?>
+        <span class="inv-pay-status-inline"><?= payment_status_badge('paid') ?></span>
+        <?php elseif ($payStatus === 'failed'): ?>
+        <span class="inv-pay-status-inline"><?= payment_status_badge('failed') ?></span>
+        <?php elseif ($payStatus === 'pending'): ?>
+        <span class="inv-pay-status-inline"><?= payment_status_badge('pending') ?></span>
+        <?php endif; ?>
+        <?php if ($invoiceCaseId > 0): ?>
+        <a class="btn btn-accent btn-sm" href="<?= e($paymentUrl) ?>"><?= __e('finance.record_payment') ?></a>
+        <?php endif; ?>
     </div>
 </div>
 
 <article class="inv-doc" id="invoiceDocument">
     <header class="inv-doc-top">
         <div class="inv-doc-brand">
-            <div class="inv-doc-logo brand-mark" aria-hidden="true"><?= nav_icon('logo') ?></div>
+            <?= brand_mark_html('inv-doc-logo brand-mark') ?>
             <div class="inv-doc-brand-text">
                 <div class="inv-doc-firm-name"><?= e(strtoupper($firmName)) ?></div>
             </div>

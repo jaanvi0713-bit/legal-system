@@ -1688,6 +1688,47 @@ function save_branding_data_url(string $dataUrl, string $prefix): ?string
     return 'uploads/branding/' . $stored;
 }
 
+/**
+ * Relative path to the uploaded company logo, or empty string.
+ */
+function company_logo_path(?PDO $pdo = null): string
+{
+    try {
+        $pdo = $pdo ?? db();
+        return trim((string) get_setting($pdo, 'company_logo', ''));
+    } catch (Throwable $e) {
+        return '';
+    }
+}
+
+/**
+ * Absolute/web URL for the company logo (empty if none).
+ */
+function company_logo_url(?PDO $pdo = null, string $base = ''): string
+{
+    $path = company_logo_path($pdo);
+    if ($path === '') {
+        return '';
+    }
+    if ($base === '') {
+        $base = rtrim((string) app_config('url', ''), '/');
+    }
+    return ($base !== '' ? $base . '/' : '') . ltrim($path, '/');
+}
+
+/**
+ * Brand mark markup: system company logo when set, otherwise default SVG icon.
+ */
+function brand_mark_html(string $extraClass = 'brand-mark', ?PDO $pdo = null, string $base = ''): string
+{
+    $class = trim($extraClass) !== '' ? trim($extraClass) : 'brand-mark';
+    $url = company_logo_url($pdo, $base);
+    if ($url !== '') {
+        return '<div class="' . e($class) . '" aria-hidden="true"><img src="' . e($url) . '" alt=""></div>';
+    }
+    return '<div class="' . e($class) . '" aria-hidden="true">' . nav_icon('logo') . '</div>';
+}
+
 function csrf_token(): string
 {
     if (empty($_SESSION['csrf_token'])) {

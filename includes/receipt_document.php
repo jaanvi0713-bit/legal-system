@@ -15,7 +15,7 @@ $invoiceRef = trim((string) ($payment['invoice_number'] ?? ''));
 <article class="inv-doc" id="receiptDocument">
     <header class="inv-doc-top">
         <div class="inv-doc-brand">
-            <div class="inv-doc-logo brand-mark" aria-hidden="true"><?= nav_icon('logo') ?></div>
+            <?= brand_mark_html('inv-doc-logo brand-mark') ?>
             <div class="inv-doc-brand-text">
                 <div class="inv-doc-firm-name"><?= e(strtoupper($firmName)) ?></div>
             </div>
