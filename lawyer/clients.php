@@ -5,7 +5,7 @@ $pdo = db();
 $uid = (int) current_user()['id'];
 
 $clients = $pdo->prepare("SELECT DISTINCT u.*, (SELECT COUNT(*) FROM cases c WHERE c.client_id=u.id AND " . lawyer_case_access_sql('c') . ") AS case_count FROM users u WHERE u.role='client' AND (u.assigned_lawyer_id=? OR u.id IN (SELECT client_id FROM cases c2 WHERE " . lawyer_case_access_sql('c2') . ")) ORDER BY u.first_name");
-$clients->execute([$uid, $uid, $uid, $uid]);
+$clients->execute([$uid, $uid, $uid, $uid, $uid]);
 $clients = $clients->fetchAll();
 
 $id = (int) get('id', 0);

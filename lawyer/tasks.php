@@ -1,4 +1,8 @@
 <?php
+header('Cache-Control: no-cache, no-store, must-revalidate, max-age=0, post-check=0, pre-check=0');
+header('Pragma: no-cache');
+header('Expires: ' . gmdate('D, d M Y H:i:s', time() - 3600) . ' GMT');
+header('Last-Modified: ' . gmdate('D, d M Y H:i:s') . ' GMT');
 require_once __DIR__ . '/../includes/auth.php';
 require_role(['lawyer']);
 $pdo = db();
@@ -33,7 +37,7 @@ $notesAll = $pdo->prepare('SELECT * FROM notifications WHERE user_id=? AND is_re
 $notesAll->execute([$uid]);
 $notesAll = $notesAll->fetchAll();
 
-$perPage = 10;
+$perPage = 3;
 $slicePage = static function (array $items, string $param) use ($perPage): array {
     $total = count($items);
     $page = max(1, (int) get($param, 1));
@@ -123,6 +127,7 @@ $iconAppt = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-w
 $iconBell = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M18 16v-5a6 6 0 1 0-12 0v5"/><path d="M5 16h14"/><path d="M10 19a2 2 0 0 0 4 0"/></svg>';
 $iconCal = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>';
 ?>
+<!-- CACHE CLEAR: <?= time() ?> -->
 <div class="tasks-page">
     <div class="tasks-summary">
         <div class="tasks-stat">
@@ -142,69 +147,6 @@ $iconCal = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-wi
             <span class="tasks-stat-label"><?= __e('lawyer.tasks.stat_upcoming') ?></span>
         </div>
     </div>
-
-    <section class="panel tasks-section tasks-section--primary">
-        <div class="tasks-section-head">
-            <div>
-                <h2><?= __e('lawyer.tasks.case_tasks') ?></h2>
-                <p class="muted"><?= __e('lawyer.tasks.case_tasks_help') ?></p>
-            </div>
-        </div>
-        <?php if (!$caseTasks): ?>
-        <div class="tasks-empty"><?= __e('lawyer.tasks.case_tasks_empty') ?></div>
-        <?php else: ?>
-        <div class="table-wrap case-table-wrap">
-            <table class="case-table tasks-case-table">
-                <thead>
-                    <tr>
-                        <th><?= __e('common.case') ?></th>
-                        <th><?= __e('common.title') ?></th>
-                        <th><?= __e('cases.tasks.due_date') ?></th>
-                        <th><?= __e('common.status') ?></th>
-                        <th class="col-actions"><?= __e('common.actions') ?></th>
-                    </tr>
-                </thead>
-                <tbody>
-                <?php foreach ($caseTasks as $task): ?>
-                    <tr>
-                        <td>
-                            <strong><?= e($task['case_number']) ?></strong>
-                            <div class="muted"><?= e(t_content((string) ($task['case_title'] ?? ''))) ?></div>
-                        </td>
-                        <td><?= e($task['title']) ?></td>
-                        <td><?= e(format_date($task['due_date'])) ?></td>
-                        <td><?= status_badge($task['status']) ?></td>
-                        <td class="col-actions">
-                            <div class="tasks-row-actions">
-                                <?php if ($task['status'] === 'open'): ?>
-                                <form method="post" class="inline-form">
-                                    <?= csrf_field() ?>
-                                    <input type="hidden" name="form_action" value="task_status">
-                                    <input type="hidden" name="task_id" value="<?= (int) $task['id'] ?>">
-                                    <input type="hidden" name="status" value="in_progress">
-                                    <button class="tasks-icon-btn" type="submit" title="<?= __e('cases.tasks.start') ?>" aria-label="<?= __e('cases.tasks.start') ?>"><?= $iconPlay ?></button>
-                                </form>
-                                <?php endif; ?>
-                                <?php if (in_array($task['status'], ['open', 'in_progress'], true)): ?>
-                                <form method="post" class="inline-form">
-                                    <?= csrf_field() ?>
-                                    <input type="hidden" name="form_action" value="task_status">
-                                    <input type="hidden" name="task_id" value="<?= (int) $task['id'] ?>">
-                                    <input type="hidden" name="status" value="done">
-                                    <button class="tasks-icon-btn is-success" type="submit" title="<?= __e('cases.tasks.complete') ?>" aria-label="<?= __e('cases.tasks.complete') ?>"><?= $iconCheck ?></button>
-                                </form>
-                                <?php endif; ?>
-                                <a class="tasks-icon-btn" href="cases.php?action=view&id=<?= (int) $task['case_id'] ?>" title="<?= __e('common.view') ?>" aria-label="<?= __e('common.view') ?>"><?= $iconView ?></a>
-                            </div>
-                        </td>
-                    </tr>
-                <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-        <?php $renderTasksPager($caseTasksPage, 'cases.tasks.pagination.aria', 'cases.tasks.pager.showing_one', 'cases.tasks.pager.showing_many'); ?>
-        <?php endif; ?>
-    </section>
 
     <div class="tasks-split">
         <section class="panel tasks-section">
@@ -280,5 +222,90 @@ $iconCal = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-wi
         </div>
         <?php $renderTasksPager($upcomingPage, 'tasks.pagination.aria', 'tasks.pager.showing_one', 'tasks.pager.showing_many'); ?>
     </section>
+
+    <section class="panel tasks-section tasks-section--primary">
+        <div class="tasks-section-head">
+            <div>
+                <h2><?= __e('lawyer.tasks.case_tasks') ?></h2>
+                <p class="muted"><?= __e('lawyer.tasks.case_tasks_help') ?></p>
+            </div>
+        </div>
+        <?php if (!$caseTasks): ?>
+        <div class="tasks-empty"><?= __e('lawyer.tasks.case_tasks_empty') ?></div>
+        <?php else: ?>
+        <div class="table-wrap case-table-wrap">
+            <table class="case-table tasks-case-table">
+                <thead>
+                    <tr>
+                        <th><?= __e('common.case') ?></th>
+                        <th><?= __e('common.title') ?></th>
+                        <th><?= __e('cases.tasks.due_date') ?></th>
+                        <th><?= __e('common.status') ?></th>
+                        <th class="col-actions"><?= __e('common.actions') ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($caseTasks as $task): ?>
+                    <tr>
+                        <td>
+                            <strong><?= e($task['case_number']) ?></strong>
+                            <div class="muted"><?= e(t_content((string) ($task['case_title'] ?? ''))) ?></div>
+                        </td>
+                        <td><?= e($task['title']) ?></td>
+                        <td><?= e(format_date($task['due_date'])) ?></td>
+                        <td><?= status_badge($task['status']) ?></td>
+                        <td class="col-actions">
+                            <div class="tasks-row-actions">
+                                <?php if ($task['status'] === 'open'): ?>
+                                <form method="post" class="inline-form">
+                                    <?= csrf_field() ?>
+                                    <input type="hidden" name="form_action" value="task_status">
+                                    <input type="hidden" name="task_id" value="<?= (int) $task['id'] ?>">
+                                    <input type="hidden" name="status" value="in_progress">
+                                    <button class="tasks-icon-btn" type="submit" title="<?= __e('cases.tasks.start') ?>" aria-label="<?= __e('cases.tasks.start') ?>"><?= $iconPlay ?></button>
+                                </form>
+                                <?php endif; ?>
+                                <?php if (in_array($task['status'], ['open', 'in_progress'], true)): ?>
+                                <form method="post" class="inline-form">
+                                    <?= csrf_field() ?>
+                                    <input type="hidden" name="form_action" value="task_status">
+                                    <input type="hidden" name="task_id" value="<?= (int) $task['id'] ?>">
+                                    <input type="hidden" name="status" value="done">
+                                    <button class="tasks-icon-btn is-success" type="submit" title="<?= __e('cases.tasks.complete') ?>" aria-label="<?= __e('cases.tasks.complete') ?>"><?= $iconCheck ?></button>
+                                </form>
+                                <?php endif; ?>
+                                <a class="tasks-icon-btn" href="cases.php?action=view&id=<?= (int) $task['case_id'] ?>" title="<?= __e('common.view') ?>" aria-label="<?= __e('common.view') ?>"><?= $iconView ?></a>
+                            </div>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php $renderTasksPager($caseTasksPage, 'cases.tasks.pagination.aria', 'cases.tasks.pager.showing_one', 'cases.tasks.pager.showing_many'); ?>
+        <?php endif; ?>
+    </section>
 </div>
+<script>
+// Ensure 'Case tasks' appears after 'Upcoming schedule' even if server/page cache shows wrong order
+document.addEventListener('DOMContentLoaded', function () {
+    try {
+        var panels = Array.from(document.querySelectorAll('.panel.tasks-section'));
+        var findByHeading = function(text) {
+            return panels.find(function(p){
+                var h = p.querySelector('.tasks-section-head h2');
+                return h && h.textContent.trim().toLowerCase().indexOf(text.toLowerCase()) !== -1;
+            });
+        };
+        var casePanel = findByHeading('case tasks') || findByHeading('tâches de dossier');
+        var upcomingPanel = findByHeading('upcoming') || findByHeading('upcoming schedule') || findByHeading('upcoming appointments') || findByHeading('calendrier');
+        if (casePanel && upcomingPanel && upcomingPanel.nextSibling !== casePanel) {
+            // Move casePanel after upcomingPanel
+            upcomingPanel.parentNode.insertBefore(casePanel, upcomingPanel.nextSibling);
+        }
+    } catch (e) {
+        console.error('Reorder script error', e);
+    }
+});
+</script>
 <?php require __DIR__ . '/../includes/footer.php'; ?>

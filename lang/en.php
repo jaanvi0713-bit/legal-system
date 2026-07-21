@@ -969,6 +969,7 @@ return [
     'cases.checklist_title' => 'Case checklist',
     'cases.team.title' => 'Legal team',
     'cases.team.lead' => 'Lead',
+    'cases.team.associate' => 'Associate',
     'cases.team.lead_lawyer' => 'Lead lawyer',
     'cases.team.associates' => 'Associate lawyers',
     'cases.team.associates_help' => 'Click to open the list and select supporting lawyers. The lead lawyer cannot also be an associate.',

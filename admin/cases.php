@@ -1284,6 +1284,24 @@ if ($action === 'view' && $id) {
                 $qs = $params ? '&' . http_build_query($params) : '';
                 return $tabUrl('documents') . $qs;
             };
+            $docTotal = count($filteredDocs);
+            $docPerPage = 10;
+            $docPage = max(1, (int) get('doc_page', 1));
+            $docPages = max(1, (int) ceil($docTotal / $docPerPage));
+            if ($docPage > $docPages) {
+                $docPage = $docPages;
+            }
+            $pageDocs = array_slice($filteredDocs, ($docPage - 1) * $docPerPage, $docPerPage);
+            $docFrom = $docTotal === 0 ? 0 : (($docPage - 1) * $docPerPage) + 1;
+            $docTo = min($docPage * $docPerPage, $docTotal);
+            $docPageUrl = static function (int $p) use ($tabUrl, $docQ, $docSource): string {
+                $params = array_filter([
+                    'dq' => $docQ !== '' ? $docQ : null,
+                    'dsource' => $docSource !== '' ? $docSource : null,
+                    'doc_page' => $p,
+                ], static fn($v) => $v !== null && $v !== '');
+                return $tabUrl('documents') . ($params ? '&' . http_build_query($params) : '');
+            };
         ?>
         <section class="panel case-docs-panel">
             <div class="case-docs-top">
@@ -1356,14 +1374,14 @@ if ($action === 'view' && $id) {
                 <?php endif; ?>
             </div>
 
-            <form method="get" class="case-docs-filters">
+            <form method="get" class="case-docs-filters appt-list-toolbar">
                 <input type="hidden" name="action" value="view">
                 <input type="hidden" name="id" value="<?= $id ?>">
                 <input type="hidden" name="tab" value="documents">
-                <div class="case-docs-search">
-                    <span class="case-docs-search-ico" aria-hidden="true">⌕</span>
-                    <input type="search" name="dq" value="<?= e($docQ) ?>" placeholder="<?= __e('cases.docs.search_ph') ?>">
-                </div>
+                <label class="appt-list-search">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+                    <input type="search" name="dq" value="<?= e($docQ) ?>" placeholder="<?= __e('cases.docs.search_ph') ?>" autocomplete="off">
+                </label>
                 <select name="dsource" onchange="this.form.submit()">
                     <option value=""><?= __e('cases.docs.all_sources') ?></option>
                     <option value="admin" <?= $docSource === 'admin' ? 'selected' : '' ?>><?= __e('doc.source.admin') ?></option>
@@ -1384,7 +1402,7 @@ if ($action === 'view' && $id) {
                         </tr>
                     </thead>
                     <tbody>
-                    <?php foreach ($filteredDocs as $d):
+                    <?php foreach ($pageDocs as $d):
                         $summary = trim((string) ($d['description'] ?? ''));
                         if ($summary === '') {
                             $summary = __('cases.docs.ai_summary_fallback', [
@@ -1419,21 +1437,76 @@ if ($action === 'view' && $id) {
                             </td>
                         </tr>
                     <?php endforeach; ?>
-                    <?php if (!$filteredDocs): ?>
+                    <?php if (!$pageDocs): ?>
                         <tr><td colspan="5" class="muted"><?= __e('cases.no_documents') ?></td></tr>
                     <?php endif; ?>
                     </tbody>
                 </table>
             </div>
+            <div class="case-hub-foot">
+                <p class="case-list-footer muted"><?= e(__($docTotal === 1 ? 'cases.pager.showing_one' : 'cases.pager.showing_many', ['from' => (int) $docFrom, 'to' => (int) $docTo, 'total' => (int) $docTotal])) ?></p>
+                <?php if ($docPages > 1): ?>
+                <nav class="case-list-pager" aria-label="<?= __e('cases.pagination.aria') ?>">
+                    <?php if ($docPage > 1): ?>
+                    <a class="case-page-btn" href="<?= e($docPageUrl($docPage - 1)) ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
+                    <?php else: ?>
+                    <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
+                    <?php endif; ?>
+                    <?php for ($dp = 1; $dp <= $docPages; $dp++): ?>
+                    <a class="case-page-btn<?= $dp === $docPage ? ' is-active' : '' ?>" href="<?= e($docPageUrl($dp)) ?>"<?= $dp === $docPage ? ' aria-current="page"' : '' ?>><?= $dp ?></a>
+                    <?php endfor; ?>
+                    <?php if ($docPage < $docPages): ?>
+                    <a class="case-page-btn" href="<?= e($docPageUrl($docPage + 1)) ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
+                    <?php else: ?>
+                    <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
+                    <?php endif; ?>
+                </nav>
+                <?php endif; ?>
+            </div>
         </section>
 
-        <?php elseif ($tab === 'quotations'): ?>
+        <?php elseif ($tab === 'quotations'): 
+            $quoteQ = trim((string) get('q', ''));
+            $filteredQuotations = array_values(array_filter($quotations, static function ($qRow) use ($quoteQ) {
+                if ($quoteQ === '') {
+                    return true;
+                }
+                $hay = strtolower(($qRow['invoice_number'] ?? '') . ' ' . ($qRow['title'] ?? ''));
+                return str_contains($hay, strtolower($quoteQ));
+            }));
+            $quoteTotal = count($filteredQuotations);
+            $quotePerPage = 10;
+            $quotePage = max(1, (int) get('quote_page', 1));
+            $quotePages = max(1, (int) ceil($quoteTotal / $quotePerPage));
+            if ($quotePage > $quotePages) {
+                $quotePage = $quotePages;
+            }
+            $pageQuotations = array_slice($filteredQuotations, ($quotePage - 1) * $quotePerPage, $quotePerPage);
+            $quoteFrom = $quoteTotal === 0 ? 0 : (($quotePage - 1) * $quotePerPage) + 1;
+            $quoteTo = min($quotePage * $quotePerPage, $quoteTotal);
+            $quotePageUrl = static function (int $p) use ($tabUrl, $quoteQ): string {
+                $params = array_filter([
+                    'q' => $quoteQ !== '' ? $quoteQ : null,
+                    'quote_page' => $p,
+                ], static fn($v) => $v !== null && $v !== '');
+                return $tabUrl('quotations') . ($params ? '&' . http_build_query($params) : '');
+            };
+        ?>
         <section class="panel case-hub-card">
             <div class="panel-header">
                 <h2><?= __e('cases.tab.quotations') ?></h2>
                 <a class="btn btn-primary btn-sm" href="<?= e($tabUrl('quotations')) ?>&compose=quotation"><?= __e('cases.new_quotation') ?></a>
             </div>
             <p class="muted" style="margin-top:0;"><?= __e('cases.quotations_help') ?></p>
+            <form method="get" class="appt-list-toolbar" action="cases.php">
+                <input type="hidden" name="action" value="view">
+                <input type="hidden" name="id" value="<?= $id ?>">
+                <input type="hidden" name="tab" value="quotations">
+                <label class="appt-list-search">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+                    <input type="search" name="q" value="<?= e($quoteQ) ?>" placeholder="<?= __e('finance.search_invoices') ?>" autocomplete="off">
+                </label>
+            </form>
             <?php if ($compose === 'quotation'):
                 $quoteTitleDefault = __('cases.quotation_title_named', [
                     'title' => (string) ($case['title'] ?: $case['case_number']),
@@ -1482,16 +1555,36 @@ if ($action === 'view' && $id) {
                 <table>
                     <thead><tr><th><?= __e('common.quotation') ?></th><th><?= __e('common.total') ?></th><th><?= __e('common.created') ?></th></tr></thead>
                     <tbody>
-                    <?php foreach ($quotations as $q): ?>
+                    <?php foreach ($pageQuotations as $q): ?>
                         <tr>
                             <td><strong><?= e($q['invoice_number']) ?></strong><div class="muted"><?= e($q['title']) ?></div></td>
                             <td><?= e(money($q['total'])) ?></td>
                             <td><?= e(format_date($q['created_at'])) ?></td>
                         </tr>
                     <?php endforeach; ?>
-                    <?php if (!$quotations): ?><tr><td colspan="3" class="muted"><?= __e('cases.no_quotations') ?></td></tr><?php endif; ?>
+                    <?php if (!$pageQuotations): ?><tr><td colspan="3" class="muted"><?= __e('cases.no_quotations') ?></td></tr><?php endif; ?>
                     </tbody>
                 </table>
+            </div>
+            <div class="case-hub-foot">
+                <p class="case-list-footer muted"><?= e(__($quoteTotal === 1 ? 'cases.pager.showing_one' : 'cases.pager.showing_many', ['from' => (int) $quoteFrom, 'to' => (int) $quoteTo, 'total' => (int) $quoteTotal])) ?></p>
+                <?php if ($quotePages > 1): ?>
+                <nav class="case-list-pager" aria-label="<?= __e('cases.pagination.aria') ?>">
+                    <?php if ($quotePage > 1): ?>
+                    <a class="case-page-btn" href="<?= e($quotePageUrl($quotePage - 1)) ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
+                    <?php else: ?>
+                    <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
+                    <?php endif; ?>
+                    <?php for ($qp = 1; $qp <= $quotePages; $qp++): ?>
+                    <a class="case-page-btn<?= $qp === $quotePage ? ' is-active' : '' ?>" href="<?= e($quotePageUrl($qp)) ?>"<?= $qp === $quotePage ? ' aria-current="page"' : '' ?>><?= $qp ?></a>
+                    <?php endfor; ?>
+                    <?php if ($quotePage < $quotePages): ?>
+                    <a class="case-page-btn" href="<?= e($quotePageUrl($quotePage + 1)) ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
+                    <?php else: ?>
+                    <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
+                    <?php endif; ?>
+                </nav>
+                <?php endif; ?>
             </div>
         </section>
 
@@ -1509,6 +1602,24 @@ if ($action === 'view' && $id) {
                 $hay = strtolower(($i['invoice_number'] ?? '') . ' ' . ($i['title'] ?? ''));
                 return str_contains($hay, strtolower($invQ));
             }));
+            $invTotal = count($filteredInvoices);
+            $invPerPage = 10;
+            $invPage = max(1, (int) get('inv_page', 1));
+            $invPages = max(1, (int) ceil($invTotal / $invPerPage));
+            if ($invPage > $invPages) {
+                $invPage = $invPages;
+            }
+            $pageInvoices = array_slice($filteredInvoices, ($invPage - 1) * $invPerPage, $invPerPage);
+            $invFrom = $invTotal === 0 ? 0 : (($invPage - 1) * $invPerPage) + 1;
+            $invTo = min($invPage * $invPerPage, $invTotal);
+            $invPageUrl = static function (int $p) use ($tabUrl, $invQ, $invStatus): string {
+                $params = array_filter([
+                    'q' => $invQ !== '' ? $invQ : null,
+                    'status' => $invStatus !== '' ? $invStatus : null,
+                    'inv_page' => $p,
+                ], static fn($v) => $v !== null && $v !== '');
+                return $tabUrl('invoices') . ($params ? '&' . http_build_query($params) : '');
+            };
         ?>
         <section class="panel case-hub-card inv-list-panel">
             <div class="panel-header">
@@ -1516,13 +1627,13 @@ if ($action === 'view' && $id) {
                 <a class="btn btn-primary btn-sm" href="invoice.php?action=generate&case_id=<?= $id ?>&client_id=<?= (int) $case['client_id'] ?>&from=<?= e(urlencode($caseInvReturn)) ?>">+ <?= __e('finance.generate_invoice') ?></a>
             </div>
 
-            <form method="get" class="inv-list-filters" action="cases.php">
+            <form method="get" class="inv-list-filters appt-list-toolbar" action="cases.php">
                 <input type="hidden" name="action" value="view">
                 <input type="hidden" name="id" value="<?= $id ?>">
                 <input type="hidden" name="tab" value="invoices">
-                <label class="inv-search">
-                    <span class="inv-search-icon" aria-hidden="true">⌕</span>
-                    <input type="search" name="q" value="<?= e($invQ) ?>" placeholder="<?= __e('finance.search_invoices') ?>">
+                <label class="appt-list-search">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+                    <input type="search" name="q" value="<?= e($invQ) ?>" placeholder="<?= __e('finance.search_invoices') ?>" autocomplete="off">
                 </label>
                 <select name="status" onchange="this.form.submit()">
                     <option value=""><?= __e('finance.all_statuses') ?></option>
@@ -1548,7 +1659,7 @@ if ($action === 'view' && $id) {
                         </tr>
                     </thead>
                     <tbody>
-                    <?php foreach ($filteredInvoices as $i): ?>
+                    <?php foreach ($pageInvoices as $i): ?>
                         <tr>
                             <td>
                                 <strong><?= e($i['invoice_number']) ?></strong>
@@ -1579,11 +1690,31 @@ if ($action === 'view' && $id) {
                             </td>
                         </tr>
                     <?php endforeach; ?>
-                    <?php if (!$filteredInvoices): ?>
+                    <?php if (!$pageInvoices): ?>
                         <tr><td colspan="6" class="muted"><?= __e('finance.no_invoices') ?></td></tr>
                     <?php endif; ?>
                     </tbody>
                 </table>
+            </div>
+            <div class="case-hub-foot">
+                <p class="case-list-footer muted"><?= e(__($invTotal === 1 ? 'cases.pager.showing_one' : 'cases.pager.showing_many', ['from' => (int) $invFrom, 'to' => (int) $invTo, 'total' => (int) $invTotal])) ?></p>
+                <?php if ($invPages > 1): ?>
+                <nav class="case-list-pager" aria-label="<?= __e('cases.pagination.aria') ?>">
+                    <?php if ($invPage > 1): ?>
+                    <a class="case-page-btn" href="<?= e($invPageUrl($invPage - 1)) ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
+                    <?php else: ?>
+                    <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
+                    <?php endif; ?>
+                    <?php for ($ip = 1; $ip <= $invPages; $ip++): ?>
+                    <a class="case-page-btn<?= $ip === $invPage ? ' is-active' : '' ?>" href="<?= e($invPageUrl($ip)) ?>"<?= $ip === $invPage ? ' aria-current="page"' : '' ?>><?= $ip ?></a>
+                    <?php endfor; ?>
+                    <?php if ($invPage < $invPages): ?>
+                    <a class="case-page-btn" href="<?= e($invPageUrl($invPage + 1)) ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
+                    <?php else: ?>
+                    <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
+                    <?php endif; ?>
+                </nav>
+                <?php endif; ?>
             </div>
         </section>
 
@@ -1598,6 +1729,23 @@ if ($action === 'view' && $id) {
                 $hay = strtolower(($p['receipt_number'] ?? '') . ' ' . ($p['invoice_number'] ?? '') . ' ' . ($p['reference_number'] ?? ''));
                 return str_contains($hay, strtolower($rcpQ));
             }));
+            $rcpTotal = count($filteredPayments);
+            $rcpPerPage = 10;
+            $rcpPage = max(1, (int) get('rcp_page', 1));
+            $rcpPages = max(1, (int) ceil($rcpTotal / $rcpPerPage));
+            if ($rcpPage > $rcpPages) {
+                $rcpPage = $rcpPages;
+            }
+            $pagePayments = array_slice($filteredPayments, ($rcpPage - 1) * $rcpPerPage, $rcpPerPage);
+            $rcpFrom = $rcpTotal === 0 ? 0 : (($rcpPage - 1) * $rcpPerPage) + 1;
+            $rcpTo = min($rcpPage * $rcpPerPage, $rcpTotal);
+            $rcpPageUrl = static function (int $p) use ($tabUrl, $rcpQ): string {
+                $params = array_filter([
+                    'q' => $rcpQ !== '' ? $rcpQ : null,
+                    'rcp_page' => $p,
+                ], static fn($v) => $v !== null && $v !== '');
+                return $tabUrl('receipts') . ($params ? '&' . http_build_query($params) : '');
+            };
         ?>
         <section class="panel case-hub-card inv-list-panel">
             <div class="panel-header">
@@ -1635,13 +1783,13 @@ if ($action === 'view' && $id) {
             </form>
             <?php endif; ?>
 
-            <form method="get" class="inv-list-filters" action="cases.php">
+            <form method="get" class="inv-list-filters appt-list-toolbar" action="cases.php">
                 <input type="hidden" name="action" value="view">
                 <input type="hidden" name="id" value="<?= $id ?>">
                 <input type="hidden" name="tab" value="receipts">
-                <label class="inv-search">
-                    <span class="inv-search-icon" aria-hidden="true">⌕</span>
-                    <input type="search" name="q" value="<?= e($rcpQ) ?>" placeholder="<?= __e('finance.search_receipts') ?>">
+                <label class="appt-list-search">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+                    <input type="search" name="q" value="<?= e($rcpQ) ?>" placeholder="<?= __e('finance.search_receipts') ?>" autocomplete="off">
                 </label>
                 <?php if ($rcpQ !== ''): ?>
                     <a class="btn btn-secondary btn-sm" href="<?= e($tabUrl('receipts')) ?>"><?= __e('common.clear') ?></a>
@@ -1661,7 +1809,7 @@ if ($action === 'view' && $id) {
                         </tr>
                     </thead>
                     <tbody>
-                    <?php foreach ($filteredPayments as $p): ?>
+                    <?php foreach ($pagePayments as $p): ?>
                         <tr>
                             <td>
                                 <a class="inv-list-number" href="receipt.php?id=<?= (int) $p['id'] ?>&from=<?= e(urlencode($caseRcpReturn)) ?>"><strong><?= e($p['receipt_number']) ?></strong></a>
@@ -1685,11 +1833,31 @@ if ($action === 'view' && $id) {
                             </td>
                         </tr>
                     <?php endforeach; ?>
-                    <?php if (!$filteredPayments): ?>
+                    <?php if (!$pagePayments): ?>
                         <tr><td colspan="6" class="muted"><?= __e('finance.no_receipts') ?></td></tr>
                     <?php endif; ?>
                     </tbody>
                 </table>
+            </div>
+            <div class="case-hub-foot">
+                <p class="case-list-footer muted"><?= e(__($rcpTotal === 1 ? 'cases.pager.showing_one' : 'cases.pager.showing_many', ['from' => (int) $rcpFrom, 'to' => (int) $rcpTo, 'total' => (int) $rcpTotal])) ?></p>
+                <?php if ($rcpPages > 1): ?>
+                <nav class="case-list-pager" aria-label="<?= __e('cases.pagination.aria') ?>">
+                    <?php if ($rcpPage > 1): ?>
+                    <a class="case-page-btn" href="<?= e($rcpPageUrl($rcpPage - 1)) ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
+                    <?php else: ?>
+                    <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
+                    <?php endif; ?>
+                    <?php for ($rp = 1; $rp <= $rcpPages; $rp++): ?>
+                    <a class="case-page-btn<?= $rp === $rcpPage ? ' is-active' : '' ?>" href="<?= e($rcpPageUrl($rp)) ?>"<?= $rp === $rcpPage ? ' aria-current="page"' : '' ?>><?= $rp ?></a>
+                    <?php endfor; ?>
+                    <?php if ($rcpPage < $rcpPages): ?>
+                    <a class="case-page-btn" href="<?= e($rcpPageUrl($rcpPage + 1)) ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
+                    <?php else: ?>
+                    <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
+                    <?php endif; ?>
+                </nav>
+                <?php endif; ?>
             </div>
         </section>
 
@@ -1718,12 +1886,46 @@ if ($action === 'view' && $id) {
                 }
             }
             $showTaskForm = $compose === 'task' || $editingTask;
+            $taskQ = trim((string) get('q', ''));
+            $filteredTasks = array_values(array_filter($caseTasks, static function ($taskRow) use ($taskQ) {
+                if ($taskQ === '') {
+                    return true;
+                }
+                $hay = strtolower(($taskRow['title'] ?? '') . ' ' . ($taskRow['description'] ?? '') . ' ' . ($taskRow['assignee_name'] ?? ''));
+                return str_contains($hay, strtolower($taskQ));
+            }));
+            $taskTotal = count($filteredTasks);
+            $taskPerPage = 10;
+            $taskPage = max(1, (int) get('task_page', 1));
+            $taskPages = max(1, (int) ceil($taskTotal / $taskPerPage));
+            if ($taskPage > $taskPages) {
+                $taskPage = $taskPages;
+            }
+            $pageTasks = array_slice($filteredTasks, ($taskPage - 1) * $taskPerPage, $taskPerPage);
+            $taskFrom = $taskTotal === 0 ? 0 : (($taskPage - 1) * $taskPerPage) + 1;
+            $taskTo = min($taskPage * $taskPerPage, $taskTotal);
+            $taskPageUrl = static function (int $p) use ($tabUrl, $taskQ): string {
+                $params = array_filter([
+                    'q' => $taskQ !== '' ? $taskQ : null,
+                    'task_page' => $p,
+                ], static fn($v) => $v !== null && $v !== '');
+                return $tabUrl('tasks') . ($params ? '&' . http_build_query($params) : '');
+            };
         ?>
         <section class="panel case-hub-card">
             <div class="panel-header">
                 <h2><?= __e('cases.tab.tasks') ?></h2>
                 <a class="btn btn-primary btn-sm" href="<?= e($tabUrl('tasks')) ?>&compose=task"><?= __e('cases.tasks.add') ?></a>
             </div>
+            <form method="get" class="appt-list-toolbar" action="cases.php">
+                <input type="hidden" name="action" value="view">
+                <input type="hidden" name="id" value="<?= $id ?>">
+                <input type="hidden" name="tab" value="tasks">
+                <label class="appt-list-search">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+                    <input type="search" name="q" value="<?= e($taskQ) ?>" placeholder="<?= __e('common.search') ?>" autocomplete="off">
+                </label>
+            </form>
             <?php if ($showTaskForm): ?>
             <form method="post" class="form-grid entity-inline-form" style="margin-bottom:1rem;">
                 <?= csrf_field() ?>
@@ -1772,7 +1974,7 @@ if ($action === 'view' && $id) {
                         </tr>
                     </thead>
                     <tbody>
-                    <?php foreach ($caseTasks as $taskRow): ?>
+                    <?php foreach ($pageTasks as $taskRow): ?>
                         <tr>
                             <td>
                                 <strong><?= e($taskRow['title']) ?></strong>
@@ -1795,23 +1997,78 @@ if ($action === 'view' && $id) {
                             </td>
                         </tr>
                     <?php endforeach; ?>
-                    <?php if (!$caseTasks): ?>
+                    <?php if (!$pageTasks): ?>
                         <tr><td colspan="5" class="muted"><?= __e('cases.tasks.empty') ?></td></tr>
                     <?php endif; ?>
                     </tbody>
                 </table>
             </div>
+            <div class="case-hub-foot">
+                <p class="case-list-footer muted"><?= e(__($taskTotal === 1 ? 'cases.pager.showing_one' : 'cases.pager.showing_many', ['from' => (int) $taskFrom, 'to' => (int) $taskTo, 'total' => (int) $taskTotal])) ?></p>
+                <?php if ($taskPages > 1): ?>
+                <nav class="case-list-pager" aria-label="<?= __e('cases.pagination.aria') ?>">
+                    <?php if ($taskPage > 1): ?>
+                    <a class="case-page-btn" href="<?= e($taskPageUrl($taskPage - 1)) ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
+                    <?php else: ?>
+                    <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
+                    <?php endif; ?>
+                    <?php for ($tp = 1; $tp <= $taskPages; $tp++): ?>
+                    <a class="case-page-btn<?= $tp === $taskPage ? ' is-active' : '' ?>" href="<?= e($taskPageUrl($tp)) ?>"<?= $tp === $taskPage ? ' aria-current="page"' : '' ?>><?= $tp ?></a>
+                    <?php endfor; ?>
+                    <?php if ($taskPage < $taskPages): ?>
+                    <a class="case-page-btn" href="<?= e($taskPageUrl($taskPage + 1)) ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
+                    <?php else: ?>
+                    <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
+                    <?php endif; ?>
+                </nav>
+                <?php endif; ?>
+            </div>
         </section>
 
-        <?php elseif ($tab === 'deadlines'): ?>
+        <?php elseif ($tab === 'deadlines'):
+            $dlQ = trim((string) get('q', ''));
+            $filteredHearings = array_values(array_filter($hearings, static function ($h) use ($dlQ) {
+                if ($dlQ === '') {
+                    return true;
+                }
+                $hay = strtolower(($h['court_name'] ?? '') . ' ' . ($h['hearing_type'] ?? '') . ' ' . ($h['outcome'] ?? ''));
+                return str_contains($hay, strtolower($dlQ));
+            }));
+            $dlTotal = count($filteredHearings);
+            $dlPerPage = 10;
+            $dlPage = max(1, (int) get('dl_page', 1));
+            $dlPages = max(1, (int) ceil($dlTotal / $dlPerPage));
+            if ($dlPage > $dlPages) {
+                $dlPage = $dlPages;
+            }
+            $pageHearings = array_slice($filteredHearings, ($dlPage - 1) * $dlPerPage, $dlPerPage);
+            $dlFrom = $dlTotal === 0 ? 0 : (($dlPage - 1) * $dlPerPage) + 1;
+            $dlTo = min($dlPage * $dlPerPage, $dlTotal);
+            $dlPageUrl = static function (int $p) use ($tabUrl, $dlQ): string {
+                $params = array_filter([
+                    'q' => $dlQ !== '' ? $dlQ : null,
+                    'dl_page' => $p,
+                ], static fn($v) => $v !== null && $v !== '');
+                return $tabUrl('deadlines') . ($params ? '&' . http_build_query($params) : '');
+            };
+        ?>
         <section class="panel case-hub-card">
             <div class="panel-header"><h2><?= __e('cases.deadlines_title') ?></h2><a class="btn btn-primary btn-sm" href="court.php?action=create&case_id=<?= $id ?>"><?= __e('cases.add_hearing') ?></a></div>
+            <form method="get" class="appt-list-toolbar" action="cases.php">
+                <input type="hidden" name="action" value="view">
+                <input type="hidden" name="id" value="<?= $id ?>">
+                <input type="hidden" name="tab" value="deadlines">
+                <label class="appt-list-search">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+                    <input type="search" name="q" value="<?= e($dlQ) ?>" placeholder="<?= __e('common.search') ?>" autocomplete="off">
+                </label>
+            </form>
             <div class="list-item" style="margin-bottom:1rem;"><strong><?= __e('form.next_hearing') ?></strong><?= e(format_date($case['next_hearing_date'])) ?></div>
             <div class="table-wrap">
                 <table>
                     <thead><tr><th><?= __e('common.date') ?></th><th><?= __e('common.court') ?></th><th><?= __e('common.type') ?></th><th><?= __e('common.status') ?></th><th><?= __e('common.outcome') ?></th></tr></thead>
                     <tbody>
-                    <?php foreach ($hearings as $h): ?>
+                    <?php foreach ($pageHearings as $h): ?>
                         <tr>
                             <td><?= e(format_datetime($h['hearing_date'])) ?></td>
                             <td><?= e($h['court_name']) ?><div class="muted"><?= e($h['court_location']) ?></div></td>
@@ -1820,15 +2077,72 @@ if ($action === 'view' && $id) {
                             <td><?= e($h['outcome'] ?: __('common.em_dash')) ?></td>
                         </tr>
                     <?php endforeach; ?>
-                    <?php if (!$hearings): ?><tr><td colspan="5" class="muted"><?= __e('cases.no_hearings') ?></td></tr><?php endif; ?>
+                    <?php if (!$pageHearings): ?><tr><td colspan="5" class="muted"><?= __e('cases.no_hearings') ?></td></tr><?php endif; ?>
                     </tbody>
                 </table>
             </div>
+            <div class="case-hub-foot">
+                <p class="case-list-footer muted"><?= e(__($dlTotal === 1 ? 'cases.pager.showing_one' : 'cases.pager.showing_many', ['from' => (int) $dlFrom, 'to' => (int) $dlTo, 'total' => (int) $dlTotal])) ?></p>
+                <?php if ($dlPages > 1): ?>
+                <nav class="case-list-pager" aria-label="<?= __e('cases.pagination.aria') ?>">
+                    <?php if ($dlPage > 1): ?>
+                    <a class="case-page-btn" href="<?= e($dlPageUrl($dlPage - 1)) ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
+                    <?php else: ?>
+                    <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
+                    <?php endif; ?>
+                    <?php for ($dp = 1; $dp <= $dlPages; $dp++): ?>
+                    <a class="case-page-btn<?= $dp === $dlPage ? ' is-active' : '' ?>" href="<?= e($dlPageUrl($dp)) ?>"<?= $dp === $dlPage ? ' aria-current="page"' : '' ?>><?= $dp ?></a>
+                    <?php endfor; ?>
+                    <?php if ($dlPage < $dlPages): ?>
+                    <a class="case-page-btn" href="<?= e($dlPageUrl($dlPage + 1)) ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
+                    <?php else: ?>
+                    <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
+                    <?php endif; ?>
+                </nav>
+                <?php endif; ?>
+            </div>
         </section>
 
-        <?php elseif ($tab === 'notes'): ?>
+        <?php elseif ($tab === 'notes'):
+            $noteQ = trim((string) get('q', ''));
+            $filteredNotes = array_values(array_filter($notes, static function ($n) use ($noteQ) {
+                if ($noteQ === '') {
+                    return true;
+                }
+                $hay = strtolower(($n['author'] ?? '') . ' ' . ($n['note'] ?? ''));
+                return str_contains($hay, strtolower($noteQ));
+            }));
+            $noteTotal = count($filteredNotes);
+            $notePerPage = 10;
+            $notePage = max(1, (int) get('note_page', 1));
+            $notePages = max(1, (int) ceil($noteTotal / $notePerPage));
+            if ($notePage > $notePages) {
+                $notePage = $notePages;
+            }
+            $pageNotes = array_slice($filteredNotes, ($notePage - 1) * $notePerPage, $notePerPage);
+            $noteFrom = $noteTotal === 0 ? 0 : (($notePage - 1) * $notePerPage) + 1;
+            $noteTo = min($notePage * $notePerPage, $noteTotal);
+            $notePageUrl = static function (int $p) use ($tabUrl, $noteQ): string {
+                $params = array_filter([
+                    'q' => $noteQ !== '' ? $noteQ : null,
+                    'note_page' => $p,
+                ], static fn($v) => $v !== null && $v !== '');
+                return $tabUrl('notes') . ($params ? '&' . http_build_query($params) : '');
+            };
+        ?>
         <section class="panel case-hub-card">
-            <h2><?= __e('cases.tab.notes') ?></h2>
+            <div class="panel-header">
+                <h2><?= __e('cases.tab.notes') ?></h2>
+            </div>
+            <form method="get" class="appt-list-toolbar" action="cases.php">
+                <input type="hidden" name="action" value="view">
+                <input type="hidden" name="id" value="<?= $id ?>">
+                <input type="hidden" name="tab" value="notes">
+                <label class="appt-list-search">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+                    <input type="search" name="q" value="<?= e($noteQ) ?>" placeholder="<?= __e('common.search') ?>" autocomplete="off">
+                </label>
+            </form>
             <form method="post" class="form-grid entity-inline-form case-add-note-form" style="margin-bottom:1rem;">
                 <?= csrf_field() ?><input type="hidden" name="form_action" value="note"><input type="hidden" name="case_id" value="<?= $id ?>">
                 <div class="case-add-note-head">
@@ -1843,16 +2157,61 @@ if ($action === 'view' && $id) {
                 </div>
             </form>
             <div class="list-stack">
-                <?php foreach ($notes as $n): ?>
+                <?php foreach ($pageNotes as $n): ?>
                     <div class="list-item"><strong><?= e($n['author']) ?><?= $n['is_private'] ? ' ' . __('cases.private_suffix') : '' ?></strong><span class="muted"><?= e(format_datetime($n['created_at'])) ?></span><div><?= nl2br(e($n['note'])) ?></div></div>
                 <?php endforeach; ?>
-                <?php if (!$notes): ?><div class="empty-state"><?= __e('cases.no_notes') ?></div><?php endif; ?>
+                <?php if (!$pageNotes): ?><div class="empty-state"><?= __e('cases.no_notes') ?></div><?php endif; ?>
+            </div>
+            <div class="case-hub-foot">
+                <p class="case-list-footer muted"><?= e(__($noteTotal === 1 ? 'cases.pager.showing_one' : 'cases.pager.showing_many', ['from' => (int) $noteFrom, 'to' => (int) $noteTo, 'total' => (int) $noteTotal])) ?></p>
+                <?php if ($notePages > 1): ?>
+                <nav class="case-list-pager" aria-label="<?= __e('cases.pagination.aria') ?>">
+                    <?php if ($notePage > 1): ?>
+                    <a class="case-page-btn" href="<?= e($notePageUrl($notePage - 1)) ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
+                    <?php else: ?>
+                    <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
+                    <?php endif; ?>
+                    <?php for ($np = 1; $np <= $notePages; $np++): ?>
+                    <a class="case-page-btn<?= $np === $notePage ? ' is-active' : '' ?>" href="<?= e($notePageUrl($np)) ?>"<?= $np === $notePage ? ' aria-current="page"' : '' ?>><?= $np ?></a>
+                    <?php endfor; ?>
+                    <?php if ($notePage < $notePages): ?>
+                    <a class="case-page-btn" href="<?= e($notePageUrl($notePage + 1)) ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
+                    <?php else: ?>
+                    <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
+                    <?php endif; ?>
+                </nav>
+                <?php endif; ?>
             </div>
         </section>
 
         <?php else:
+            $activityQ = trim((string) get('q', ''));
+            $filteredActivity = array_values(array_filter($activity, static function ($a) use ($activityQ) {
+                if ($activityQ === '') {
+                    return true;
+                }
+                $hay = strtolower(($a['title'] ?? '') . ' ' . ($a['ref'] ?? '') . ' ' . ($a['type'] ?? ''));
+                return str_contains($hay, strtolower($activityQ));
+            }));
+            $activityTotal = count($filteredActivity);
+            $activityPerPage = 10;
+            $activityPage = max(1, (int) get('activity_page', 1));
+            $activityPages = max(1, (int) ceil($activityTotal / $activityPerPage));
+            if ($activityPage > $activityPages) {
+                $activityPage = $activityPages;
+            }
+            $pageActivity = array_slice($filteredActivity, ($activityPage - 1) * $activityPerPage, $activityPerPage);
+            $activityFrom = $activityTotal === 0 ? 0 : (($activityPage - 1) * $activityPerPage) + 1;
+            $activityTo = min($activityPage * $activityPerPage, $activityTotal);
+            $activityPageUrl = static function (int $p) use ($tabUrl, $activityQ): string {
+                $params = array_filter([
+                    'q' => $activityQ !== '' ? $activityQ : null,
+                    'activity_page' => $p,
+                ], static fn($v) => $v !== null && $v !== '');
+                return $tabUrl('activity') . ($params ? '&' . http_build_query($params) : '');
+            };
             $activityByDate = [];
-            foreach ($activity as $a) {
+            foreach ($pageActivity as $a) {
                 $dayKey = date('Y-m-d', strtotime($a['at']) ?: time());
                 $activityByDate[$dayKey][] = $a;
             }
@@ -1860,9 +2219,17 @@ if ($action === 'view' && $id) {
         <section class="panel case-hub-card case-activity-panel">
             <div class="case-activity-head">
                 <h2><?= __e('cases.tab.activity') ?></h2>
-                <label class="case-activity-filter">
-                    <span class="sr-only"><?= __e('notifications.filter_status') ?></span>
-                    <select id="caseActivityFilter" aria-label="<?= __e('notifications.filter_status') ?>">
+                <form method="get" class="appt-list-toolbar" action="cases.php">
+                    <input type="hidden" name="action" value="view">
+                    <input type="hidden" name="id" value="<?= $id ?>">
+                    <input type="hidden" name="tab" value="activity">
+                    <label class="appt-list-search">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+                        <input type="search" name="q" value="<?= e($activityQ) ?>" placeholder="<?= __e('common.search') ?>" autocomplete="off">
+                    </label>
+                    <label class="case-activity-filter">
+                        <span class="sr-only"><?= __e('notifications.filter_status') ?></span>
+                        <select id="caseActivityFilter" aria-label="<?= __e('notifications.filter_status') ?>">
                         <option value="all"><?= __e('notifications.filter.all') ?></option>
                         <option value="document"><?= __e('cases.tab.documents') ?></option>
                         <option value="invoice"><?= __e('cases.tab.invoices') ?></option>
@@ -1875,7 +2242,7 @@ if ($action === 'view' && $id) {
                 </label>
             </div>
             <div class="case-activity-scroll" id="caseActivityList">
-                <?php if ($activity): ?>
+                <?php if ($activityTotal > 0): ?>
                     <?php foreach ($activityByDate as $dayItems): ?>
                         <div class="case-activity-day" data-day>
                             <div class="case-activity-day-label"><?= e($formatActivityDay($dayItems[0]['at'])) ?></div>
@@ -1898,7 +2265,24 @@ if ($action === 'view' && $id) {
                 <?php endif; ?>
             </div>
             <div class="case-activity-footer" id="caseActivityFooter">
-                Showing <?= $activityTotal > 0 ? '1–' . $activityTotal : '0' ?> of <?= (int) $activityTotal ?> activities
+                <?= e(__($activityTotal === 1 ? 'cases.pager.showing_one' : 'cases.pager.showing_many', ['from' => (int) $activityFrom, 'to' => (int) $activityTo, 'total' => (int) $activityTotal])) ?>
+                <?php if ($activityPages > 1): ?>
+                <nav class="case-list-pager" aria-label="<?= __e('cases.pagination.aria') ?>">
+                    <?php if ($activityPage > 1): ?>
+                    <a class="case-page-btn" href="<?= e($activityPageUrl($activityPage - 1)) ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
+                    <?php else: ?>
+                    <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
+                    <?php endif; ?>
+                    <?php for ($ap = 1; $ap <= $activityPages; $ap++): ?>
+                    <a class="case-page-btn<?= $ap === $activityPage ? ' is-active' : '' ?>" href="<?= e($activityPageUrl($ap)) ?>"<?= $ap === $activityPage ? ' aria-current="page"' : '' ?>><?= $ap ?></a>
+                    <?php endfor; ?>
+                    <?php if ($activityPage < $activityPages): ?>
+                    <a class="case-page-btn" href="<?= e($activityPageUrl($activityPage + 1)) ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
+                    <?php else: ?>
+                    <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
+                    <?php endif; ?>
+                </nav>
+                <?php endif; ?>
             </div>
         </section>
         <script>
