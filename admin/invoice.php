@@ -588,11 +588,12 @@ if (!$selectedBank && !empty($invoice['bank_account_id'])) {
     $selectedBank = $bankOptions[(int) $invoice['bank_account_id']] ?? null;
 }
 
-$firmName = company_name($pdo);
-$firmEmail = get_setting($pdo, 'company_email', '');
-$firmPhone = get_setting($pdo, 'company_phone', '');
-$firmAddress = get_setting($pdo, 'company_address', '');
-$firmVat = get_setting($pdo, 'company_vat', get_setting($pdo, 'company_registration', ''));
+$brand = firm_branding($pdo);
+$firmName = $brand['name'];
+$firmEmail = $brand['email'];
+$firmPhone = $brand['phone'];
+$firmAddress = $brand['address'];
+$firmVat = $brand['vat'];
 $payInstructions = trim((string) ($invoice['payment_instructions'] ?? ''));
 if ($payInstructions === '') {
     $payInstructions = get_setting($pdo, 'payment_instructions', '');
@@ -792,7 +793,7 @@ $mailtoHref = 'mailto:' . rawurlencode((string) $invoice['email'])
                 <?php endif; ?>
             </div>
         </div>
-        <p class="inv-doc-thanks"><?= __e('finance.thank_you') ?></p>
+        <p class="inv-doc-thanks"><?= e(__('finance.thank_you', ['company' => $firmName])) ?></p>
     </footer>
 </article>
 <?php if ($mailtoOnLoad && !empty($invoice['email'])): ?>

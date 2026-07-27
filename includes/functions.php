@@ -1678,6 +1678,50 @@ function company_name(?PDO $pdo = null): string
     }
 }
 
+/**
+ * Short firm tagline for footer and public pages (company description, config, or lang default).
+ */
+function company_tagline(?PDO $pdo = null): string
+{
+    try {
+        if ($pdo === null) {
+            $pdo = db();
+        }
+        $desc = trim((string) get_setting($pdo, 'company_description', ''));
+        if ($desc !== '') {
+            $first = trim((string) (preg_split('/\r\n|\r|\n/', $desc)[0] ?? $desc));
+            if ($first !== '') {
+                return $first;
+            }
+        }
+    } catch (Throwable $e) {
+        // fall through
+    }
+    $fromConfig = trim((string) app_config('tagline', ''));
+    return $fromConfig !== '' ? $fromConfig : __('app.tagline');
+}
+
+/**
+ * Branding fields used on invoices, receipts, login, and documents.
+ *
+ * @return array{name:string,email:string,phone:string,address:string,vat:string,website:string,tagline:string}
+ */
+function firm_branding(?PDO $pdo = null): array
+{
+    if ($pdo === null) {
+        $pdo = db();
+    }
+    return [
+        'name' => company_name($pdo),
+        'email' => trim((string) get_setting($pdo, 'company_email', '')),
+        'phone' => trim((string) get_setting($pdo, 'company_phone', '')),
+        'address' => trim((string) get_setting($pdo, 'company_address', '')),
+        'vat' => trim((string) get_setting($pdo, 'company_vat', get_setting($pdo, 'company_registration', ''))),
+        'website' => trim((string) get_setting($pdo, 'company_website', '')),
+        'tagline' => company_tagline($pdo),
+    ];
+}
+
 function company_brand_initial(?PDO $pdo = null): string
 {
     $name = company_name($pdo);

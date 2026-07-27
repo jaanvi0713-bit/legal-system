@@ -1,7 +1,7 @@
 </main>
         <footer class="app-footer">
             <span>&copy; <?= date('Y') ?> <?= e(company_name()) ?></span>
-            <span><?= __e('app.tagline') ?></span>
+            <span><?= e(company_tagline()) ?></span>
         </footer>
     </div>
 </div>

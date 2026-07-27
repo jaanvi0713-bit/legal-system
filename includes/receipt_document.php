@@ -126,6 +126,6 @@ $invoiceRef = trim((string) ($payment['invoice_number'] ?? ''));
                 </div>
             <?php endif; ?>
         </div>
-        <p class="inv-doc-thanks"><?= __e('finance.thank_you') ?></p>
+        <p class="inv-doc-thanks"><?= e(__('finance.thank_you', ['company' => $firmName])) ?></p>
     </footer>
 </article>

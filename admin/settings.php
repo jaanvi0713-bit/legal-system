@@ -344,6 +344,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $get = fn($k, $d = '') => get_setting($pdo, $k, $d);
+$brandDefaultName = company_name($pdo);
 $user = current_user();
 $base = app_config('url');
 
@@ -466,7 +467,7 @@ require __DIR__ . '/../includes/header.php';
                     </div>
                     <div class="form-grid">
                         <div class="entity-field-row">
-                            <div class="form-group"><label><?= __e('settings.branding.company_name') ?></label><input name="company_name" value="<?= e($get('company_name', 'LEGAL PRO')) ?>"></div>
+                            <div class="form-group"><label><?= __e('settings.branding.company_name') ?></label><input name="company_name" value="<?= e($get('company_name', $brandDefaultName)) ?>"><span class="field-hint"><?= __e('settings.branding.company_name_help') ?></span></div>
                             <div class="form-group"><label><?= __e('settings.branding.workspace_url') ?></label><input value="<?= e($base) ?>" disabled></div>
                             <div class="form-group">
                                 <label><?= __e('settings.branding.created_by') ?></label>
@@ -621,7 +622,7 @@ require __DIR__ . '/../includes/header.php';
                 $companyFavicon = $get('company_favicon');
                 $logoUrl = $companyLogo ? $base . '/' . ltrim($companyLogo, '/') : '';
                 $faviconUrl = $companyFavicon ? $base . '/' . ltrim($companyFavicon, '/') : '';
-                $brandPreviewName = $get('company_name', 'LEGAL PRO');
+                $brandPreviewName = $get('company_name', $brandDefaultName);
                 ?>
                 <div class="settings-block" id="logoFaviconBlock" data-logo-url="<?= e($logoUrl) ?>" data-favicon-url="<?= e($faviconUrl) ?>">
                     <div class="settings-block-head">

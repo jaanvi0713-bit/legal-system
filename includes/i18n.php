@@ -342,7 +342,16 @@ function t_content(?string $text): string
 
     $trimmed = trim($text);
     if (isset($map[$trimmed])) {
-        return __($map[$trimmed]);
+        $langKey = $map[$trimmed];
+        if (str_starts_with($langKey, 'content.loc.')) {
+            return __($langKey, ['company' => company_name()]);
+        }
+        return __($langKey);
+    }
+
+    // Legacy seed locations that baked in the old product name.
+    if (preg_match('/^(?:Lexora|LEGAL PRO|Legal Pro)\s+Office\s*-\s*(.+)$/iu', $trimmed, $m)) {
+        return company_name() . ' — ' . trim($m[1]);
     }
 
     if (preg_match('/^Court document - (.+)$/i', $trimmed, $m)) {

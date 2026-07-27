@@ -462,7 +462,7 @@ function ai_action_extract_system_document(
         }
         $fileLabel = $names ? ('**' . implode('**, **', $names) . '**') : 'this file';
         return "📄 Attached {$fileLabel}, but I could not match an invoice or receipt in the system.\n\n"
-            . "No new client was started. Attach a Lexora invoice/receipt PDF (e.g. INV-2026-…), or say **create client** to register someone new.";
+            . 'No new client was started. Attach a firm invoice/receipt PDF (e.g. INV-2026-…), or say **create client** to register someone new.';
     }
 
     return null;

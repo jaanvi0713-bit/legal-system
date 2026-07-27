@@ -170,9 +170,21 @@ html.sidebar-collapsed .app-shell { grid-template-columns: 88px 1fr; }
     flex-shrink: 0;
     padding: 0.45rem;
     box-shadow: none;
+    overflow: hidden;
 }
 .brand-mark svg { width: 100%; height: 100%; }
-.brand-mark:has(img) { padding: 3px; }
+.brand-mark:has(img) {
+    padding: 0;
+    background: transparent;
+}
+.brand-mark img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    border-radius: inherit;
+    display: block;
+}
 .brand-text { min-width: 0; }
 .brand-name {
     font-size: 1rem;
@@ -1564,6 +1576,10 @@ html[data-theme="dark"] .auth-page {
     width: 46px;
     height: 46px;
     padding: 0;
+    overflow: hidden;
+}
+.login-card .brand-mark:has(img) {
+    background: transparent;
 }
 .login-card h1 { font-size: 1.85rem; margin-bottom: 0.25rem; }
 .demo-box {
@@ -8793,6 +8809,12 @@ td.case-docs-actions > a:last-child {
     border: 1px solid var(--inv-line);
     box-shadow: none;
     flex-shrink: 0;
+    overflow: hidden;
+}
+.inv-doc-logo.brand-mark:has(img) {
+    padding: 0;
+    background: transparent;
+    border-color: transparent;
 }
 .inv-doc-logo.brand-mark svg {
     width: 100%;
@@ -8801,7 +8823,8 @@ td.case-docs-actions > a:last-child {
 .inv-doc-logo.brand-mark img {
     width: 100%;
     height: 100%;
-    object-fit: contain;
+    object-fit: cover;
+    object-position: center;
     border-radius: inherit;
     display: block;
 }
@@ -9140,7 +9163,6 @@ td.case-docs-actions > a:last-child {
 .branding-upload-preview img { width: 100%; height: 100%; object-fit: contain; }
 .branding-upload-empty { font-size: 0.68rem; color: var(--ink-soft); text-align: center; padding: 0 0.3rem; }
 .branding-upload input[type="file"] { flex: 1; min-width: 0; font-size: 0.82rem; }
-.brand-mark img { width: 100%; height: 100%; object-fit: contain; border-radius: inherit; }
 
 /* Logo & favicon uploader */
 .logo-upload-row { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
@@ -9173,9 +9195,10 @@ td.case-docs-actions > a:last-child {
 .lap-mark, .lap-login-mark {
     display: grid; place-items: center; border-radius: 10px; background: #fff; overflow: hidden; flex-shrink: 0;
 }
+.lap-mark:has(img), .lap-login-mark:has(img) { background: transparent; }
 .lap-mark { width: 38px; height: 38px; }
 .lap-login-mark { width: 56px; height: 56px; }
-.lap-mark img, .lap-login-mark img { width: 100%; height: 100%; object-fit: contain; }
+.lap-mark img, .lap-login-mark img { width: 100%; height: 100%; object-fit: cover; object-position: center; display: block; }
 .lap-text { display: grid; line-height: 1.2; }
 .lap-text strong { color: #fff; font-size: 0.78rem; font-weight: 800; }
 .lap-text span { color: rgba(255,255,255,0.55); font-size: 0.68rem; }

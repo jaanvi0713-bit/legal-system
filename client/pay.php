@@ -103,7 +103,8 @@ $payStmt = $pdo->prepare(
 $payStmt->execute([$invoiceId]);
 $latestPayment = $payStmt->fetch() ?: null;
 
-$firmName = company_name($pdo);
+$brand = firm_branding($pdo);
+$firmName = $brand['name'];
 $base = rtrim((string) app_config('url'), '/');
 $css = $base . '/assets/css/style.css?v=' . (int) @filemtime(__DIR__ . '/../assets/css/style.css');
 $canDemoPay = $payStatus !== 'paid' && $due > 0;
@@ -126,10 +127,10 @@ $gradBtn = "linear-gradient(135deg, {$accent} 0%, {$accentDeep} 100%)";
 if ($viewMode === 'invoice' || $viewMode === 'receipt') {
     require_once __DIR__ . '/../includes/nav-icons.php';
     $totals = invoice_display_totals($pdo, $invoiceId, $invoice);
-    $firmEmail = get_setting($pdo, 'company_email', '');
-    $firmPhone = get_setting($pdo, 'company_phone', '');
-    $firmAddress = get_setting($pdo, 'company_address', '');
-    $firmVat = get_setting($pdo, 'company_vat', get_setting($pdo, 'company_registration', ''));
+    $firmEmail = $brand['email'];
+    $firmPhone = $brand['phone'];
+    $firmAddress = $brand['address'];
+    $firmVat = $brand['vat'];
     $selectedBank = get_bank_account($pdo, isset($invoice['bank_account_id']) ? (int) $invoice['bank_account_id'] : null);
 
     if ($viewMode === 'receipt') {
@@ -297,7 +298,7 @@ if ($viewMode === 'invoice' || $viewMode === 'receipt') {
             <div class="inv-doc-summary-divider"></div>
             <div class="inv-doc-summary-row is-grand"><span><?= __e('finance.grand_total') ?></span><strong><?= e(money($totals['grand'])) ?></strong></div>
         </section>
-        <p class="inv-doc-thanks"><?= __e('finance.thank_you') ?></p>
+        <p class="inv-doc-thanks"><?= e(__('finance.thank_you', ['company' => $firmName])) ?></p>
     </article>
 </body>
 </html>
