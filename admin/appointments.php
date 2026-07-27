@@ -21,21 +21,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $duration, post('location'), $status,
         ];
         $lawyerIdForSlot = post('lawyer_id') ? (int) post('lawyer_id') : null;
+        $clientIdForSlot = post('client_id') ? (int) post('client_id') : null;
+        if ($lawyerIdForSlot) {
+            ensure_lawyer_availability_slots_table($pdo);
+        }
         $pdo->beginTransaction();
-        $slotCheck = validate_lawyer_appointment_slot($pdo, $lawyerIdForSlot, post('scheduled_at'), $duration, $editId ?: null, true);
+        $slotCheck = validate_appointment_slot($pdo, $lawyerIdForSlot, $clientIdForSlot, post('scheduled_at'), $duration, $editId ?: null, true);
         if (!$slotCheck['ok']) {
-            $pdo->rollBack();
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             flash_lawyer_slot_error($slotCheck, $editId ? 'appointments.php?action=edit&id=' . $editId : 'appointments.php?action=create');
         }
         if ($editId) {
             $vals[] = $editId;
             $pdo->prepare('UPDATE appointments SET title=?, description=?, appointment_type=?, case_id=?, client_id=?, lawyer_id=?, scheduled_at=?, duration_minutes=?, location=?, status=? WHERE id=?')->execute($vals);
-            $pdo->commit();
+            if ($pdo->inTransaction()) {
+                $pdo->commit();
+            }
             flash('success', __('flash.appointment.updated'));
         } else {
             $vals[] = current_user()['id'];
             $pdo->prepare('INSERT INTO appointments (title, description, appointment_type, case_id, client_id, lawyer_id, scheduled_at, duration_minutes, location, status, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)')->execute($vals);
-            $pdo->commit();
+            if ($pdo->inTransaction()) {
+                $pdo->commit();
+            }
             if (post('lawyer_id')) {
                 create_notification($pdo, (int) post('lawyer_id'), 'notify.appointment_scheduled', post('title'), 'appointment', '../lawyer/appointments.php', current_user()['id']);
             }
@@ -70,7 +80,11 @@ $activeNav = 'appointments';
 
 if ($action === 'create' || ($action === 'edit' && $id)) {
     $row = ['id'=>0,'title'=>'','description'=>'','appointment_type'=>'meeting','case_id'=>'','client_id'=>'','lawyer_id'=>'','scheduled_at'=>date('Y-m-d\TH:i'),'duration_minutes'=>60,'location'=>'','status'=>'pending'];
+    $prefillLawyerId = (int) get('lawyer_id', 0);
     if ($action === 'create') {
+        if ($prefillLawyerId > 0) {
+            $row['lawyer_id'] = $prefillLawyerId;
+        }
         $prefillDate = get('date', '');
         if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $prefillDate)) {
             $row['scheduled_at'] = $prefillDate . 'T09:00';
@@ -86,6 +100,10 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
     $isEdit = (bool) $id;
     $formCancelUrl = 'appointments.php';
     $apptAvailabilityLawyerId = (int) ($row['lawyer_id'] ?? 0) ?: null;
+    $apptFormConfig = [];
+    if ($prefillLawyerId > 0 && !$isEdit) {
+        $apptFormConfig['lockLawyerId'] = $prefillLawyerId;
+    }
     require __DIR__ . '/../includes/appointment-form.php';
     require __DIR__ . '/../includes/footer.php'; exit;
 }

@@ -525,7 +525,7 @@ function ai_action_schedule_appointment_guided(
         return "That date/time looks invalid or in the past. " . ai_appt_ask_prompt('when', $portal);
     }
 
-    $slotCheck = validate_lawyer_appointment_slot($pdo, $lawyerId, $when, $duration, null, false);
+    $slotCheck = validate_appointment_slot($pdo, $lawyerId, $clientId, $when, $duration, null, false);
     $slotWarning = '';
     if (empty($slotCheck['ok'])) {
         $reason = $slotCheck['message'] ?? 'Outside published availability';

@@ -38,14 +38,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($postAction === 'assign_case') {
         $lawyerId = (int) post('lawyer_id');
         $caseId = (int) post('case_id');
+        $profileCasesUrl = 'lawyers.php?action=view&id=' . max(0, $lawyerId) . '&tab=cases';
         if ($lawyerId < 1 || $caseId < 1) {
             flash('error', __('flash.case.invalid_reference'));
-            redirect('lawyers.php?action=view&id=' . max(0, $lawyerId));
+            redirect($profileCasesUrl);
         }
-        sync_case_lawyers($pdo, $caseId, $lawyerId, [], (int) current_user()['id']);
+        $assignRole = post('assign_role') === 'lead' ? 'lead' : 'associate';
+        $assignedRole = assign_case_to_lawyer($pdo, $caseId, $lawyerId, (int) current_user()['id'], $assignRole);
+        if ($assignedRole === null) {
+            flash('error', __('flash.case.already_assigned_lawyer'));
+            redirect($profileCasesUrl);
+        }
         create_notification($pdo, $lawyerId, 'notify.case_assigned_short', 'A case has been assigned to you.', 'case', '../lawyer/cases.php?id=' . $caseId, current_user()['id']);
-        flash('success', __('flash.case.assigned'));
-        redirect('lawyers.php?action=view&id=' . $lawyerId);
+        flash('success', __('flash.case.assigned_role', ['role' => __('cases.team.' . $assignedRole)]));
+        redirect($profileCasesUrl);
     }
 }
 
@@ -63,6 +69,13 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
     }
     require __DIR__ . '/../includes/header.php';
     $isEdit = (bool) $id;
+    $editCancelUrl = 'lawyers.php';
+    if ($isEdit) {
+        $from = trim((string) get('from', ''));
+        if ($from !== '' && !str_contains($from, '://') && !str_starts_with($from, '//')) {
+            $editCancelUrl = $from;
+        }
+    }
     ?>
     <div class="entity-form-wrap">
     <div class="entity-form panel">
@@ -176,7 +189,7 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
             </div>
 
             <div class="entity-form-footer">
-                <a class="btn btn-secondary" href="lawyers.php"><?= __e('common.cancel') ?></a>
+                <a class="btn btn-secondary" href="<?= e($editCancelUrl) ?>"><?= __e('common.cancel') ?></a>
                 <button class="btn btn-primary" type="submit"><?= $isEdit ? __e('common.save_changes') : __e('lawyers.save') ?></button>
             </div>
         </form>
@@ -190,12 +203,22 @@ if ($action === 'view' && $id) {
     $stmt->execute([$id]);
     $lawyer = $stmt->fetch();
     if (!$lawyer) { flash('error', __('lawyers.not_found')); redirect('lawyers.php'); }
-    $cases = $pdo->prepare('SELECT c.*, CONCAT(u.first_name," ",u.last_name) AS client_name FROM cases c JOIN users u ON u.id=c.client_id WHERE c.lawyer_id=? ORDER BY c.updated_at DESC');
-    $cases->execute([$id]);
+    $cases = $pdo->prepare(
+        'SELECT c.*, CONCAT(u.first_name," ",u.last_name) AS client_name,
+                COALESCE(
+                    (SELECT cl.role FROM case_lawyers cl WHERE cl.case_id = c.id AND cl.lawyer_id = ? LIMIT 1),
+                    IF(c.lawyer_id = ?, "lead", "associate")
+                ) AS team_role
+         FROM cases c
+         JOIN users u ON u.id=c.client_id
+         WHERE ' . lawyer_case_access_sql('c') . '
+         ORDER BY c.updated_at DESC'
+    );
+    $cases->execute([$id, $id, $id, $id]);
     $cases = $cases->fetchAll();
     $openCases = count(array_filter($cases, fn($c) => $c['status'] !== 'closed'));
     $closedCases = count($cases) - $openCases;
-    $unassigned = $pdo->query("SELECT id, case_number, title FROM cases WHERE lawyer_id IS NULL OR lawyer_id=0 ORDER BY created_at DESC")->fetchAll();
+    $assignableCases = cases_assignable_to_lawyer($pdo, $id);
 
     $pendingApptStmt = $pdo->prepare("SELECT COUNT(*) FROM appointments WHERE lawyer_id=? AND status='pending'");
     $pendingApptStmt->execute([$id]);
@@ -207,19 +230,20 @@ if ($action === 'view' && $id) {
          LEFT JOIN users c ON c.id=a.client_id
          WHERE a.lawyer_id=? AND a.scheduled_at >= NOW()
            AND a.status IN ('scheduled','confirmed','rescheduled','pending')
-         ORDER BY a.scheduled_at LIMIT 8"
+         ORDER BY a.scheduled_at"
     );
     $upcomingApptStmt->execute([$id]);
     $upcomingAppts = $upcomingApptStmt->fetchAll();
 
+    $hearingLawyerSql = '(h.lawyer_id = ? OR c.lawyer_id = ? OR EXISTS (SELECT 1 FROM case_lawyers cl WHERE cl.case_id = c.id AND cl.lawyer_id = ?))';
     $upcomingHearingStmt = $pdo->prepare(
         "SELECT h.*, c.case_number, c.title
          FROM court_hearings h
          JOIN cases c ON c.id=h.case_id
-         WHERE c.lawyer_id=? AND h.hearing_date >= NOW() AND h.status='scheduled'
-         ORDER BY h.hearing_date LIMIT 8"
+         WHERE {$hearingLawyerSql} AND h.hearing_date >= NOW() AND h.status='scheduled'
+         ORDER BY h.hearing_date"
     );
-    $upcomingHearingStmt->execute([$id]);
+    $upcomingHearingStmt->execute([$id, $id, $id]);
     $upcomingHearings = $upcomingHearingStmt->fetchAll();
 
     $upcomingApptCountStmt = $pdo->prepare(
@@ -233,9 +257,9 @@ if ($action === 'view' && $id) {
     $upcomingHearingCountStmt = $pdo->prepare(
         "SELECT COUNT(*) FROM court_hearings h
          JOIN cases c ON c.id=h.case_id
-         WHERE c.lawyer_id=? AND h.hearing_date >= NOW() AND h.status='scheduled'"
+         WHERE {$hearingLawyerSql} AND h.hearing_date >= NOW() AND h.status='scheduled'"
     );
-    $upcomingHearingCountStmt->execute([$id]);
+    $upcomingHearingCountStmt->execute([$id, $id, $id]);
     $upcomingHearingCount = (int) $upcomingHearingCountStmt->fetchColumn();
     $upcomingTotal = $upcomingApptCount + $upcomingHearingCount;
 
@@ -247,275 +271,399 @@ if ($action === 'view' && $id) {
         $scheduleItems[] = ['kind' => 'appointment', 'sort' => strtotime((string) $a['scheduled_at']) ?: PHP_INT_MAX, 'row' => $a];
     }
     usort($scheduleItems, static fn(array $a, array $b): int => $a['sort'] <=> $b['sort']);
-    $scheduleItems = array_slice($scheduleItems, 0, 6);
+
+    $lawyerProfileUrl = 'lawyers.php?action=view&id=' . $id;
+    $lawyerScheduleUrl = 'lawyer-availability.php?lawyer_id=' . $id;
+    $lawyerApptCreateUrl = 'appointments.php?action=create&lawyer_id=' . $id;
+    $lawyerHearingCreateUrl = 'court.php?action=create&lawyer_id=' . $id;
 
     $workloadPct = count($cases) > 0 ? (int) round(($openCases / count($cases)) * 100) : 0;
     $initials = strtoupper(mb_substr((string) $lawyer['first_name'], 0, 1) . mb_substr((string) $lawyer['last_name'], 0, 1));
+    $profileTab = in_array((string) get('tab', ''), ['schedule', 'cases'], true) ? (string) get('tab') : 'overview';
     $pageTitle = __('page.lawyers');
     $pageSubtitle = __('lawyers.profile.greeting_kicker');
     $bodyClass = 'page-glass-dash page-lawyer-profile';
     require __DIR__ . '/../includes/header.php';
     ?>
     <div class="lawyer-profile-page">
-        <header class="panel lawyer-profile-banner">
-            <div class="lawyer-profile-banner-inner">
-                <div class="lawyer-profile-banner-toolbar">
+        <div class="lawyer-profile-workspace panel">
+            <aside class="lawyer-profile-sidebar" aria-label="<?= __e('lawyers.profile.breadcrumb') ?>">
+                <div class="lawyer-profile-sidebar-user">
+                    <div class="lawyer-profile-sidebar-identity">
+                        <div class="lawyer-profile-avatar" aria-hidden="true"><?= e($initials) ?></div>
+                        <div class="lawyer-profile-sidebar-meta">
+                            <strong><?= e(full_name($lawyer)) ?></strong>
+                            <span><?= e($lawyer['email']) ?></span>
+                        </div>
+                    </div>
+                    <div class="lawyer-profile-chips">
+                        <?= status_badge($lawyer['availability']) ?>
+                        <?= status_badge($lawyer['is_active'] ? 'active' : 'pending') ?>
+                    </div>
+                </div>
+                <nav class="lawyer-profile-sidebar-nav" role="tablist" aria-label="<?= __e('lawyers.profile.breadcrumb') ?>">
+                    <a class="<?= $profileTab === 'overview' ? 'is-active' : '' ?>" href="?action=view&id=<?= $id ?>&tab=overview" role="tab" data-lawyer-tab="overview" aria-selected="<?= $profileTab === 'overview' ? 'true' : 'false' ?>"><?= __e('lawyers.profile.nav_overview') ?></a>
+                    <a class="<?= $profileTab === 'schedule' ? 'is-active' : '' ?>" href="?action=view&id=<?= $id ?>&tab=schedule" role="tab" data-lawyer-tab="schedule" aria-selected="<?= $profileTab === 'schedule' ? 'true' : 'false' ?>"><?= __e('lawyers.profile.nav_schedule') ?></a>
+                    <a class="<?= $profileTab === 'cases' ? 'is-active' : '' ?>" href="?action=view&id=<?= $id ?>&tab=cases" role="tab" data-lawyer-tab="cases" aria-selected="<?= $profileTab === 'cases' ? 'true' : 'false' ?>"><?= __e('lawyers.profile.nav_cases') ?></a>
+                    <a href="?action=edit&id=<?= $id ?>&from=<?= urlencode($lawyerProfileUrl . '&tab=' . $profileTab) ?>"><?= __e('lawyers.profile.nav_edit') ?></a>
+                </nav>
+                <a class="lawyer-profile-sidebar-back" href="lawyers.php">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+                    <?= __e('lawyers.profile.back_lawyers') ?>
+                </a>
+            </aside>
+
+            <div class="lawyer-profile-canvas">
+                <div class="lawyer-profile-canvas-top">
                     <nav class="lawyer-profile-breadcrumb" aria-label="<?= __e('lawyers.profile.breadcrumb') ?>">
                         <a href="lawyers.php"><?= __e('page.lawyers') ?></a>
                         <span aria-hidden="true">/</span>
                         <span><?= e(full_name($lawyer)) ?></span>
                     </nav>
-                    <div class="lawyer-profile-banner-actions row-actions">
-                        <a class="btn btn-row-open btn-sm btn-row-fit" href="lawyer-availability.php?lawyer_id=<?= (int) $id ?>"><?= __e('lawyers.view_schedule') ?></a>
-                        <a class="btn btn-row-edit btn-sm btn-row-fit" href="?action=edit&id=<?= $id ?>"><?= __e('lawyers.edit_profile') ?></a>
-                    </div>
+                    <p class="lawyer-profile-canvas-meta"><?= e($lawyer['specialization'] ?: __('lawyers.general_practice')) ?><?php if ($lawyer['bar_number']): ?> · <?= e($lawyer['bar_number']) ?><?php endif; ?></p>
                 </div>
 
-                <div class="lawyer-profile-banner-hero">
-                    <div class="lawyer-profile-avatar" aria-hidden="true"><?= e($initials) ?></div>
-                    <div class="lawyer-profile-identity">
-                        <h1 class="lawyer-profile-name"><?= e(full_name($lawyer)) ?></h1>
-                        <p class="lawyer-profile-meta"><?= e($lawyer['specialization'] ?: __('lawyers.general_practice')) ?><?php if ($lawyer['bar_number']): ?> · <?= e($lawyer['bar_number']) ?><?php endif; ?></p>
-                        <div class="lawyer-profile-chips">
-                            <?= status_badge($lawyer['availability']) ?>
-                            <?= status_badge($lawyer['is_active'] ? 'active' : 'pending') ?>
+            <div class="lawyer-profile-body is-tab-<?= e($profileTab) ?>" data-lawyer-profile-tabs>
+                <div class="lawyer-profile-main">
+                    <section class="lawyer-profile-tab-panel<?= $profileTab === 'overview' ? ' is-active' : '' ?>" data-lawyer-tab-panel="overview" role="tabpanel"<?= $profileTab !== 'overview' ? ' hidden' : '' ?>>
+                        <div class="lawyer-profile-section-head">
+                            <div>
+                                <h2><?= __e('lawyers.profile.details') ?></h2>
+                                <p class="muted"><?= __e('lawyers.profile.details_help') ?></p>
+                            </div>
                         </div>
-                    </div>
-                </div>
+                        <div class="lawyer-profile-content-panel lawyer-profile-content-panel--overview">
+                        <div class="lawyer-profile-overview lawyer-profile-overview--split">
+                        <div class="lawyer-profile-sheet">
+                            <div class="lawyer-profile-sheet-rows">
+                                <div class="lawyer-profile-sheet-row">
+                                    <span class="lawyer-profile-sheet-icon" aria-hidden="true">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>
+                                    </span>
+                                    <div class="lawyer-profile-sheet-copy">
+                                        <span class="lawyer-profile-sheet-label"><?= __e('common.email') ?></span>
+                                        <strong><?= e($lawyer['email']) ?></strong>
+                                    </div>
+                                    <a class="lawyer-profile-sheet-action" href="mailto:<?= e($lawyer['email']) ?>">
+                                        <span class="lawyer-profile-sheet-action-icon" aria-hidden="true">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13"/><path d="M22 2 15 22 11 13 2 9z"/></svg>
+                                        </span>
+                                        <span><?= __e('lawyers.profile.action_email') ?></span>
+                                    </a>
+                                </div>
+                                <div class="lawyer-profile-sheet-row">
+                                    <span class="lawyer-profile-sheet-icon" aria-hidden="true">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 4h4l2 5-2 1a11 11 0 0 0 5 5l1-2 5 2v4a2 2 0 0 1-2 2A15 15 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg>
+                                    </span>
+                                    <div class="lawyer-profile-sheet-copy">
+                                        <span class="lawyer-profile-sheet-label"><?= __e('common.phone') ?></span>
+                                        <strong><?= e($lawyer['phone'] ?: __('common.em_dash')) ?></strong>
+                                    </div>
+                                    <?php if ($lawyer['phone']): ?>
+                                    <a class="lawyer-profile-sheet-action" href="tel:<?= e(preg_replace('/\s+/', '', (string) $lawyer['phone'])) ?>">
+                                        <span class="lawyer-profile-sheet-action-icon" aria-hidden="true">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 4h4l2 5-2 1a11 11 0 0 0 5 5l1-2 5 2v4a2 2 0 0 1-2 2A15 15 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg>
+                                        </span>
+                                        <span><?= __e('lawyers.profile.action_call') ?></span>
+                                    </a>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="lawyer-profile-sheet-row">
+                                    <span class="lawyer-profile-sheet-icon" aria-hidden="true">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s7-4.5 7-11a7 7 0 0 1 14 0c0 6.5 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
+                                    </span>
+                                    <div class="lawyer-profile-sheet-copy">
+                                        <span class="lawyer-profile-sheet-label"><?= __e('common.address') ?></span>
+                                        <strong><?= e($lawyer['address'] ?: __('common.em_dash')) ?></strong>
+                                    </div>
+                                </div>
+                                <div class="lawyer-profile-sheet-row is-muted">
+                                    <span class="lawyer-profile-sheet-icon" aria-hidden="true">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20a8 8 0 0 1 16 0"/></svg>
+                                    </span>
+                                    <div class="lawyer-profile-sheet-copy">
+                                        <span class="lawyer-profile-sheet-label"><?= __e('form.username') ?></span>
+                                        <strong><?= e($lawyer['username']) ?></strong>
+                                    </div>
+                                </div>
+                            </div>
+                            <?php if (trim((string) ($lawyer['notes'] ?? '')) !== ''): ?>
+                            <div class="lawyer-profile-notes">
+                                <h3><?= __e('common.notes') ?></h3>
+                                <p><?= nl2br(e($lawyer['notes'])) ?></p>
+                            </div>
+                            <?php endif; ?>
+                        </div>
 
-                <div class="lawyer-profile-metric-strip" role="list">
-                    <div class="lawyer-profile-metric is-tone-cases" role="listitem">
-                        <div class="lawyer-profile-metric-icon" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
-                        </div>
-                        <div class="lawyer-profile-metric-body">
-                            <span class="lawyer-profile-metric-value"><?= (int) $openCases ?></span>
-                            <span class="lawyer-profile-metric-label"><?= __e('lawyers.workload_open') ?></span>
-                            <span class="lawyer-profile-metric-foot"><?= (int) $workloadPct ?>% <?= __e('lawyers.profile.of_caseload') ?></span>
-                        </div>
-                    </div>
-                    <div class="lawyer-profile-metric is-tone-clients" role="listitem">
-                        <div class="lawyer-profile-metric-icon" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
-                        </div>
-                        <div class="lawyer-profile-metric-body">
-                            <span class="lawyer-profile-metric-value"><?= count($cases) ?></span>
-                            <span class="lawyer-profile-metric-label"><?= __e('lawyers.total_cases') ?></span>
-                            <span class="lawyer-profile-metric-foot"><?= (int) $closedCases ?> <?= __e('lawyers.profile.closed_short') ?></span>
-                        </div>
-                    </div>
-                    <div class="lawyer-profile-metric is-tone-revenue<?= $pendingAppts > 0 ? ' is-alert' : '' ?>" role="listitem">
-                        <div class="lawyer-profile-metric-icon" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 6v6l4 2"/><circle cx="12" cy="12" r="9"/></svg>
-                        </div>
-                        <div class="lawyer-profile-metric-body">
-                            <span class="lawyer-profile-metric-value"><?= (int) $pendingAppts ?></span>
-                            <span class="lawyer-profile-metric-label"><?= __e('lawyer.tasks.stat_pending') ?></span>
-                            <span class="lawyer-profile-metric-foot"><?= __e('lawyer.kpi.foot_appointments') ?></span>
-                        </div>
-                    </div>
-                    <div class="lawyer-profile-metric is-tone-hearings" role="listitem">
-                        <div class="lawyer-profile-metric-icon" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-                        </div>
-                        <div class="lawyer-profile-metric-body">
-                            <span class="lawyer-profile-metric-value"><?= (int) $upcomingTotal ?></span>
-                            <span class="lawyer-profile-metric-label"><?= __e('lawyer.tasks.stat_upcoming') ?></span>
-                            <span class="lawyer-profile-metric-foot"><?= __e('lawyers.profile.schedule_short') ?></span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="lawyer-profile-workload-block">
-                    <div class="lawyer-profile-workload-head">
-                        <span><?= __e('lawyers.profile.of_caseload') ?></span>
-                        <span><?= (int) $workloadPct ?>%</span>
-                    </div>
-                    <div class="lawyer-profile-workload" aria-hidden="true">
-                        <span style="width: <?= max(0, min(100, $workloadPct)) ?>%;"></span>
-                    </div>
-                </div>
-            </div>
-        </header>
-
-        <div class="lawyer-profile-layout">
-            <section class="panel lawyer-profile-card lawyer-profile-card--details">
-                <div class="lawyer-profile-card-head">
-                    <div>
-                        <h2><?= __e('lawyers.profile.details') ?></h2>
-                        <p class="muted"><?= __e('lawyers.profile.details_help') ?></p>
-                    </div>
-                    <div class="lawyer-profile-contact-actions">
-                        <a class="btn btn-row-open btn-sm btn-row-fit" href="mailto:<?= e($lawyer['email']) ?>"><?= __e('common.email') ?></a>
-                        <?php if ($lawyer['phone']): ?>
-                        <a class="btn btn-row-open btn-sm btn-row-fit" href="tel:<?= e(preg_replace('/\s+/', '', (string) $lawyer['phone'])) ?>"><?= __e('common.phone') ?></a>
-                        <?php endif; ?>
-                    </div>
-                </div>
-                <div class="lawyer-profile-spec-groups">
-                    <div class="lawyer-profile-spec-group">
-                        <h3><?= __e('lawyers.profile.contact_group') ?></h3>
-                        <dl class="lawyer-profile-spec-list">
-                            <div class="lawyer-profile-spec-item">
-                                <dt><?= __e('common.email') ?></dt>
-                                <dd><a href="mailto:<?= e($lawyer['email']) ?>"><?= e($lawyer['email']) ?></a></dd>
+                        <aside class="lawyer-profile-metric-rail" aria-label="<?= __e('lawyers.profile.at_a_glance') ?>">
+                            <div class="lawyer-profile-metric-rail-head">
+                                <h3 class="lawyer-profile-metric-rail-title"><?= __e('lawyers.profile.at_a_glance') ?></h3>
+                                <p class="muted"><?= __e('lawyers.profile.at_a_glance_help') ?></p>
                             </div>
-                            <div class="lawyer-profile-spec-item">
-                                <dt><?= __e('common.phone') ?></dt>
-                                <dd><?= e($lawyer['phone'] ?: __('common.em_dash')) ?></dd>
-                            </div>
-                            <div class="lawyer-profile-spec-item">
-                                <dt><?= __e('common.address') ?></dt>
-                                <dd><?= e($lawyer['address'] ?: __('common.em_dash')) ?></dd>
-                            </div>
-                        </dl>
-                    </div>
-                    <div class="lawyer-profile-spec-group">
-                        <h3><?= __e('lawyers.profile.credentials_group') ?></h3>
-                        <dl class="lawyer-profile-spec-list">
-                            <div class="lawyer-profile-spec-item">
-                                <dt><?= __e('form.username') ?></dt>
-                                <dd><?= e($lawyer['username']) ?></dd>
-                            </div>
-                            <div class="lawyer-profile-spec-item">
-                                <dt><?= __e('form.specialization') ?></dt>
-                                <dd><?= e($lawyer['specialization'] ?: __('lawyers.general_practice')) ?></dd>
-                            </div>
-                            <div class="lawyer-profile-spec-item">
-                                <dt><?= __e('form.bar_number') ?></dt>
-                                <dd><?= e($lawyer['bar_number'] ?: __('lawyers.no_bar')) ?></dd>
-                            </div>
-                            <div class="lawyer-profile-spec-item">
-                                <dt><?= __e('form.availability') ?></dt>
-                                <dd><?= status_badge($lawyer['availability']) ?></dd>
-                            </div>
-                            <div class="lawyer-profile-spec-item">
-                                <dt><?= __e('lawyers.workload_open') ?></dt>
-                                <dd><?= (int) $openCases ?> / <?= count($cases) ?> <span class="muted">(<?= (int) $workloadPct ?>%)</span></dd>
-                            </div>
-                        </dl>
-                    </div>
-                </div>
-                <?php if (trim((string) ($lawyer['notes'] ?? '')) !== ''): ?>
-                <div class="lawyer-profile-notes">
-                    <h3><?= __e('common.notes') ?></h3>
-                    <p><?= nl2br(e($lawyer['notes'])) ?></p>
-                </div>
-                <?php endif; ?>
-            </section>
-
-            <section class="panel lawyer-profile-card lawyer-profile-card--schedule">
-                <div class="lawyer-profile-card-head">
-                    <div>
-                        <h2><?= __e('dashboard.panel.upcoming_schedule') ?></h2>
-                        <p class="muted"><?= __e('lawyers.profile.schedule_help') ?></p>
-                    </div>
-                    <a class="lawyer-profile-link" href="lawyer-availability.php?lawyer_id=<?= (int) $id ?>"><?= __e('common.view_all') ?></a>
-                </div>
-                <?php if (!$scheduleItems): ?>
-                <div class="lawyer-profile-empty lawyer-profile-empty--schedule">
-                    <p class="muted"><?= __e('lawyers.profile.no_schedule') ?></p>
-                </div>
-                <?php else: ?>
-                <div class="tasks-feed lawyer-profile-feed">
-                    <?php foreach ($scheduleItems as $item): ?>
-                        <?php if ($item['kind'] === 'hearing'):
-                            $h = $item['row']; ?>
-                    <article class="tasks-feed-item">
-                        <div class="tasks-feed-mark is-court" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 21h18M6 18V8l6-4 6 4v10M9 18v-4h6v4"/></svg>
-                        </div>
-                        <div class="tasks-feed-body">
-                            <strong><?= e($h['case_number']) ?></strong>
-                            <span class="muted"><?= e(format_datetime($h['hearing_date'])) ?> · <?= e(t_content($h['court_name'] ?: __('common.court'))) ?></span>
-                        </div>
-                    </article>
-                        <?php else:
-                            $a = $item['row']; ?>
-                    <article class="tasks-feed-item">
-                        <div class="tasks-feed-mark" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-                        </div>
-                        <div class="tasks-feed-body">
-                            <strong><?= e(t_content($a['title'])) ?></strong>
-                            <span class="muted"><?= e(format_datetime($a['scheduled_at'])) ?> · <?= e($a['client_name'] ?: __('common.client')) ?></span>
-                        </div>
-                    </article>
-                        <?php endif; ?>
-                    <?php endforeach; ?>
-                </div>
-                <?php endif; ?>
-            </section>
-        </div>
-
-        <section class="panel lawyer-profile-card lawyer-profile-card--cases">
-            <div class="lawyer-profile-card-head">
-                <div>
-                    <h2><?= __e('lawyers.case_list') ?></h2>
-                    <p class="muted"><?= e(__('lawyers.profile.cases_help', ['count' => count($cases)])) ?></p>
-                </div>
-                <a class="lawyer-profile-link" href="cases.php"><?= __e('common.view_all') ?></a>
-            </div>
-            <div class="lawyer-profile-assign">
-                <label class="lawyer-profile-assign-label" for="assign_case_id"><?= __e('lawyers.assign_case') ?></label>
-                <?php if (!$unassigned): ?>
-                <p class="muted lawyer-profile-assign-hint"><?= __e('lawyers.profile.no_unassigned') ?></p>
-                <?php else: ?>
-                <form method="post" class="lawyer-profile-assign-form inline-form">
-                    <?= csrf_field() ?>
-                    <input type="hidden" name="form_action" value="assign_case">
-                    <input type="hidden" name="lawyer_id" value="<?= $id ?>">
-                    <select id="assign_case_id" name="case_id" required>
-                        <option value=""><?= __e('form.select_case') ?></option>
-                        <?php foreach ($unassigned as $c): ?>
-                            <option value="<?= (int) $c['id'] ?>"><?= e($c['case_number'] . ' — ' . $c['title']) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                    <button class="btn btn-row-open btn-sm btn-row-fit" type="submit"><?= __e('lawyers.assign') ?></button>
-                </form>
-                <?php endif; ?>
-            </div>
-            <?php if (!$cases): ?>
-            <div class="lawyer-profile-empty"><p class="muted"><?= __e('cases.empty.no_active') ?></p></div>
-            <?php else: ?>
-            <div class="table-wrap case-table-wrap lawyer-profile-table-wrap">
-                <table class="case-table">
-                    <thead>
-                        <tr>
-                            <th><?= __e('common.case') ?></th>
-                            <th><?= __e('common.client') ?></th>
-                            <th><?= __e('common.status') ?></th>
-                            <th><?= __e('common.priority') ?></th>
-                            <th><?= __e('common.last_updated') ?></th>
-                            <th class="col-actions"><?= __e('common.actions') ?></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    <?php foreach ($cases as $c): ?>
-                        <tr>
-                            <td>
-                                <a class="lawyer-profile-case-link" href="cases.php?action=view&id=<?= (int) $c['id'] ?>">
-                                    <span class="lawyer-profile-case-mark" aria-hidden="true"><?= e(strtoupper(substr((string) $c['case_number'], 0, 1))) ?></span>
-                                    <span class="lawyer-profile-case-text">
-                                        <strong><?= e($c['case_number']) ?></strong>
-                                        <span class="muted"><?= e($c['title']) ?></span>
+                            <div class="lawyer-profile-metric-rail-list" role="list">
+                                <a class="lawyer-profile-metric-row" href="?action=view&id=<?= $id ?>&tab=cases" role="listitem" data-lawyer-tab="cases">
+                                    <span class="lawyer-profile-metric-row-value"><?= (int) $openCases ?></span>
+                                    <span class="lawyer-profile-metric-row-copy">
+                                        <strong><?= __e('lawyers.workload_open') ?></strong>
+                                        <span><?= (int) $workloadPct ?>% <?= __e('lawyers.profile.of_caseload') ?></span>
+                                    </span>
+                                    <span class="lawyer-profile-metric-row-bar" aria-hidden="true"><span style="width: <?= max(0, min(100, $workloadPct)) ?>%;"></span></span>
+                                </a>
+                                <a class="lawyer-profile-metric-row" href="?action=view&id=<?= $id ?>&tab=cases" role="listitem" data-lawyer-tab="cases">
+                                    <span class="lawyer-profile-metric-row-value"><?= count($cases) ?></span>
+                                    <span class="lawyer-profile-metric-row-copy">
+                                        <strong><?= __e('lawyers.total_cases') ?></strong>
+                                        <span><?= (int) $closedCases ?> <?= __e('lawyers.profile.closed_short') ?></span>
                                     </span>
                                 </a>
-                            </td>
-                            <td><?= e($c['client_name']) ?></td>
-                            <td><?= status_badge($c['status']) ?></td>
-                            <td><?= status_badge($c['priority']) ?></td>
-                            <td><?= e(format_date($c['updated_at'])) ?></td>
-                            <td class="col-actions">
-                                <a class="btn btn-row-open btn-sm btn-row-fit" href="cases.php?action=view&id=<?= (int) $c['id'] ?>"><?= __e('common.open') ?></a>
-                            </td>
-                        </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table>
+                                <a class="lawyer-profile-metric-row" href="?action=view&id=<?= $id ?>&tab=schedule" role="listitem" data-lawyer-tab="schedule">
+                                    <span class="lawyer-profile-metric-row-value"><?= (int) $pendingAppts ?></span>
+                                    <span class="lawyer-profile-metric-row-copy">
+                                        <strong><?= __e('lawyer.tasks.stat_pending') ?></strong>
+                                        <span><?= __e('lawyers.profile.pending_foot') ?></span>
+                                    </span>
+                                </a>
+                                <a class="lawyer-profile-metric-row" href="?action=view&id=<?= $id ?>&tab=schedule" role="listitem" data-lawyer-tab="schedule">
+                                    <span class="lawyer-profile-metric-row-value"><?= (int) $upcomingTotal ?></span>
+                                    <span class="lawyer-profile-metric-row-copy">
+                                        <strong><?= __e('lawyer.tasks.stat_upcoming') ?></strong>
+                                        <span><?= __e('lawyers.profile.schedule_short') ?></span>
+                                    </span>
+                                </a>
+                            </div>
+                        </aside>
+                        </div>
+                        </div>
+                    </section>
+
+                    <section class="lawyer-profile-tab-panel<?= $profileTab === 'schedule' ? ' is-active' : '' ?>" data-lawyer-tab-panel="schedule" role="tabpanel"<?= $profileTab !== 'schedule' ? ' hidden' : '' ?>>
+                        <div class="lawyer-profile-section-head lawyer-profile-section-head--actions">
+                            <div>
+                                <h2><?= __e('dashboard.panel.upcoming_schedule') ?></h2>
+                                <p class="muted" id="lawyerScheduleFilterMeta"><?= e(__('lawyers.profile.schedule_meta', ['count' => count($scheduleItems)])) ?></p>
+                            </div>
+                            <div class="lawyer-profile-schedule-actions">
+                                <details class="row-actions-dropdown">
+                                    <summary class="btn btn-primary btn-sm row-actions-toggle" aria-label="<?= __e('common.actions') ?>">
+                                        <span><?= __e('common.actions') ?></span>
+                                        <svg class="row-actions-caret" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                                    </summary>
+                                    <div class="row-actions-menu">
+                                        <a class="row-actions-item" href="<?= e($lawyerScheduleUrl) ?>"><?= __e('lawyers.view_schedule') ?></a>
+                                        <a class="row-actions-item" href="<?= e($lawyerApptCreateUrl) ?>"><?= __e('lawyers.profile.schedule_appointment') ?></a>
+                                        <a class="row-actions-item" href="<?= e($lawyerHearingCreateUrl) ?>"><?= __e('lawyers.profile.schedule_hearing') ?></a>
+                                    </div>
+                                </details>
+                            </div>
+                        </div>
+                        <div class="lawyer-profile-content-panel">
+                        <?php if (!$scheduleItems): ?>
+                        <div class="lawyer-profile-empty lawyer-profile-empty--schedule">
+                            <span class="lawyer-profile-empty-icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                            </span>
+                            <p><?= __e('lawyers.profile.no_schedule') ?></p>
+                        </div>
+                        <?php else: ?>
+                        <div class="lawyer-profile-case-filters appt-list-toolbar"
+                             id="lawyerScheduleFilterPanel"
+                             data-list-filter
+                             data-search-id="lawyerScheduleSearch"
+                             data-table-id="lawyerScheduleList"
+                             data-item-selector=".lawyer-profile-schedule-item[data-list-search]"
+                             data-total-meta-id="lawyerScheduleFilterMeta"
+                             data-page-size="3"
+                             data-pager-id="lawyerSchedulePager"
+                             data-pager-label-id="lawyerSchedulePagerLabel"
+                             data-pager-showing-one="<?= __e('lawyers.profile.schedule_pager.showing_one') ?>"
+                             data-pager-showing-many="<?= __e('lawyers.profile.schedule_pager.showing_many') ?>"
+                             data-total-one="<?= __e('lawyers.profile.schedule_meta', ['count' => ':count']) ?>"
+                             data-total-many="<?= __e('lawyers.profile.schedule_meta', ['count' => ':count']) ?>">
+                            <label class="appt-list-search lawyer-profile-case-search">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+                                <input type="search" id="lawyerScheduleSearch" placeholder="<?= __e('lawyers.profile.schedule_search_placeholder') ?>" autocomplete="off" aria-label="<?= __e('lawyers.profile.schedule_search_placeholder') ?>">
+                            </label>
+                        </div>
+                        <div class="lawyer-profile-row-list lawyer-profile-schedule-list" id="lawyerScheduleList">
+                            <?php foreach ($scheduleItems as $item):
+                                if ($item['kind'] === 'hearing'):
+                                    $h = $item['row'];
+                                    $scheduleSearch = strtolower(trim(implode(' ', [
+                                        $h['case_number'] ?? '',
+                                        $h['title'] ?? '',
+                                        $h['court_name'] ?? '',
+                                        $h['court_location'] ?? '',
+                                        $h['hearing_type'] ?? '',
+                                        __('nav.court'),
+                                        format_datetime($h['hearing_date']),
+                                    ])));
+                                    $scheduleHref = 'court.php?action=edit&id=' . (int) $h['id'];
+                                else:
+                                    $a = $item['row'];
+                                    $scheduleSearch = strtolower(trim(implode(' ', [
+                                        $a['title'] ?? '',
+                                        $a['client_name'] ?? '',
+                                        $a['appointment_type'] ?? '',
+                                        $a['location'] ?? '',
+                                        __('nav.appointments'),
+                                        format_datetime($a['scheduled_at']),
+                                    ])));
+                                    $scheduleHref = 'appointments.php?action=edit&id=' . (int) $a['id'];
+                                endif;
+                            ?>
+                            <a class="lawyer-profile-row-card lawyer-profile-row-card--schedule lawyer-profile-schedule-item" href="<?= e($scheduleHref) ?>" data-list-search="<?= e($scheduleSearch) ?>">
+                                <?php if ($item['kind'] === 'hearing'):
+                                    $h = $item['row']; ?>
+                                <div class="lawyer-profile-row-mark is-court" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 21h18M6 18V8l6-4 6 4v10M9 18v-4h6v4"/></svg>
+                                </div>
+                                <div class="lawyer-profile-row-body">
+                                    <span class="lawyer-profile-row-label"><?= __e('nav.court') ?></span>
+                                    <strong><?= e($h['case_number']) ?></strong>
+                                    <span class="muted"><?= e(t_content($h['court_name'] ?: __('common.court'))) ?></span>
+                                </div>
+                                <time class="lawyer-profile-row-time"><?= e(format_datetime($h['hearing_date'])) ?></time>
+                                <?php else:
+                                    $a = $item['row']; ?>
+                                <div class="lawyer-profile-row-mark" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                                </div>
+                                <div class="lawyer-profile-row-body">
+                                    <span class="lawyer-profile-row-label"><?= __e('nav.appointments') ?></span>
+                                    <strong><?= e(t_content($a['title'])) ?></strong>
+                                    <span class="muted"><?= e($a['client_name'] ?: __('common.client')) ?></span>
+                                </div>
+                                <time class="lawyer-profile-row-time"><?= e(format_datetime($a['scheduled_at'])) ?></time>
+                                <?php endif; ?>
+                            </a>
+                            <?php endforeach; ?>
+                        </div>
+                        <div class="case-list-foot lawyer-profile-case-foot">
+                            <p class="case-list-footer muted" id="lawyerSchedulePagerLabel"></p>
+                            <nav class="case-list-pager" id="lawyerSchedulePager" aria-label="<?= __e('lawyers.profile.schedule_pagination.aria') ?>" hidden></nav>
+                        </div>
+                        <?php endif; ?>
+                        </div>
+                    </section>
+
+                    <section class="lawyer-profile-tab-panel<?= $profileTab === 'cases' ? ' is-active' : '' ?>" data-lawyer-tab-panel="cases" role="tabpanel"<?= $profileTab !== 'cases' ? ' hidden' : '' ?>>
+                        <div class="lawyer-profile-section-head">
+                            <div>
+                                <h2><?= __e('lawyers.case_list') ?></h2>
+                                <p class="muted" id="lawyerCaseFilterMeta"><?= e(__('lawyers.profile.cases_help', ['count' => count($cases)])) ?></p>
+                            </div>
+                        </div>
+                        <div class="lawyer-profile-content-panel">
+                        <div class="lawyer-profile-assign">
+                            <div class="lawyer-profile-assign-copy">
+                                <span class="lawyer-profile-assign-label"><?= __e('lawyers.assign_case') ?></span>
+                                <p class="muted lawyer-profile-assign-hint"><?= __e('lawyers.profile.assign_help') ?></p>
+                            </div>
+                            <?php if (!$assignableCases): ?>
+                            <p class="muted lawyer-profile-assign-empty"><?= __e('lawyers.profile.no_assignable') ?></p>
+                            <?php else: ?>
+                            <form method="post" class="lawyer-profile-assign-form inline-form">
+                                <?= csrf_field() ?>
+                                <input type="hidden" name="form_action" value="assign_case">
+                                <input type="hidden" name="lawyer_id" value="<?= $id ?>">
+                                <select id="assign_case_id" name="case_id" required aria-label="<?= __e('form.select_case') ?>">
+                                    <option value=""><?= __e('form.select_case') ?></option>
+                                    <?php foreach ($assignableCases as $c): ?>
+                                        <option value="<?= (int) $c['id'] ?>"><?= e($c['case_number'] . ' — ' . $c['title']) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <select id="assign_case_role" name="assign_role" required aria-label="<?= __e('lawyers.assign_role') ?>">
+                                    <option value="associate"><?= __e('cases.team.associate') ?></option>
+                                    <option value="lead"><?= __e('cases.team.lead') ?></option>
+                                </select>
+                                <button class="btn btn-primary btn-sm" type="submit"><?= __e('lawyers.assign') ?></button>
+                            </form>
+                            <?php endif; ?>
+                        </div>
+                        <?php if (!$cases): ?>
+                        <div class="lawyer-profile-empty lawyer-profile-empty--cases"><p class="muted"><?= __e('cases.empty.no_active') ?></p></div>
+                        <?php else: ?>
+                        <div class="lawyer-profile-case-filters appt-list-toolbar"
+                             id="lawyerCaseFilterPanel"
+                             data-list-filter
+                             data-search-id="lawyerCaseSearch"
+                             data-table-id="lawyerCaseTable"
+                             data-total-meta-id="lawyerCaseFilterMeta"
+                             data-page-size="3"
+                             data-pager-id="lawyerCasePager"
+                             data-pager-label-id="lawyerCasePagerLabel"
+                             data-pager-showing-one="<?= __e('lawyers.profile.cases_pager.showing_one') ?>"
+                             data-pager-showing-many="<?= __e('lawyers.profile.cases_pager.showing_many') ?>"
+                             data-total-one="<?= __e('lawyers.profile.cases_help', ['count' => ':count']) ?>"
+                             data-total-many="<?= __e('lawyers.profile.cases_help', ['count' => ':count']) ?>">
+                            <label class="appt-list-search lawyer-profile-case-search">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+                                <input type="search" id="lawyerCaseSearch" placeholder="<?= __e('lawyers.profile.cases_search_placeholder') ?>" autocomplete="off" aria-label="<?= __e('lawyers.profile.cases_search_placeholder') ?>">
+                            </label>
+                        </div>
+                        <div class="table-wrap case-table-wrap lawyer-profile-table-wrap">
+                            <table class="case-table" id="lawyerCaseTable">
+                                <thead>
+                                    <tr>
+                                        <th><?= __e('common.case') ?></th>
+                                        <th><?= __e('common.client') ?></th>
+                                        <th><?= __e('lawyers.case_role') ?></th>
+                                        <th><?= __e('common.status') ?></th>
+                                        <th><?= __e('common.priority') ?></th>
+                                        <th><?= __e('common.last_updated') ?></th>
+                                        <th class="col-actions"><?= __e('common.actions') ?></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                <?php foreach ($cases as $c):
+                                    $teamRole = (string) ($c['team_role'] ?? 'associate');
+                                    $caseStatus = (string) ($c['status'] ?? '');
+                                    $casePriority = (string) ($c['priority'] ?? '');
+                                    $caseSearchBlob = strtolower(trim(implode(' ', [
+                                        $c['case_number'] ?? '',
+                                        $c['title'] ?? '',
+                                        $c['client_name'] ?? '',
+                                        $teamRole,
+                                        __('cases.team.' . $teamRole),
+                                        $caseStatus,
+                                        translate_status($caseStatus),
+                                        $casePriority,
+                                        translate_status($casePriority),
+                                    ])));
+                                ?>
+                                    <tr data-list-role="<?= e($teamRole) ?>" data-list-status="<?= e($caseStatus) ?>" data-list-priority="<?= e($casePriority) ?>" data-list-search="<?= e($caseSearchBlob) ?>">
+                                        <td>
+                                            <a class="lawyer-profile-case-link" href="cases.php?action=view&id=<?= (int) $c['id'] ?>">
+                                                <span class="lawyer-profile-case-text">
+                                                    <strong><?= e($c['case_number']) ?></strong>
+                                                    <span class="muted"><?= e($c['title']) ?></span>
+                                                </span>
+                                            </a>
+                                        </td>
+                                        <td><?= e($c['client_name']) ?></td>
+                                        <td><?= case_team_role_badge($teamRole) ?></td>
+                                        <td><?= status_badge($caseStatus) ?></td>
+                                        <td><?= status_badge($casePriority) ?></td>
+                                        <td><?= e(format_date($c['updated_at'])) ?></td>
+                                        <td class="col-actions">
+                                            <a class="btn btn-row-open btn-sm btn-row-fit" href="cases.php?action=view&id=<?= (int) $c['id'] ?>"><?= __e('common.open') ?></a>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="case-list-foot lawyer-profile-case-foot">
+                            <p class="case-list-footer muted" id="lawyerCasePagerLabel"></p>
+                            <nav class="case-list-pager" id="lawyerCasePager" aria-label="<?= __e('lawyers.profile.cases_pagination.aria') ?>" hidden></nav>
+                        </div>
+                        <?php endif; ?>
+                        </div>
+                    </section>
+                </div>
             </div>
-            <?php endif; ?>
-        </section>
+            </div>
+        </div>
     </div>
     <?php require __DIR__ . '/../includes/footer.php'; exit;
 }

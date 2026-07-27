@@ -313,24 +313,105 @@ document.addEventListener('DOMContentLoaded', () => {
     const table = document.getElementById(opts.tableId || '');
     const footer = document.getElementById(opts.footerId || '');
     const totalMeta = document.getElementById(opts.totalMetaId || '');
+    const pager = document.getElementById(opts.pagerId || '');
+    const pagerLabel = document.getElementById(opts.pagerLabelId || '');
     if (!table) return;
-    const rows = Array.prototype.slice.call(table.querySelectorAll('tbody tr[data-list-search], tbody tr[data-appt-search]'));
+    const itemSelector = opts.itemSelector || panel.getAttribute('data-item-selector') || 'tr[data-list-search], tr[data-appt-search]';
+    const rows = Array.prototype.slice.call(table.querySelectorAll(itemSelector));
     const total = rows.length;
+    const pageSize = parseInt(String(opts.pageSize || panel.getAttribute('data-page-size') || '0'), 10) || 0;
     const showingTpl = opts.showingTpl || 'Showing :shown of :total.';
     const totalOne = opts.totalOne || ':count total';
     const totalMany = opts.totalMany || ':count total';
+    const pagerShowingOne = opts.pagerShowingOne || 'Showing :from–:to of :total';
+    const pagerShowingMany = opts.pagerShowingMany || 'Showing :from–:to of :total';
+    let currentPage = 1;
 
-    function applyFilter() {
+    function renderPager(matchedCount) {
+      if (!pageSize || !pager) {
+        return;
+      }
+      const totalPages = Math.max(1, Math.ceil(matchedCount / pageSize));
+      if (currentPage > totalPages) {
+        currentPage = totalPages;
+      }
+      if (currentPage < 1) {
+        currentPage = 1;
+      }
+      const from = matchedCount === 0 ? 0 : ((currentPage - 1) * pageSize) + 1;
+      const to = matchedCount === 0 ? 0 : Math.min(currentPage * pageSize, matchedCount);
+      if (pagerLabel) {
+        const tpl = matchedCount === 1 ? pagerShowingOne : pagerShowingMany;
+        pagerLabel.textContent = String(tpl)
+          .replace(':from', String(from))
+          .replace(':to', String(to))
+          .replace(':total', String(matchedCount));
+      }
+      if (totalPages <= 1) {
+        pager.hidden = true;
+        pager.innerHTML = '';
+        return;
+      }
+      pager.hidden = false;
+      let html = '';
+      if (currentPage > 1) {
+        html += '<button type="button" class="case-page-btn" data-page="' + (currentPage - 1) + '" aria-label="Previous page">‹</button>';
+      } else {
+        html += '<span class="case-page-btn is-disabled" aria-disabled="true">‹</span>';
+      }
+      for (let p = 1; p <= totalPages; p += 1) {
+        if (p === currentPage) {
+          html += '<span class="case-page-btn is-active" aria-current="page">' + p + '</span>';
+        } else {
+          html += '<button type="button" class="case-page-btn" data-page="' + p + '">' + p + '</button>';
+        }
+      }
+      if (currentPage < totalPages) {
+        html += '<button type="button" class="case-page-btn" data-page="' + (currentPage + 1) + '" aria-label="Next page">›</button>';
+      } else {
+        html += '<span class="case-page-btn is-disabled" aria-disabled="true">›</span>';
+      }
+      pager.innerHTML = html;
+    }
+
+    function applyFilter(resetPage) {
+      if (resetPage) {
+        currentPage = 1;
+      }
       const q = (search && search.value ? search.value : '').trim().toLowerCase();
       const st = status && status.value ? status.value : '';
-      let shown = 0;
+      const roleEl = opts.roleId ? document.getElementById(opts.roleId) : null;
+      const priorityEl = opts.priorityId ? document.getElementById(opts.priorityId) : null;
+      const roleVal = roleEl && roleEl.value ? roleEl.value : '';
+      const priVal = priorityEl && priorityEl.value ? priorityEl.value : '';
+      const matched = [];
       rows.forEach(function (row) {
         const hay = row.getAttribute('data-list-search') || row.getAttribute('data-appt-search') || '';
         const rowStatus = row.getAttribute('data-list-status') || row.getAttribute('data-appt-status') || '';
-        const ok = (!q || hay.indexOf(q) !== -1) && (!st || rowStatus === st);
-        row.hidden = !ok;
-        if (ok) shown += 1;
+        const rowRole = row.getAttribute('data-list-role') || '';
+        const rowPriority = row.getAttribute('data-list-priority') || '';
+        const ok = (!q || hay.indexOf(q) !== -1)
+          && (!st || rowStatus === st)
+          && (!roleVal || rowRole === roleVal)
+          && (!priVal || rowPriority === priVal);
+        if (ok) {
+          matched.push(row);
+        } else {
+          row.hidden = true;
+        }
       });
+      const shown = matched.length;
+      if (pageSize > 0) {
+        renderPager(shown);
+        const start = (currentPage - 1) * pageSize;
+        matched.forEach(function (row, index) {
+          row.hidden = index < start || index >= start + pageSize;
+        });
+      } else {
+        matched.forEach(function (row) {
+          row.hidden = false;
+        });
+      }
       if (footer) {
         footer.textContent = String(showingTpl).replace(':shown', String(shown)).replace(':total', String(total));
       }
@@ -338,8 +419,24 @@ document.addEventListener('DOMContentLoaded', () => {
         totalMeta.textContent = String(shown === 1 ? totalOne : totalMany).replace(':count', String(shown));
       }
     }
-    if (search) search.addEventListener('input', applyFilter);
-    if (status) status.addEventListener('change', applyFilter);
+    if (search) search.addEventListener('input', function () { applyFilter(true); });
+    if (status) status.addEventListener('change', function () { applyFilter(true); });
+    const roleEl = opts.roleId ? document.getElementById(opts.roleId) : null;
+    const priorityEl = opts.priorityId ? document.getElementById(opts.priorityId) : null;
+    if (roleEl) roleEl.addEventListener('change', function () { applyFilter(true); });
+    if (priorityEl) priorityEl.addEventListener('change', function () { applyFilter(true); });
+    if (pager) {
+      pager.addEventListener('click', function (event) {
+        const btn = event.target.closest('[data-page]');
+        if (!btn) {
+          return;
+        }
+        event.preventDefault();
+        currentPage = parseInt(btn.getAttribute('data-page') || '1', 10) || 1;
+        applyFilter(false);
+      });
+    }
+    applyFilter(true);
   };
 
   document.querySelectorAll('[data-list-filter]').forEach((panel) => {
@@ -347,9 +444,17 @@ document.addEventListener('DOMContentLoaded', () => {
       panelId: panel.id,
       searchId: panel.getAttribute('data-search-id') || 'apptListSearch',
       statusId: panel.getAttribute('data-status-id') || 'apptListStatus',
+      roleId: panel.getAttribute('data-role-id') || '',
+      priorityId: panel.getAttribute('data-priority-id') || '',
       tableId: panel.getAttribute('data-table-id') || 'apptListTable',
       footerId: panel.getAttribute('data-footer-id') || 'apptListFooter',
       totalMetaId: panel.getAttribute('data-total-meta-id') || 'apptListTotalMeta',
+      pagerId: panel.getAttribute('data-pager-id') || '',
+      pagerLabelId: panel.getAttribute('data-pager-label-id') || '',
+      pageSize: panel.getAttribute('data-page-size') || '',
+      itemSelector: panel.getAttribute('data-item-selector') || '',
+      pagerShowingOne: panel.getAttribute('data-pager-showing-one') || '',
+      pagerShowingMany: panel.getAttribute('data-pager-showing-many') || '',
       showingTpl: panel.getAttribute('data-showing-tpl') || '',
       totalOne: panel.getAttribute('data-total-one') || '',
       totalMany: panel.getAttribute('data-total-many') || '',
@@ -2855,7 +2960,9 @@ function initAppointmentSlotPicker() {
   const apiUrl = configEl.getAttribute('data-api-url') || '';
   const editId = parseInt(configEl.getAttribute('data-edit-id') || '0', 10);
   const hasLawyerSelect = configEl.getAttribute('data-has-lawyer-select') === '1';
+  const hasClientSelect = configEl.getAttribute('data-has-client-select') === '1';
   const lawyerSelect = hasLawyerSelect ? document.getElementById('lawyer_id') : null;
+  const clientSelect = hasClientSelect ? document.getElementById('client_id') : null;
   const dateInput = document.getElementById('appt_schedule_date');
   const timeSelect = document.getElementById('appt_schedule_time');
   const scheduledAtInput = document.getElementById('scheduled_at');
@@ -2872,6 +2979,13 @@ function initAppointmentSlotPicker() {
       return parseInt(lawyerSelect.value || '0', 10);
     }
     return parseInt(configEl.getAttribute('data-lawyer-id') || '0', 10);
+  }
+
+  function getClientId() {
+    if (clientSelect) {
+      return parseInt(clientSelect.value || '0', 10);
+    }
+    return parseInt(configEl.getAttribute('data-client-id') || '0', 10);
   }
 
   function syncScheduledAt() {
@@ -2914,6 +3028,8 @@ function initAppointmentSlotPicker() {
       duration: String(duration),
     });
     if (editId > 0) params.set('exclude', String(editId));
+    const clientId = getClientId();
+    if (clientId > 0) params.set('client_id', String(clientId));
 
     timeSelect.disabled = true;
     timeSelect.innerHTML = `<option value="">${i18n.apptLoadingSlots || 'Loading…'}</option>`;
@@ -2971,6 +3087,12 @@ function initAppointmentSlotPicker() {
   }
   if (lawyerSelect) {
     lawyerSelect.addEventListener('change', () => {
+      pendingTime = '';
+      refreshSlots();
+    });
+  }
+  if (clientSelect) {
+    clientSelect.addEventListener('change', () => {
       pendingTime = '';
       refreshSlots();
     });
@@ -3198,3 +3320,53 @@ function initInsightsCockpit() {
 }
 
 document.addEventListener('DOMContentLoaded', initInsightsCockpit);
+
+function initLawyerProfileTabs() {
+  const root = document.querySelector('[data-lawyer-profile-tabs]');
+  if (!root) return;
+
+  const sidebar = root.closest('.lawyer-profile-workspace')?.querySelector('.lawyer-profile-sidebar-nav');
+  const validTabs = ['overview', 'schedule', 'cases'];
+
+  const showTab = (tabId) => {
+    const id = validTabs.includes(tabId) ? tabId : 'overview';
+
+    root.classList.remove('is-tab-overview', 'is-tab-schedule', 'is-tab-cases');
+    root.classList.add(`is-tab-${id}`);
+
+    root.querySelectorAll('[data-lawyer-tab-panel]').forEach((panel) => {
+      const on = panel.getAttribute('data-lawyer-tab-panel') === id;
+      panel.classList.toggle('is-active', on);
+      panel.toggleAttribute('hidden', !on);
+    });
+
+    if (sidebar) {
+      sidebar.querySelectorAll('[data-lawyer-tab]').forEach((link) => {
+        const on = link.getAttribute('data-lawyer-tab') === id;
+        link.classList.toggle('is-active', on);
+        link.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+    }
+  };
+
+  const bindTabLink = (link) => {
+    link.addEventListener('click', (event) => {
+      event.preventDefault();
+      const tabId = link.getAttribute('data-lawyer-tab');
+      showTab(tabId);
+      const href = link.getAttribute('href');
+      if (href) {
+        window.history.replaceState(null, '', href);
+      }
+    });
+  };
+
+  root.closest('.lawyer-profile-workspace')?.querySelectorAll('[data-lawyer-tab]').forEach(bindTabLink);
+
+  window.addEventListener('popstate', () => {
+    const params = new URLSearchParams(window.location.search);
+    showTab(params.get('tab') || 'overview');
+  });
+}
+
+document.addEventListener('DOMContentLoaded', initLawyerProfileTabs);

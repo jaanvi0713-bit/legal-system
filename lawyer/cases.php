@@ -84,14 +84,14 @@ if (($action === 'view' || $id > 0) && $id) {
     ?>
     <div class="grid grid-2" style="margin-top:1rem;">
         <div class="panel">
-            <h2><?= __e('lawyer.cases.case_notes') ?></h2>
-            <form method="post" class="form-grid entity-inline-form case-add-note-form" style="margin-bottom:1rem;">
+            <div class="panel-header">
+                <h2><?= __e('lawyer.cases.case_notes') ?></h2>
+                <button class="btn btn-primary btn-sm" type="submit" form="lawyer-case-note-form"><?= __e('cases.add_note') ?></button>
+            </div>
+            <form id="lawyer-case-note-form" method="post" class="form-grid entity-inline-form case-add-note-form" style="margin-bottom:1rem;">
                 <?= csrf_field() ?><input type="hidden" name="form_action" value="note"><input type="hidden" name="case_id" value="<?= $id ?>">
-                <div class="case-add-note-head">
-                    <label for="lawyer-case-note-input"><?= __e('cases.add_note') ?></label>
-                    <button class="btn btn-primary btn-sm" type="submit"><?= __e('cases.add_note') ?></button>
-                </div>
                 <div class="form-group full">
+                    <label for="lawyer-case-note-input"><?= __e('cases.add_note') ?></label>
                     <textarea id="lawyer-case-note-input" name="note" required rows="2"></textarea>
                 </div>
                 <div class="form-group">

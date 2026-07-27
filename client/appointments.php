@@ -42,15 +42,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $duration = post_appointment_duration();
         $scheduledAt = post('scheduled_at');
+        ensure_lawyer_availability_slots_table($pdo);
         $pdo->beginTransaction();
-        $slotCheck = validate_lawyer_appointment_slot($pdo, $lawyerId, $scheduledAt, $duration, null, true);
+        $slotCheck = validate_appointment_slot($pdo, $lawyerId, $uid, $scheduledAt, $duration, null, true);
         if (!$slotCheck['ok']) {
-            $pdo->rollBack();
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             flash_lawyer_slot_error($slotCheck, 'appointments.php?action=request');
         }
         $pdo->prepare('INSERT INTO appointments (title, description, appointment_type, case_id, client_id, lawyer_id, scheduled_at, duration_minutes, location, status, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
             ->execute([post('title'), post('description'), $type, $caseId, $uid, $lawyerId, $scheduledAt, $duration, post('location'), 'pending', $uid]);
-        $pdo->commit();
+        if ($pdo->inTransaction()) {
+            $pdo->commit();
+        }
         create_notification($pdo, $lawyerId, __('notify.appointment_request'), post('title'), 'appointment', '../lawyer/appointments.php', $uid);
         flash('success', __('flash.appointment.requested'));
         redirect('appointments.php');

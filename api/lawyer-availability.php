@@ -53,7 +53,13 @@ if ($date !== '') {
     }
     $duration = normalize_appointment_duration((int) ($_GET['duration'] ?? 60));
     $exclude = (int) ($_GET['exclude'] ?? 0) ?: null;
-    $slots = get_lawyer_bookable_slots($pdo, $lawyerId, $date, $duration, $exclude);
+    $clientId = null;
+    if ($role === 'client') {
+        $clientId = (int) $user['id'];
+    } elseif (isset($_GET['client_id']) && (int) $_GET['client_id'] > 0) {
+        $clientId = (int) $_GET['client_id'];
+    }
+    $slots = get_lawyer_bookable_slots($pdo, $lawyerId, $date, $duration, $exclude, $clientId);
     echo json_encode([
         'date' => $date,
         'duration' => $duration,

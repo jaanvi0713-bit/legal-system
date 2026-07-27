@@ -3301,6 +3301,49 @@ function validate_lawyer_appointment_slot(PDO $pdo, ?int $lawyerId, string $sche
     return ['ok' => true, 'message' => '', 'code' => ''];
 }
 
+/** @return array{ok:bool, message:string, code?:string} */
+function validate_client_appointment_slot(PDO $pdo, ?int $clientId, string $scheduledAt, int $durationMinutes, ?int $excludeApptId = null, bool $forUpdate = false): array
+{
+    if (!$clientId || $clientId <= 0) {
+        return ['ok' => true, 'message' => '', 'code' => ''];
+    }
+
+    $startTs = strtotime($scheduledAt);
+    if (!$startTs) {
+        return ['ok' => false, 'message' => __('error.availability.invalid_datetime'), 'code' => 'invalid_datetime'];
+    }
+
+    $durationMinutes = normalize_appointment_duration($durationMinutes);
+    $endTs = $startTs + ($durationMinutes * 60);
+
+    $conflict = $pdo->prepare(
+        'SELECT id FROM appointments
+         WHERE client_id=?
+           AND status NOT IN ("cancelled","completed")
+           AND (? IS NULL OR id <> ?)
+           AND scheduled_at < FROM_UNIXTIME(?)
+           AND DATE_ADD(scheduled_at, INTERVAL duration_minutes MINUTE) > FROM_UNIXTIME(?)'
+        . ($forUpdate ? ' FOR UPDATE' : '')
+    );
+    $conflict->execute([$clientId, $excludeApptId, $excludeApptId, $endTs, $startTs]);
+    if ($conflict->fetch()) {
+        return ['ok' => false, 'message' => __('error.availability.client_conflict'), 'code' => 'client_conflict'];
+    }
+
+    return ['ok' => true, 'message' => '', 'code' => ''];
+}
+
+/** @return array{ok:bool, message:string, code?:string} */
+function validate_appointment_slot(PDO $pdo, ?int $lawyerId, ?int $clientId, string $scheduledAt, int $durationMinutes, ?int $excludeApptId = null, bool $forUpdate = false): array
+{
+    $clientCheck = validate_client_appointment_slot($pdo, $clientId, $scheduledAt, $durationMinutes, $excludeApptId, $forUpdate);
+    if (!$clientCheck['ok']) {
+        return $clientCheck;
+    }
+
+    return validate_lawyer_appointment_slot($pdo, $lawyerId, $scheduledAt, $durationMinutes, $excludeApptId, $forUpdate);
+}
+
 /** Hard rules that must never be overridden (even by admin AI). */
 function availability_is_hard_block(?string $code): bool
 {
@@ -3308,6 +3351,7 @@ function availability_is_hard_block(?string $code): bool
         'sunday',
         'outside_days',
         'conflict',
+        'client_conflict',
         'lawyer_unavailable',
         'lawyer_not_found',
         'invalid_datetime',
@@ -3315,7 +3359,7 @@ function availability_is_hard_block(?string $code): bool
 }
 
 /** @return list<array{value:string, label:string}> */
-function get_lawyer_bookable_slots(PDO $pdo, int $lawyerId, string $date, int $durationMinutes, ?int $excludeApptId = null): array
+function get_lawyer_bookable_slots(PDO $pdo, int $lawyerId, string $date, int $durationMinutes, ?int $excludeApptId = null, ?int $clientId = null): array
 {
     if ($lawyerId <= 0 || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
         return [];
@@ -3333,12 +3377,19 @@ function get_lawyer_bookable_slots(PDO $pdo, int $lawyerId, string $date, int $d
         $timeKey = substr($slotTime, 0, 5);
         $scheduledAt = $date . ' ' . $timeKey . ':00';
         $check = validate_lawyer_appointment_slot($pdo, $lawyerId, $scheduledAt, $durationMinutes, $excludeApptId);
-        if ($check['ok']) {
-            $bookable[] = [
-                'value' => $timeKey,
-                'label' => availability_format_slot_label($slotTime),
-            ];
+        if (!$check['ok']) {
+            continue;
         }
+        if ($clientId) {
+            $clientCheck = validate_client_appointment_slot($pdo, $clientId, $scheduledAt, $durationMinutes, $excludeApptId);
+            if (!$clientCheck['ok']) {
+                continue;
+            }
+        }
+        $bookable[] = [
+            'value' => $timeKey,
+            'label' => availability_format_slot_label($slotTime),
+        ];
     }
 
     return $bookable;

@@ -1171,7 +1171,7 @@ function ai_action_schedule_appointment(PDO $pdo, array $user, string $portal, s
     $clientId = (int) $client['id'];
     $caseId = $case ? (int) $case['id'] : (!empty($kv['case_id']) ? (int) $kv['case_id'] : null);
 
-    $slotCheck = validate_lawyer_appointment_slot($pdo, $lawyerId, $when, $duration, null, false);
+    $slotCheck = validate_appointment_slot($pdo, $lawyerId, $clientId, $when, $duration, null, false);
     $slotWarning = '';
     if (empty($slotCheck['ok'])) {
         $reason = $slotCheck['message'] ?? 'Selected slot is not available.';

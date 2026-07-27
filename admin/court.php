@@ -6,6 +6,7 @@ ensure_court_hearing_lawyer_column($pdo);
 $action = get('action', 'list');
 $id = (int) get('id', 0);
 $preCase = (int) get('case_id', 0);
+$preLawyerId = (int) get('lawyer_id', 0);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
@@ -49,7 +50,7 @@ $portal = 'admin';
 $activeNav = 'court';
 
 if ($action === 'create' || ($action === 'edit' && $id)) {
-    $row = ['id'=>0,'case_id'=>$preCase,'lawyer_id'=>'','hearing_date'=>date('Y-m-d\TH:i'),'court_name'=>'','court_location'=>'','judge_name'=>'','hearing_type'=>'','outcome'=>'','notes'=>'','status'=>'scheduled'];
+    $row = ['id'=>0,'case_id'=>$preCase,'lawyer_id'=>$preLawyerId ?: '','hearing_date'=>date('Y-m-d\TH:i'),'court_name'=>'','court_location'=>'','judge_name'=>'','hearing_type'=>'','outcome'=>'','notes'=>'','status'=>'scheduled'];
     if ($preCase) {
         $caseLawyer = $pdo->prepare('SELECT lawyer_id FROM cases WHERE id=?');
         $caseLawyer->execute([$preCase]);
@@ -73,6 +74,10 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
     require __DIR__ . '/../includes/header.php';
     $isEdit = (bool) $id;
     $formCancelUrl = 'court.php';
+    $hearingFormConfig = [];
+    if ($preLawyerId > 0 && !$isEdit) {
+        $hearingFormConfig['lockLawyerId'] = $preLawyerId;
+    }
     require __DIR__ . '/../includes/hearing-form.php';
     require __DIR__ . '/../includes/footer.php'; exit;
 }

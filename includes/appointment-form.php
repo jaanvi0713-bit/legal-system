@@ -45,6 +45,8 @@ if (!empty($row['scheduled_at'])) {
     }
 }
 $apptHasLawyerSelect = $showLawyer && $lockLawyerId === null;
+$apptHasClientSelect = $showClient && $lockClientId === null;
+$apptClientIdForSlots = (int) ($lockClientId ?? ($row['client_id'] ?? 0)) ?: null;
 $apptDateMin = $isEdit ? '' : date('Y-m-d');
 ?>
 <div class="entity-form-wrap">
@@ -218,7 +220,9 @@ $apptDateMin = $isEdit ? '' : date('Y-m-d');
 </div>
 <script type="application/json" id="apptSlotPickerConfig"
     data-lawyer-id="<?= (int) $apptLawyerIdForSlots ?>"
+    data-client-id="<?= (int) ($apptClientIdForSlots ?? 0) ?>"
     data-api-url="<?= e(app_config('url')) ?>/api/lawyer-availability.php"
     data-edit-id="<?= (int) $apptEditId ?>"
     data-initial-time="<?= e($apptScheduleTime) ?>"
-    data-has-lawyer-select="<?= $apptHasLawyerSelect ? '1' : '0' ?>"></script>
+    data-has-lawyer-select="<?= $apptHasLawyerSelect ? '1' : '0' ?>"
+    data-has-client-select="<?= $apptHasClientSelect ? '1' : '0' ?>"></script>

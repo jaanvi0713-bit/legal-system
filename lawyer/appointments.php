@@ -37,28 +37,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $clientId, $uid, post('scheduled_at'),
             $duration, post('location'), $status,
         ];
+        ensure_lawyer_availability_slots_table($pdo);
         $pdo->beginTransaction();
-        $slotCheck = validate_lawyer_appointment_slot($pdo, $uid, post('scheduled_at'), $duration, $editId ?: null, true);
+        $clientIdForSlot = $clientId ? (int) $clientId : null;
+        $slotCheck = validate_appointment_slot($pdo, $uid, $clientIdForSlot, post('scheduled_at'), $duration, $editId ?: null, true);
         if (!$slotCheck['ok']) {
-            $pdo->rollBack();
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             flash_lawyer_slot_error($slotCheck, $editId ? 'appointments.php?action=edit&id=' . $editId : 'appointments.php?action=create');
         }
         if ($editId) {
             $owned = $pdo->prepare('SELECT id FROM appointments WHERE id=? AND lawyer_id=?');
             $owned->execute([$editId, $uid]);
             if (!$owned->fetch()) {
-                $pdo->rollBack();
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
                 flash('error', __('error.case.invalid'));
                 redirect('appointments.php');
             }
             $vals[] = $editId;
             $pdo->prepare('UPDATE appointments SET title=?, description=?, appointment_type=?, case_id=?, client_id=?, lawyer_id=?, scheduled_at=?, duration_minutes=?, location=?, status=? WHERE id=?')->execute($vals);
-            $pdo->commit();
+            if ($pdo->inTransaction()) {
+                $pdo->commit();
+            }
             flash('success', __('flash.appointment.updated'));
         } else {
             $vals[] = $uid;
             $pdo->prepare('INSERT INTO appointments (title, description, appointment_type, case_id, client_id, lawyer_id, scheduled_at, duration_minutes, location, status, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)')->execute($vals);
-            $pdo->commit();
+            if ($pdo->inTransaction()) {
+                $pdo->commit();
+            }
             if ($clientId) {
                 create_notification($pdo, (int) $clientId, 'notify.meeting_scheduled', post('title'), 'appointment', '../client/appointments.php', $uid);
             }

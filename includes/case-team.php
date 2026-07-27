@@ -154,6 +154,90 @@ function sync_case_lawyers(PDO $pdo, int $caseId, ?int $leadLawyerId, array $ass
     $pdo->prepare('UPDATE cases SET lawyer_id = ? WHERE id = ?')->execute([$leadLawyerId, $caseId]);
 }
 
+/** Cases this lawyer is not already on (lead or associate), excluding closed matters. */
+function cases_assignable_to_lawyer(PDO $pdo, int $lawyerId): array
+{
+    ensure_case_lawyers_table($pdo);
+    if ($lawyerId <= 0) {
+        return [];
+    }
+    $stmt = $pdo->prepare(
+        'SELECT c.id, c.case_number, c.title
+         FROM cases c
+         WHERE c.status <> "closed"
+           AND NOT (' . lawyer_case_access_sql('c') . ')
+         ORDER BY c.created_at DESC'
+    );
+    $stmt->execute([$lawyerId, $lawyerId]);
+
+    return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+}
+
+/** @return 'lead'|'associate'|null Role on success, null if already on the team or invalid. */
+function assign_case_to_lawyer(PDO $pdo, int $caseId, int $lawyerId, ?int $assignedBy = null, string $role = 'associate'): ?string
+{
+    ensure_case_lawyers_table($pdo);
+    if ($caseId <= 0 || $lawyerId <= 0) {
+        return null;
+    }
+    if (lawyer_can_access_case($pdo, $lawyerId, $caseId)) {
+        return null;
+    }
+
+    $role = $role === 'lead' ? 'lead' : 'associate';
+
+    $stmt = $pdo->prepare('SELECT id, lawyer_id FROM cases WHERE id = ? LIMIT 1');
+    $stmt->execute([$caseId]);
+    $case = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$case) {
+        return null;
+    }
+
+    $leadId = null;
+    $associates = [];
+    foreach (case_lawyers_for_case($pdo, $caseId) as $member) {
+        $memberId = (int) $member['lawyer_id'];
+        if (($member['role'] ?? '') === 'lead') {
+            $leadId = $memberId;
+        } else {
+            $associates[] = $memberId;
+        }
+    }
+
+    if (!$leadId) {
+        $leadId = (int) ($case['lawyer_id'] ?? 0) ?: null;
+    }
+
+    if ($role === 'lead') {
+        if ($leadId && $leadId !== $lawyerId && !in_array($leadId, $associates, true)) {
+            $associates[] = $leadId;
+        }
+        $associates = array_values(array_filter($associates, static fn(int $id): bool => $id !== $lawyerId));
+        sync_case_lawyers($pdo, $caseId, $lawyerId, $associates, $assignedBy);
+
+        return 'lead';
+    }
+
+    if (!$leadId) {
+        sync_case_lawyers($pdo, $caseId, $lawyerId, [], $assignedBy);
+
+        return 'lead';
+    }
+
+    $associates[] = $lawyerId;
+    sync_case_lawyers($pdo, $caseId, $leadId, $associates, $assignedBy);
+
+    return 'associate';
+}
+
+function case_team_role_badge(string $role): string
+{
+    $role = $role === 'lead' ? 'lead' : 'associate';
+    $class = $role === 'lead' ? 'badge-success' : 'badge-info';
+
+    return '<span class="badge ' . $class . ' badge-st-' . e($role) . '">' . e(__('cases.team.' . $role)) . '</span>';
+}
+
 /** @param list<int>|null $onlyLawyerIds */
 function notify_case_team(
     PDO $pdo,

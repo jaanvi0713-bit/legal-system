@@ -2412,6 +2412,7 @@ if ($action === 'view' && $id) {
         <section class="panel case-hub-card">
             <div class="panel-header">
                 <h2><?= __e('cases.tab.notes') ?></h2>
+                <button class="btn btn-primary btn-sm" type="submit" form="case-note-form"><?= __e('cases.add_note') ?></button>
             </div>
             <form method="get" class="appt-list-toolbar" action="cases.php">
                 <input type="hidden" name="action" value="view">
@@ -2422,13 +2423,10 @@ if ($action === 'view' && $id) {
                     <input type="search" name="q" value="<?= e($noteQ) ?>" placeholder="<?= __e('common.search') ?>" autocomplete="off">
                 </label>
             </form>
-            <form method="post" class="form-grid entity-inline-form case-add-note-form" style="margin-bottom:1rem;">
+            <form id="case-note-form" method="post" class="form-grid entity-inline-form case-add-note-form" style="margin-bottom:1rem;">
                 <?= csrf_field() ?><input type="hidden" name="form_action" value="note"><input type="hidden" name="case_id" value="<?= $id ?>">
-                <div class="case-add-note-head">
-                    <label for="case-note-input"><?= __e('cases.add_note') ?></label>
-                    <button class="btn btn-primary btn-sm" type="submit"><?= __e('cases.add_note') ?></button>
-                </div>
                 <div class="form-group full">
+                    <label for="case-note-input"><?= __e('cases.add_note') ?></label>
                     <textarea id="case-note-input" name="note" required rows="2" placeholder="<?= __e('cases.add_note_ph') ?>"></textarea>
                 </div>
                 <div class="form-group">
