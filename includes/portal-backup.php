@@ -54,7 +54,7 @@ function portal_backup_count(PDO $pdo, string $sql, array $params = []): int
 function portal_backup_payload_build(PDO $pdo, array $user, string $portal): array
 {
     $uid = (int) ($user['id'] ?? 0);
-    $company = (string) get_setting($pdo, 'company_name', app_config('name', 'LEGAL PRO'));
+    $company = company_name($pdo);
 
     if ($portal === 'lawyer') {
         $accessSql = lawyer_case_access_sql('c');

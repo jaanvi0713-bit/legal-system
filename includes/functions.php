@@ -1661,6 +1661,35 @@ function get_setting(PDO $pdo, string $key, $default = null)
     return $val !== false ? $val : $default;
 }
 
+/**
+ * Firm display name from admin branding settings (falls back to config default).
+ */
+function company_name(?PDO $pdo = null): string
+{
+    $default = trim((string) app_config('name', app_config('brand', 'LEGAL PRO')));
+    try {
+        if ($pdo === null) {
+            $pdo = db();
+        }
+        $name = trim((string) get_setting($pdo, 'company_name', $default));
+        return $name !== '' ? $name : $default;
+    } catch (Throwable $e) {
+        return $default;
+    }
+}
+
+function company_brand_initial(?PDO $pdo = null): string
+{
+    $name = company_name($pdo);
+    if ($name === '') {
+        return 'L';
+    }
+    if (function_exists('mb_substr')) {
+        return mb_strtoupper(mb_substr($name, 0, 1));
+    }
+    return strtoupper(substr($name, 0, 1));
+}
+
 function set_setting(PDO $pdo, string $key, ?string $value): void
 {
     $stmt = $pdo->prepare('INSERT INTO settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)');
@@ -2688,25 +2717,68 @@ function availability_week_dates(string $weekStart): array
 
 function availability_format_short_date(string $date): string
 {
+    return availability_format_day_line($date);
+}
+
+/** e.g. 27 Jul 2026 (locale-aware) */
+function availability_format_day_line(string $date): string
+{
     $ts = strtotime($date);
     if (!$ts) {
         return $date;
     }
     if (class_exists('IntlDateFormatter') && function_exists('locale_tag')) {
         $fmt = new IntlDateFormatter(locale_tag(), IntlDateFormatter::MEDIUM, IntlDateFormatter::NONE);
-        return $fmt->format($ts) ?: date('j M', $ts);
+        $out = $fmt->format($ts);
+        if ($out !== false && $out !== '') {
+            return $out;
+        }
     }
-    return date('j M', $ts);
+    return date('j M Y', $ts);
+}
+
+/** e.g. Monday, 27 Jul 2026 */
+function availability_format_day_heading(string $date, string $dayLabel): string
+{
+    if ($date === '') {
+        return $dayLabel;
+    }
+    return $dayLabel . ', ' . availability_format_day_line($date);
 }
 
 function availability_format_week_range(string $weekStart): string
 {
     $weekStart = availability_normalize_week_start($weekStart);
     $weekEnd = date('Y-m-d', strtotime($weekStart . ' +5 days'));
-    return __('availability.week.range', [
-        'start' => availability_format_short_date($weekStart),
-        'end' => availability_format_short_date($weekEnd),
-    ]);
+    $startTs = strtotime($weekStart);
+    $endTs = strtotime($weekEnd);
+    if (!$startTs || !$endTs) {
+        return '';
+    }
+
+    if (class_exists('IntlDateFormatter') && function_exists('locale_tag')) {
+        $locale = locale_tag();
+        if (date('Y-m', $startTs) === date('Y-m', $endTs)) {
+            $dayFmt = new IntlDateFormatter($locale, IntlDateFormatter::NONE, IntlDateFormatter::NONE, null, null, 'd');
+            $endFmt = new IntlDateFormatter($locale, IntlDateFormatter::LONG, IntlDateFormatter::NONE);
+            $startDay = $dayFmt->format($startTs);
+            $endPart = $endFmt->format($endTs);
+            if ($startDay !== false && $endPart !== false) {
+                return $startDay . '–' . $endPart;
+            }
+        }
+        $rangeFmt = new IntlDateFormatter($locale, IntlDateFormatter::MEDIUM, IntlDateFormatter::NONE);
+        $startPart = $rangeFmt->format($startTs);
+        $endPart = $rangeFmt->format($endTs);
+        if ($startPart !== false && $endPart !== false) {
+            return $startPart . ' – ' . $endPart;
+        }
+    }
+
+    if (date('Y-m', $startTs) === date('Y-m', $endTs)) {
+        return date('j', $startTs) . '–' . date('j M Y', $endTs);
+    }
+    return date('j M Y', $startTs) . ' – ' . date('j M Y', $endTs);
 }
 
 /** @return array<int, string> ISO weekday 1=Mon … 6=Sat */
@@ -2722,15 +2794,334 @@ function availability_weekdays(): array
     ];
 }
 
-/** @return list<string> HH:MM:SS */
-function availability_slot_times(): array
+/** @return array{start: string, end: string, interval: int} HH:MM:SS, minutes */
+function availability_hours_defaults(): array
 {
+    return [
+        'start' => '09:00:00',
+        'end' => '17:00:00',
+        'interval' => 30,
+    ];
+}
+
+function ensure_lawyer_availability_hours_columns(PDO $pdo): void
+{
+    static $ready = false;
+    if ($ready) {
+        return;
+    }
+    foreach ([
+        'availability_start' => "TIME NOT NULL DEFAULT '09:00:00'",
+        'availability_end' => "TIME NOT NULL DEFAULT '17:00:00'",
+        'availability_interval' => 'SMALLINT UNSIGNED NOT NULL DEFAULT 30',
+    ] as $column => $definition) {
+        $exists = $pdo->query("SHOW COLUMNS FROM users LIKE " . $pdo->quote($column))->fetch();
+        if (!$exists) {
+            $after = $column === 'availability_start' ? ' AFTER availability' : ($column === 'availability_end' ? ' AFTER availability_start' : ' AFTER availability_end');
+            $pdo->exec("ALTER TABLE users ADD COLUMN {$column} {$definition}{$after}");
+        }
+    }
+    $ready = true;
+}
+
+/** @return array{value: int, unit: string} unit is "minutes" or "hours" */
+function availability_interval_input_parts(int $totalMinutes): array
+{
+    $totalMinutes = normalize_availability_interval($totalMinutes);
+    if ($totalMinutes >= 60 && $totalMinutes % 60 === 0) {
+        return ['value' => intdiv($totalMinutes, 60), 'unit' => 'hours'];
+    }
+    return ['value' => $totalMinutes, 'unit' => 'minutes'];
+}
+
+function availability_interval_from_input(int $value, string $unit, bool $strict = false): int
+{
+    $value = max(0, $value);
+    $unit = $unit === 'hours' ? 'hours' : 'minutes';
+    $total = $unit === 'hours' ? ($value * 60) : $value;
+    return normalize_availability_interval($total, $strict);
+}
+
+function availability_interval_max_minutes(): int
+{
+    return 65535;
+}
+
+function normalize_availability_interval(int $minutes, bool $strict = false): int
+{
+    $minutes = max(0, $minutes);
+    $max = availability_interval_max_minutes();
+    if ($minutes < 5 || $minutes > $max) {
+        if ($strict) {
+            throw new InvalidArgumentException(__('error.availability.invalid_interval'));
+        }
+        return availability_hours_defaults()['interval'];
+    }
+    return $minutes;
+}
+
+function normalize_availability_time(?string $time, ?string $default = null): string
+{
+    $default = $default ?? availability_hours_defaults()['start'];
+    $time = trim((string) $time);
+    if (preg_match('/^\d{1,2}:\d{2}$/', $time)) {
+        $time .= ':00';
+    }
+    if (!preg_match('/^\d{2}:\d{2}:\d{2}$/', $time)) {
+        return $default;
+    }
+    $ts = strtotime('1970-01-01 ' . $time);
+    return $ts ? date('H:i:s', $ts) : $default;
+}
+
+/** @return array{start: string, end: string, interval: int} */
+function get_lawyer_availability_hours(PDO $pdo, int $lawyerId): array
+{
+    ensure_lawyer_availability_hours_columns($pdo);
+    $defaults = availability_hours_defaults();
+    if ($lawyerId <= 0) {
+        return $defaults;
+    }
+    $stmt = $pdo->prepare('SELECT availability_start, availability_end, availability_interval FROM users WHERE id=? AND role="lawyer"');
+    $stmt->execute([$lawyerId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) {
+        return $defaults;
+    }
+    $start = normalize_availability_time(substr((string) ($row['availability_start'] ?? ''), 0, 8), $defaults['start']);
+    $end = normalize_availability_time(substr((string) ($row['availability_end'] ?? ''), 0, 8), $defaults['end']);
+    $interval = normalize_availability_interval((int) ($row['availability_interval'] ?? $defaults['interval']));
+    if (strtotime('1970-01-01 ' . $end) <= strtotime('1970-01-01 ' . $start)) {
+        return $defaults;
+    }
+    return ['start' => $start, 'end' => $end, 'interval' => $interval];
+}
+
+/** @param array{start: string, end: string, interval: int} $hours */
+function save_lawyer_availability_hours(PDO $pdo, int $lawyerId, string $start, string $end, int $interval): void
+{
+    ensure_lawyer_availability_hours_columns($pdo);
+    $defaults = availability_hours_defaults();
+    $start = normalize_availability_time($start, $defaults['start']);
+    $end = normalize_availability_time($end, $defaults['end']);
+    $interval = normalize_availability_interval($interval, true);
+    if (strtotime('1970-01-01 ' . $end) <= strtotime('1970-01-01 ' . $start)) {
+        throw new InvalidArgumentException(__('error.availability.invalid_hours'));
+    }
+    $pdo->prepare('UPDATE users SET availability_start=?, availability_end=?, availability_interval=? WHERE id=? AND role="lawyer"')
+        ->execute([$start, $end, $interval, $lawyerId]);
+}
+
+function ensure_lawyer_availability_day_settings_table(PDO $pdo): void
+{
+    static $ready = false;
+    if ($ready) {
+        return;
+    }
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS lawyer_availability_day_settings (
+            lawyer_id INT UNSIGNED NOT NULL,
+            week_start DATE NOT NULL,
+            day_of_week TINYINT UNSIGNED NOT NULL,
+            start_time TIME NOT NULL DEFAULT \'09:00:00\',
+            end_time TIME NOT NULL DEFAULT \'17:00:00\',
+            interval_minutes SMALLINT UNSIGNED NOT NULL DEFAULT 30,
+            PRIMARY KEY (lawyer_id, week_start, day_of_week),
+            INDEX idx_lawyer_day_week (lawyer_id, week_start),
+            CONSTRAINT fk_lawyer_availability_day_settings_lawyer
+                FOREIGN KEY (lawyer_id) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB'
+    );
+    $ready = true;
+}
+
+/** @return array<int, array{start: string, end: string, interval: int}> */
+function get_lawyer_week_day_hours(PDO $pdo, int $lawyerId, ?string $weekStart = null): array
+{
+    ensure_lawyer_availability_day_settings_table($pdo);
+    $weekStart = availability_normalize_week_start($weekStart);
+    $defaults = get_lawyer_availability_hours($pdo, $lawyerId);
+    $hoursByDay = [];
+    foreach (array_keys(availability_weekdays()) as $day) {
+        $hoursByDay[$day] = $defaults;
+    }
+    if ($lawyerId <= 0) {
+        return $hoursByDay;
+    }
+    $stmt = $pdo->prepare(
+        'SELECT day_of_week, start_time, end_time, interval_minutes
+         FROM lawyer_availability_day_settings
+         WHERE lawyer_id=? AND week_start=?'
+    );
+    $stmt->execute([$lawyerId, $weekStart]);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $day = (int) ($row['day_of_week'] ?? 0);
+        if ($day < 1 || $day > 6) {
+            continue;
+        }
+        $start = normalize_availability_time(substr((string) ($row['start_time'] ?? ''), 0, 8), $defaults['start']);
+        $end = normalize_availability_time(substr((string) ($row['end_time'] ?? ''), 0, 8), $defaults['end']);
+        $interval = normalize_availability_interval((int) ($row['interval_minutes'] ?? $defaults['interval']));
+        if (strtotime('1970-01-01 ' . $end) <= strtotime('1970-01-01 ' . $start)) {
+            continue;
+        }
+        $hoursByDay[$day] = ['start' => $start, 'end' => $end, 'interval' => $interval];
+    }
+    return $hoursByDay;
+}
+
+/** @return array{start: string, end: string, interval: int} */
+function get_lawyer_day_hours(PDO $pdo, int $lawyerId, ?string $weekStart, int $dayOfWeek): array
+{
+    $weekStart = availability_normalize_week_start($weekStart);
+    $weekHours = get_lawyer_week_day_hours($pdo, $lawyerId, $weekStart);
+    return $weekHours[$dayOfWeek] ?? get_lawyer_availability_hours($pdo, $lawyerId);
+}
+
+/** @param array<int, array{start?: string, end?: string, interval?: int}> $dayHoursByDay */
+function save_lawyer_week_day_hours(PDO $pdo, int $lawyerId, string $weekStart, array $dayHoursByDay): void
+{
+    ensure_lawyer_availability_day_settings_table($pdo);
+    $weekStart = availability_normalize_week_start($weekStart);
+    $defaults = availability_hours_defaults();
+    $upsert = $pdo->prepare(
+        'INSERT INTO lawyer_availability_day_settings
+            (lawyer_id, week_start, day_of_week, start_time, end_time, interval_minutes)
+         VALUES (?,?,?,?,?,?)
+         ON DUPLICATE KEY UPDATE start_time=VALUES(start_time), end_time=VALUES(end_time), interval_minutes=VALUES(interval_minutes)'
+    );
+    foreach (array_keys(availability_weekdays()) as $day) {
+        $hours = $dayHoursByDay[$day] ?? $dayHoursByDay[(string) $day] ?? null;
+        if (!is_array($hours)) {
+            continue;
+        }
+        $start = normalize_availability_time($hours['start'] ?? $defaults['start'], $defaults['start']);
+        $end = normalize_availability_time($hours['end'] ?? $defaults['end'], $defaults['end']);
+        $interval = normalize_availability_interval((int) ($hours['interval'] ?? $defaults['interval']), true);
+        if (strtotime('1970-01-01 ' . $end) <= strtotime('1970-01-01 ' . $start)) {
+            throw new InvalidArgumentException(__('error.availability.invalid_hours'));
+        }
+        $upsert->execute([$lawyerId, $weekStart, $day, $start, $end, $interval]);
+        prune_lawyer_day_slots_outside_hours($pdo, $lawyerId, $weekStart, $day, [
+            'start' => $start,
+            'end' => $end,
+            'interval' => $interval,
+        ]);
+    }
+}
+
+/** @param array{start: string, end: string, interval: int} $hours */
+function prune_lawyer_day_slots_outside_hours(PDO $pdo, int $lawyerId, string $weekStart, int $dayOfWeek, array $hours): void
+{
+    ensure_lawyer_availability_slots_table($pdo);
+    $allowed = array_map(static fn(string $t): string => substr($t, 0, 8), availability_slot_times_for_hours($hours));
+    if (!$allowed) {
+        $pdo->prepare('DELETE FROM lawyer_availability_slots WHERE lawyer_id=? AND week_start=? AND day_of_week=?')
+            ->execute([$lawyerId, $weekStart, $dayOfWeek]);
+        return;
+    }
+    $placeholders = implode(',', array_fill(0, count($allowed), '?'));
+    $pdo->prepare(
+        "DELETE FROM lawyer_availability_slots
+         WHERE lawyer_id=? AND week_start=? AND day_of_week=? AND slot_time NOT IN ({$placeholders})"
+    )->execute(array_merge([$lawyerId, $weekStart, $dayOfWeek], $allowed));
+}
+
+/** @param array<string, mixed> $postDayHours */
+function availability_parse_day_hours_post(array $postDayHours): array
+{
+    $parsed = [];
+    foreach (array_keys(availability_weekdays()) as $day) {
+        $row = $postDayHours[$day] ?? $postDayHours[(string) $day] ?? null;
+        if (!is_array($row)) {
+            continue;
+        }
+        $parsed[$day] = [
+            'start' => (string) ($row['start'] ?? '09:00'),
+            'end' => (string) ($row['end'] ?? '17:00'),
+            'interval' => availability_interval_from_input(
+                (int) ($row['interval_value'] ?? 30),
+                (string) ($row['interval_unit'] ?? 'minutes'),
+                true
+            ),
+        ];
+    }
+    return $parsed;
+}
+
+/** @param array{start: string, end: string, interval: int} $hours */
+function prune_lawyer_availability_outside_hours(PDO $pdo, int $lawyerId, array $hours): void
+{
+    ensure_lawyer_availability_slots_table($pdo);
+    $allowed = array_map(static fn(string $t): string => substr($t, 0, 8), availability_slot_times_for_hours($hours));
+    if (!$allowed) {
+        $pdo->prepare('DELETE FROM lawyer_availability_slots WHERE lawyer_id=?')->execute([$lawyerId]);
+        return;
+    }
+    $placeholders = implode(',', array_fill(0, count($allowed), '?'));
+    $pdo->prepare("DELETE FROM lawyer_availability_slots WHERE lawyer_id=? AND slot_time NOT IN ({$placeholders})")
+        ->execute(array_merge([$lawyerId], $allowed));
+}
+
+/** @param array{start: string, end: string, interval: int} $hours */
+function availability_slot_times_for_hours(array $hours): array
+{
+    $startTs = strtotime('1970-01-01 ' . $hours['start']);
+    $endTs = strtotime('1970-01-01 ' . $hours['end']);
+    $interval = max(5, (int) $hours['interval']) * 60;
     $slots = [];
-    for ($hour = 9; $hour < 17; $hour++) {
-        $slots[] = sprintf('%02d:00:00', $hour);
-        $slots[] = sprintf('%02d:30:00', $hour);
+    if (!$startTs || !$endTs || $endTs <= $startTs) {
+        return $slots;
+    }
+    for ($t = $startTs; $t < $endTs; $t += $interval) {
+        if ($t + $interval > $endTs) {
+            break;
+        }
+        $slots[] = date('H:i:s', $t);
     }
     return $slots;
+}
+
+function availability_last_slot_time(array $hours): string
+{
+    $slots = availability_slot_times_for_hours($hours);
+    if (!$slots) {
+        return substr($hours['start'], 0, 5);
+    }
+    return substr($slots[count($slots) - 1], 0, 5);
+}
+
+function availability_format_hours_range_for_hours(array $hours): string
+{
+    $slots = availability_slot_times_for_hours($hours);
+    if (!$slots) {
+        return __('availability.hours_range');
+    }
+    return __('availability.hours_range_custom', [
+        'start' => availability_format_slot_label($slots[0]),
+        'end' => availability_format_slot_label($slots[count($slots) - 1]),
+        'interval' => (string) $hours['interval'],
+    ]);
+}
+
+function availability_format_hours_range(PDO $pdo, int $lawyerId, ?string $weekStart = null, ?int $dayOfWeek = null): string
+{
+    if ($weekStart !== null && $dayOfWeek !== null) {
+        return availability_format_hours_range_for_hours(get_lawyer_day_hours($pdo, $lawyerId, $weekStart, $dayOfWeek));
+    }
+    return availability_format_hours_range_for_hours(get_lawyer_availability_hours($pdo, $lawyerId));
+}
+
+/** @return list<string> HH:MM:SS */
+function availability_slot_times(?PDO $pdo = null, ?int $lawyerId = null, ?string $weekStart = null, ?int $dayOfWeek = null): array
+{
+    if ($pdo && $lawyerId && $weekStart !== null && $dayOfWeek !== null) {
+        return availability_slot_times_for_hours(get_lawyer_day_hours($pdo, $lawyerId, $weekStart, $dayOfWeek));
+    }
+    if ($pdo && $lawyerId) {
+        return availability_slot_times_for_hours(get_lawyer_availability_hours($pdo, $lawyerId));
+    }
+    return availability_slot_times_for_hours(availability_hours_defaults());
 }
 
 function availability_format_slot_label(string $time): string
@@ -2744,6 +3135,19 @@ function availability_format_slot_label(string $time): string
         return $fmt->format($ts) ?: date('g:i A', $ts);
     }
     return date('g:i A', $ts);
+}
+
+/** @return array{clock: string, meridiem: string} */
+function availability_slot_chip_parts(string $time): array
+{
+    $ts = strtotime('1970-01-01 ' . $time);
+    if (!$ts) {
+        return ['clock' => $time, 'meridiem' => ''];
+    }
+    return [
+        'clock' => date('g:i', $ts),
+        'meridiem' => date('A', $ts),
+    ];
 }
 
 /** @return array<int, array<string, bool>> */
@@ -2771,13 +3175,20 @@ function save_lawyer_availability_matrix(PDO $pdo, int $lawyerId, string $weekSt
 {
     ensure_lawyer_availability_slots_table($pdo);
     $weekStart = availability_normalize_week_start($weekStart);
+    $dayHours = get_lawyer_week_day_hours($pdo, $lawyerId, $weekStart);
     $pdo->prepare('DELETE FROM lawyer_availability_slots WHERE lawyer_id=? AND week_start=?')->execute([$lawyerId, $weekStart]);
     $ins = $pdo->prepare('INSERT INTO lawyer_availability_slots (lawyer_id, week_start, day_of_week, slot_time) VALUES (?,?,?,?)');
     foreach ($slotKeys as $key) {
         if (!preg_match('/^([1-6])-(\d{2}:\d{2})$/', (string) $key, $m)) {
             continue;
         }
-        $ins->execute([$lawyerId, $weekStart, (int) $m[1], $m[2] . ':00']);
+        $day = (int) $m[1];
+        $slotTime = $m[2] . ':00';
+        $allowed = array_map(static fn(string $t): string => substr($t, 0, 8), availability_slot_times_for_hours($dayHours[$day] ?? availability_hours_defaults()));
+        if (!in_array($slotTime, $allowed, true)) {
+            continue;
+        }
+        $ins->execute([$lawyerId, $weekStart, $day, $slotTime]);
     }
 }
 
@@ -2807,7 +3218,10 @@ function validate_lawyer_appointment_slot(PDO $pdo, ?int $lawyerId, string $sche
 
     $durationMinutes = normalize_appointment_duration($durationMinutes);
     $endTs = $startTs + ($durationMinutes * 60);
-    $step = 30 * 60;
+    $weekStart = availability_week_start(date('Y-m-d', $startTs));
+    $dow = (int) date('N', $startTs);
+    $hours = get_lawyer_day_hours($pdo, $lawyerId, $weekStart, $dow);
+    $step = max(5, (int) $hours['interval']) * 60;
 
     for ($t = $startTs; $t < $endTs; $t += $step) {
         $dow = (int) date('N', $t);
@@ -2869,8 +3283,9 @@ function get_lawyer_bookable_slots(PDO $pdo, int $lawyerId, string $date, int $d
     }
 
     $durationMinutes = normalize_appointment_duration($durationMinutes);
+    $weekStart = availability_week_start($date);
     $bookable = [];
-    foreach (availability_slot_times() as $slotTime) {
+    foreach (availability_slot_times($pdo, $lawyerId, $weekStart, $dow) as $slotTime) {
         $timeKey = substr($slotTime, 0, 5);
         $scheduledAt = $date . ' ' . $timeKey . ':00';
         $check = validate_lawyer_appointment_slot($pdo, $lawyerId, $scheduledAt, $durationMinutes, $excludeApptId);

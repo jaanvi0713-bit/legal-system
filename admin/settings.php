@@ -69,7 +69,7 @@ function backup_payload_build(PDO $pdo): array
     return [
         'meta' => [
             'generated_at' => gmdate('c'),
-            'company' => (string) get_setting($pdo, 'company_name', app_config('name', 'LEGAL PRO')),
+            'company' => company_name($pdo),
             'workspace_url' => (string) app_config('url', ''),
             'version' => 1,
         ],
@@ -814,15 +814,15 @@ require __DIR__ . '/../includes/header.php';
                     <div class="form-grid">
                         <div class="form-group full">
                             <label for="ai_prompt_admin"><?= __e('settings.branding.ai_prompt_admin') ?></label>
-                            <textarea id="ai_prompt_admin" name="ai_prompt_admin" rows="3" placeholder="<?= e(__('ai.system.admin')) ?>"><?= e($get('ai_prompt_admin')) ?></textarea>
+                            <textarea id="ai_prompt_admin" name="ai_prompt_admin" rows="3" placeholder="<?= e(__('ai.system.admin', ['company' => company_name($pdo)])) ?>"><?= e($get('ai_prompt_admin')) ?></textarea>
                         </div>
                         <div class="form-group full">
                             <label for="ai_prompt_lawyer"><?= __e('settings.branding.ai_prompt_lawyer') ?></label>
-                            <textarea id="ai_prompt_lawyer" name="ai_prompt_lawyer" rows="3" placeholder="<?= e(__('ai.system.lawyer')) ?>"><?= e($get('ai_prompt_lawyer')) ?></textarea>
+                            <textarea id="ai_prompt_lawyer" name="ai_prompt_lawyer" rows="3" placeholder="<?= e(__('ai.system.lawyer', ['company' => company_name($pdo)])) ?>"><?= e($get('ai_prompt_lawyer')) ?></textarea>
                         </div>
                         <div class="form-group full">
                             <label for="ai_prompt_client"><?= __e('settings.branding.ai_prompt_client') ?></label>
-                            <textarea id="ai_prompt_client" name="ai_prompt_client" rows="3" placeholder="<?= e(__('ai.system.client')) ?>"><?= e($get('ai_prompt_client')) ?></textarea>
+                            <textarea id="ai_prompt_client" name="ai_prompt_client" rows="3" placeholder="<?= e(__('ai.system.client', ['company' => company_name($pdo)])) ?>"><?= e($get('ai_prompt_client')) ?></textarea>
                         </div>
                     </div>
                 </div>
@@ -1048,7 +1048,7 @@ require __DIR__ . '/../includes/header.php';
             $roleModules = role_access_modules();
             $roleScopes = role_access_scope_keys();
             $roleUserCounts = role_access_user_counts($pdo);
-            $companyName = $get('company_name', app_config('name', 'LEGAL PRO'));
+            $companyName = company_name($pdo);
             ?>
             <div class="role-access-page">
                 <div class="role-access-add panel">

@@ -27,7 +27,7 @@ function render_ai_page(string $portal): void
     require_role($portal === 'admin' ? ['admin', 'staff'] : [$portal]);
     $pdo = db();
     $user = current_user();
-    $company = get_setting($pdo, 'company_name', app_config('name'));
+    $company = company_name($pdo);
     $aiBase = app_config('url') . "/{$portal}/ai.php";
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {

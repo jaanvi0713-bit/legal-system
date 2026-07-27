@@ -8,23 +8,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     $fa = post('form_action');
 
-    if ($fa === 'status') {
-        $availability = post('availability', 'available');
-        if (!in_array($availability, ['available', 'busy', 'unavailable'], true)) {
-            $availability = 'available';
-        }
-        $pdo->prepare('UPDATE users SET availability=?, notes=? WHERE id=?')
-            ->execute([$availability, post('notes'), $uid]);
-        refresh_session_user();
-        flash('success', __('flash.availability.updated'));
-        redirect('availability.php');
-    }
-
     if ($fa === 'slots') {
-        $slots = isset($_POST['slots']) && is_array($_POST['slots']) ? array_values($_POST['slots']) : [];
         $weekStart = post('week_start', availability_week_start());
-        save_lawyer_availability_matrix($pdo, $uid, $weekStart, $slots);
-        flash('success', __('flash.availability.slots_saved'));
+        try {
+            $dayHoursPost = isset($_POST['day_hours']) && is_array($_POST['day_hours']) ? $_POST['day_hours'] : [];
+            $dayHours = availability_parse_day_hours_post($dayHoursPost);
+            if ($dayHours) {
+                save_lawyer_week_day_hours($pdo, $uid, $weekStart, $dayHours);
+            }
+            $slots = isset($_POST['slots']) && is_array($_POST['slots']) ? array_values($_POST['slots']) : [];
+            save_lawyer_availability_matrix($pdo, $uid, $weekStart, $slots);
+            flash('success', __('flash.availability.slots_saved'));
+        } catch (InvalidArgumentException $ex) {
+            flash('error', $ex->getMessage());
+        }
         redirect('availability.php?week=' . urlencode(availability_normalize_week_start($weekStart)));
     }
 }
@@ -37,6 +34,7 @@ $availWeekDates = availability_week_dates($availWeekStart);
 $availIsCurrentWeek = $availWeekStart === availability_week_start();
 
 $u = current_user();
+$availDayHours = get_lawyer_week_day_hours($pdo, $uid, $availWeekStart);
 $availMatrix = get_lawyer_availability_matrix($pdo, $uid, $availWeekStart);
 $pageTitle = __('page.availability');
 $pageSubtitle = __('availability.schedule.subtitle');
@@ -45,10 +43,7 @@ $activeNav = 'availability';
 require __DIR__ . '/../includes/header.php';
 ?>
 <div class="panel avail-panel">
-<?php
-$availStatusForm = true;
-require __DIR__ . '/../includes/availability-schedule-form.php';
-?>
+<?php require __DIR__ . '/../includes/availability-schedule-form.php'; ?>
 </div>
 <?php
 require __DIR__ . '/../includes/footer.php';

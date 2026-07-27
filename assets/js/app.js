@@ -1364,6 +1364,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   initSelectWraps();
   initAiAssistantUi();
+  initAvailabilityIntervalInput();
   initAvailabilitySchedule();
   initAppointmentSlotPicker();
   initDashboardCharts();
@@ -2521,14 +2522,164 @@ function initSelectWraps() {
   });
 }
 
+function initAvailabilityIntervalInput() {
+  document.querySelectorAll('[data-avail-day-hours]').forEach((block) => {
+    const panel = block.closest('[data-avail-panel]');
+    if (!panel) return;
+
+    const valueInput = block.querySelector('[data-avail-day-interval-value]');
+    const unitInputs = block.querySelectorAll('[data-avail-day-interval-unit]');
+    if (!valueInput || !unitInputs.length) return;
+
+    function currentUnit() {
+      const checked = block.querySelector('[data-avail-day-interval-unit]:checked');
+      return checked ? checked.value : 'minutes';
+    }
+
+    function applyUnitLimits() {
+      valueInput.min = currentUnit() === 'hours' ? '1' : '5';
+      valueInput.removeAttribute('max');
+    }
+
+    valueInput.dataset.unit = currentUnit();
+    applyUnitLimits();
+
+    unitInputs.forEach((input) => {
+      input.addEventListener('change', () => {
+        const prevUnit = valueInput.dataset.unit || 'minutes';
+        const nextUnit = currentUnit();
+        const current = parseInt(valueInput.value || '0', 10) || 0;
+
+        if (prevUnit !== nextUnit && current > 0) {
+          if (nextUnit === 'hours') {
+            valueInput.value = String(Math.max(1, Math.round(current / 60) || 1));
+          } else {
+            valueInput.value = String(Math.max(5, current * 60));
+          }
+        }
+
+        valueInput.dataset.unit = nextUnit;
+        applyUnitLimits();
+        rebuildDaySlots(panel);
+      });
+    });
+
+    block.querySelectorAll('[data-avail-day-start], [data-avail-day-end]').forEach((input) => {
+      input.addEventListener('change', () => rebuildDaySlots(panel));
+    });
+    valueInput.addEventListener('change', () => rebuildDaySlots(panel));
+  });
+}
+
+function availParseClock(time) {
+  const parts = String(time || '').split(':');
+  if (parts.length < 2) return 0;
+  return (parseInt(parts[0], 10) || 0) * 60 + (parseInt(parts[1], 10) || 0);
+}
+
+function availFormatClock(minutes) {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function availFormatSlotLabel(time) {
+  const [h, m] = String(time || '00:00').split(':').map((v) => parseInt(v, 10) || 0);
+  const d = new Date(2000, 0, 1, h, m);
+  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+function availIntervalMinutesFromPanel(panel) {
+  const block = panel.querySelector('[data-avail-day-hours]');
+  if (!block) return 30;
+  const value = parseInt(block.querySelector('[data-avail-day-interval-value]')?.value || '0', 10) || 0;
+  const unit = block.querySelector('[data-avail-day-interval-unit]:checked')?.value || 'minutes';
+  return unit === 'hours' ? value * 60 : value;
+}
+
+function availSlotTimesForPanel(panel) {
+  const start = panel.querySelector('[data-avail-day-start]')?.value || '09:00';
+  const end = panel.querySelector('[data-avail-day-end]')?.value || '17:00';
+  const interval = Math.max(5, availIntervalMinutesFromPanel(panel));
+  const startM = availParseClock(start);
+  const endM = availParseClock(end);
+  const slots = [];
+  if (!startM || !endM || endM <= startM) return slots;
+  for (let t = startM; t < endM; t += interval) {
+    if (t + interval > endM) break;
+    slots.push(availFormatClock(t));
+  }
+  return slots;
+}
+
+function rebuildDaySlots(panel) {
+  const day = panel.getAttribute('data-avail-panel');
+  const list = panel.querySelector('.avail-slot-list');
+  if (!day || !list) return;
+
+  const checked = new Set(
+    Array.from(panel.querySelectorAll('.avail-slot-input'))
+      .filter((input) => input.checked)
+      .map((input) => String(input.value).split('-')[1] || '')
+  );
+  const slots = availSlotTimesForPanel(panel);
+  const lastSlot = slots.length ? slots[slots.length - 1] : (panel.querySelector('[data-avail-day-start]')?.value || '09:00');
+  const start = panel.querySelector('[data-avail-day-start]')?.value || '09:00';
+  const end = panel.querySelector('[data-avail-day-end]')?.value || '17:00';
+  const interval = availIntervalMinutesFromPanel(panel);
+
+  panel.setAttribute('data-avail-start', start);
+  panel.setAttribute('data-avail-end', end);
+  panel.setAttribute('data-avail-last-slot', lastSlot);
+
+  const rangeEl = panel.querySelector('[data-avail-hours-range]');
+  if (rangeEl) {
+    if (slots.length) {
+      rangeEl.textContent = `${availFormatSlotLabel(slots[0])} – ${availFormatSlotLabel(lastSlot)} · ${interval} min slots`;
+    } else {
+      rangeEl.textContent = '';
+    }
+  }
+
+  list.innerHTML = slots.map((slotKey) => {
+    const inputId = `avail-${day}-${slotKey.replace(':', '')}`;
+    const value = `${day}-${slotKey}`;
+    const isOn = checked.has(slotKey);
+    const label = availFormatSlotLabel(slotKey);
+    return `
+      <label class="avail-cell avail-slot${isOn ? ' is-on' : ''}" for="${inputId}">
+        <input type="checkbox" class="avail-slot-input" name="slots[]" id="${inputId}" value="${value}"${isOn ? ' checked' : ''}>
+        <span class="avail-slot-time">${label}</span>
+        <span class="avail-slot-toggle" aria-hidden="true"></span>
+      </label>`;
+  }).join('');
+
+  refreshAvailabilityCounts(document.getElementById('availScheduleForm'));
+}
+
+function refreshAvailabilityCounts(form) {
+  if (!form) return;
+  const totalEl = document.getElementById('availSelectedTotal');
+  const i18n = window.LEXORA_I18N || {};
+  const totalTpl = i18n.availabilitySlotsSelected || ':count slots selected';
+  let total = 0;
+  form.querySelectorAll('[data-avail-day-count]').forEach((el) => {
+    const day = el.getAttribute('data-avail-day-count');
+    const count = Array.from(form.querySelectorAll('.avail-slot-input')).filter((input) => {
+      return String(input.value).indexOf(`${day}-`) === 0 && input.checked;
+    }).length;
+    total += count;
+    el.textContent = String(count);
+  });
+  if (totalEl) {
+    totalEl.textContent = String(totalTpl).replace(':count', String(total));
+  }
+}
+
 function initAvailabilitySchedule() {
   const form = document.getElementById('availScheduleForm');
   if (!form) return;
-
-  const i18n = window.LEXORA_I18N || {};
-  const totalEl = document.getElementById('availSelectedTotal');
-  const totalTpl = i18n.availabilitySlotsSelected || ':count slots selected';
-  const dayTpl = i18n.availabilityDayCount || ':count selected';
+  const readOnly = form.classList.contains('avail-schedule-readonly');
 
   function columnInputs(day) {
     return Array.from(form.querySelectorAll('.avail-slot-input')).filter((input) => {
@@ -2542,27 +2693,122 @@ function initAvailabilitySchedule() {
     cell.classList.toggle('is-on', input.checked);
   }
 
-  function refreshCounts() {
-    let total = 0;
-    form.querySelectorAll('[data-avail-day-count]').forEach((el) => {
-      const day = el.getAttribute('data-avail-day-count');
-      const count = columnInputs(day).filter((input) => input.checked).length;
-      total += count;
-      el.textContent = String(dayTpl).replace(':count', String(count));
+  function showDay(day) {
+    form.querySelectorAll('[data-avail-tab]').forEach((tab) => {
+      const active = tab.getAttribute('data-avail-tab') === day;
+      tab.classList.toggle('is-active', active);
+      tab.setAttribute('aria-selected', active ? 'true' : 'false');
     });
-    if (totalEl) {
-      totalEl.textContent = String(totalTpl).replace(':count', String(total));
-    }
+    form.querySelectorAll('[data-avail-panel]').forEach((panel) => {
+      const active = panel.getAttribute('data-avail-panel') === day;
+      panel.classList.toggle('is-active', active);
+      if (active) {
+        panel.removeAttribute('hidden');
+      } else {
+        panel.setAttribute('hidden', '');
+      }
+    });
   }
+
+  form.querySelectorAll('[data-avail-tab]').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      showDay(tab.getAttribute('data-avail-tab'));
+    });
+  });
 
   form.querySelectorAll('.avail-slot-input').forEach((input) => {
     syncCell(input);
-    input.addEventListener('change', () => {
-      syncCell(input);
-      refreshCounts();
-    });
   });
-  refreshCounts();
+  refreshAvailabilityCounts(form);
+
+  if (readOnly) {
+    return;
+  }
+
+  let dragActive = false;
+  let dragPaintOn = false;
+  let dragList = null;
+
+  function slotHit(target) {
+    const cell = target && target.closest ? target.closest('.avail-slot') : null;
+    if (!cell || !form.contains(cell)) return null;
+    const input = cell.querySelector('.avail-slot-input');
+    return input ? { cell, input } : null;
+  }
+
+  function paintSlot(input, on) {
+    if (input.checked === on) return;
+    input.checked = on;
+    syncCell(input);
+  }
+
+  function endDrag() {
+    if (!dragActive) return;
+    dragActive = false;
+    dragList = null;
+    form.querySelectorAll('.avail-slot-list.is-dragging').forEach((list) => {
+      list.classList.remove('is-dragging');
+    });
+    refreshAvailabilityCounts(form);
+  }
+
+  form.addEventListener('mousedown', (event) => {
+    if (event.button !== 0) return;
+    const list = event.target.closest('.avail-slot-list');
+    if (!list || !form.contains(list)) return;
+    const hit = slotHit(event.target);
+    if (!hit) return;
+
+    dragActive = true;
+    dragList = list;
+    dragPaintOn = !hit.input.checked;
+    paintSlot(hit.input, dragPaintOn);
+    list.classList.add('is-dragging');
+    event.preventDefault();
+  });
+
+  form.addEventListener('mouseover', (event) => {
+    if (!dragActive || !dragList) return;
+    const hit = slotHit(event.target);
+    if (!hit || !dragList.contains(hit.cell)) return;
+    paintSlot(hit.input, dragPaintOn);
+  });
+
+  form.addEventListener('click', (event) => {
+    if (!event.target.closest('.avail-slot-list')) return;
+    if (!slotHit(event.target)) return;
+    event.preventDefault();
+    event.stopPropagation();
+  }, true);
+
+  form.addEventListener('touchstart', (event) => {
+    const touch = event.changedTouches[0];
+    if (!touch) return;
+    const list = event.target.closest('.avail-slot-list');
+    if (!list || !form.contains(list)) return;
+    const hit = slotHit(document.elementFromPoint(touch.clientX, touch.clientY));
+    if (!hit || !list.contains(hit.cell)) return;
+
+    dragActive = true;
+    dragList = list;
+    dragPaintOn = !hit.input.checked;
+    paintSlot(hit.input, dragPaintOn);
+    list.classList.add('is-dragging');
+  }, { passive: true });
+
+  document.addEventListener('mouseup', endDrag);
+
+  document.addEventListener('touchmove', (event) => {
+    if (!dragActive || !dragList) return;
+    const touch = event.touches[0];
+    if (!touch) return;
+    const hit = slotHit(document.elementFromPoint(touch.clientX, touch.clientY));
+    if (!hit || !dragList.contains(hit.cell)) return;
+    paintSlot(hit.input, dragPaintOn);
+  }, { passive: true });
+
+  document.addEventListener('touchend', endDrag);
+  document.addEventListener('touchcancel', endDrag);
 
   form.querySelectorAll('[data-avail-day-toggle]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -2574,11 +2820,11 @@ function initAvailabilitySchedule() {
         input.checked = on;
         syncCell(input);
       });
-      refreshCounts();
+      refreshAvailabilityCounts(form);
     });
   });
 
-  document.querySelectorAll('[data-avail-preset]').forEach((btn) => {
+  form.querySelectorAll('[data-avail-preset]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const preset = btn.getAttribute('data-avail-preset');
       form.querySelectorAll('.avail-slot-input').forEach((input) => {
@@ -2586,17 +2832,18 @@ function initAvailabilitySchedule() {
         const day = parseInt(parts[0], 10);
         const time = parts[1] || '';
         let on = false;
-        if (preset === 'all') {
-          on = true;
-        } else if (preset === 'clear') {
-          on = false;
-        } else if (preset === 'weekdays') {
-          on = day >= 1 && day <= 5 && time >= '09:00' && time <= '16:30';
+        const panel = form.querySelector(`[data-avail-panel="${day}"]`);
+        const start = panel?.getAttribute('data-avail-start') || '09:00';
+        const lastSlot = panel?.getAttribute('data-avail-last-slot') || '16:30';
+        if (preset === 'weekdays') {
+          on = day >= 1 && day <= 5 && time >= start && time <= lastSlot;
+        } else if (preset === 'weekend') {
+          on = day === 6 && time >= start && time <= lastSlot;
         }
         input.checked = on;
         syncCell(input);
       });
-      refreshCounts();
+      refreshAvailabilityCounts(form);
     });
   });
 }

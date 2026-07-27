@@ -8,7 +8,7 @@ html, body {
 
 body.login-page {
     font-family: Outfit, "Segoe UI", sans-serif;
-    background: #03050a;
+    background: #000000;
     color: #fff;
     --lp-glass: rgba(45, 43, 66, 0.72);
     --lp-text: #ffffff;
@@ -25,7 +25,7 @@ body.login-page {
     max-height: 100dvh;
     position: relative;
     overflow: hidden;
-    background: #03050a;
+    background: #000000;
 }
 
 .login-bg {
@@ -36,25 +36,19 @@ body.login-page {
     overflow: hidden;
 }
 
-/* Accent-tinted waves — hue locked to branding_accent */
+/* Grayscale base so accent tint keeps wave depth, not flat monochrome */
 .login-bg-waves {
     position: absolute;
-    inset: -2%;
-    background:
-        linear-gradient(rgba(var(--lp-accent-rgb), 0.72), rgba(var(--lp-accent-rgb), 0.72)),
-        var(--lp-bg-image) center 45% / cover no-repeat;
-    background-blend-mode: color, normal;
-    filter: blur(0.8px) contrast(1.1) brightness(0.88) saturate(1.2);
-    transform: scale(1.03);
+    inset: 0;
+    background: var(--lp-bg-image) center center / cover no-repeat;
+    filter: grayscale(1) brightness(0.82) contrast(1.08);
 }
 
 .login-bg-glow {
     position: absolute;
     inset: 0;
-    background:
-        linear-gradient(rgba(var(--lp-accent-rgb), 0.18), rgba(var(--lp-accent-rgb), 0.12)),
-        radial-gradient(ellipse 55% 50% at 50% 45%, transparent 25%, rgba(3, 5, 10, 0.5) 100%);
-    mix-blend-mode: multiply;
+    background: rgb(var(--lp-accent-rgb));
+    mix-blend-mode: color;
 }
 
 .login-bg-vignette {

@@ -38,6 +38,9 @@ CREATE TABLE users (
     permissions JSON DEFAULT NULL,
     is_active TINYINT(1) NOT NULL DEFAULT 1,
     availability ENUM('available','busy','unavailable') DEFAULT 'available',
+    availability_start TIME NOT NULL DEFAULT '09:00:00',
+    availability_end TIME NOT NULL DEFAULT '17:00:00',
+    availability_interval SMALLINT UNSIGNED NOT NULL DEFAULT 30,
     assigned_lawyer_id INT UNSIGNED DEFAULT NULL,
     notes TEXT DEFAULT NULL,
     last_login DATETIME DEFAULT NULL,
@@ -282,6 +285,18 @@ CREATE TABLE ai_chat_messages (
     content TEXT NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (session_id) REFERENCES ai_chat_sessions(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE lawyer_availability_day_settings (
+    lawyer_id INT UNSIGNED NOT NULL,
+    week_start DATE NOT NULL COMMENT 'Monday of the week',
+    day_of_week TINYINT UNSIGNED NOT NULL COMMENT '1=Mon ... 6=Sat',
+    start_time TIME NOT NULL DEFAULT '09:00:00',
+    end_time TIME NOT NULL DEFAULT '17:00:00',
+    interval_minutes SMALLINT UNSIGNED NOT NULL DEFAULT 30,
+    PRIMARY KEY (lawyer_id, week_start, day_of_week),
+    INDEX idx_lawyer_day_week (lawyer_id, week_start),
+    FOREIGN KEY (lawyer_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 CREATE TABLE lawyer_availability_slots (

@@ -103,7 +103,7 @@ $payStmt = $pdo->prepare(
 $payStmt->execute([$invoiceId]);
 $latestPayment = $payStmt->fetch() ?: null;
 
-$firmName = get_setting($pdo, 'company_name', app_config('name', 'LEGAL PRO'));
+$firmName = company_name($pdo);
 $base = rtrim((string) app_config('url'), '/');
 $css = $base . '/assets/css/style.css?v=' . (int) @filemtime(__DIR__ . '/../assets/css/style.css');
 $canDemoPay = $payStatus !== 'paid' && $due > 0;

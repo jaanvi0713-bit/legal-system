@@ -297,7 +297,7 @@ $roleList = $roleConfig['roles'];
 $rolePerms = $roleConfig['permissions'];
 $roleModules = role_access_modules();
 $roleUserCounts = role_access_user_counts($pdo);
-$companyName = get_setting($pdo, 'company_name', app_config('name', 'LEGAL PRO'));
+$companyName = company_name($pdo);
 
 require __DIR__ . '/../includes/header.php';
 ?>

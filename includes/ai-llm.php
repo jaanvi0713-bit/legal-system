@@ -80,7 +80,7 @@ function ai_llm_portal_system_prompt(PDO $pdo, string $portal): string
         default => 'ai.system.client',
     };
 
-    return __($langKey);
+    return __($langKey, ['company' => company_name($pdo)]);
 }
 
 function ai_llm_mauritius_law_context(): string
@@ -97,7 +97,7 @@ function ai_llm_mauritius_law_context(): string
 
 function ai_llm_build_system_prompt(PDO $pdo, array $user, string $portal, string $portalContext): string
 {
-    $company = trim((string) get_setting($pdo, 'company_name', app_config('name', 'LEGAL PRO')));
+    $company = company_name($pdo);
     $name = function_exists('full_name') ? full_name($user) : trim(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? ''));
 
     $actionsHelp = "You can guide the user to run workspace actions with clear commands. "

@@ -5,8 +5,8 @@
  */
 require_once __DIR__ . '/nav-icons.php';
 $user = current_user();
-$appName = get_setting(db(), 'company_name', app_config('name'));
-$brandName = app_config('brand', 'LEGAL PRO');
+$appName = company_name();
+$brandName = $appName;
 $pdoHeader = db();
 ensure_notification_edited_column($pdoHeader);
 $unread = unread_notifications($pdoHeader, (int) $user['id']);

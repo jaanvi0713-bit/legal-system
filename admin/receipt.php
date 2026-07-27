@@ -144,7 +144,7 @@ $amountPaid = $invoicePaid;
 $amountDue = max(0, round($grand - $invoicePaid, 2));
 $selectedBank = get_bank_account($pdo, isset($payment['bank_account_id']) ? (int) $payment['bank_account_id'] : null);
 
-$firmName = get_setting($pdo, 'company_name', app_config('name', 'LEGAL PRO'));
+$firmName = company_name($pdo);
 $firmEmail = get_setting($pdo, 'company_email', '');
 $firmPhone = get_setting($pdo, 'company_phone', '');
 $firmAddress = get_setting($pdo, 'company_address', '');

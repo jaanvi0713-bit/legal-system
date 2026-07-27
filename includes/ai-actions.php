@@ -1441,7 +1441,7 @@ function ai_action_draft_email(PDO $pdo, array $user, string $portal, string $me
     }
     $topicText = ai_email_draft_resolve_topic_text($topicId, $topicDef, $notes);
 
-    $company = trim((string) get_setting($pdo, 'company_name', app_config('name', 'LEGAL PRO')));
+    $company = company_name($pdo);
     $sender = full_name($user);
     if ($toUser) {
         $recipient = ai_email_draft_format_person_name(full_name($toUser));
@@ -1580,7 +1580,7 @@ function ai_action_send_email(PDO $pdo, array $user, string $portal, string $mes
         return $draft . "\n\n⚠️ Could not determine recipient email for SMTP send.";
     }
 
-    $subject = 'Message from ' . get_setting($pdo, 'company_name', app_config('name'));
+    $subject = 'Message from ' . company_name($pdo);
     $body = $draft;
     if (preg_match('/```\s*([\s\S]+?)```/', $draft, $m)) {
         $body = trim($m[1]);

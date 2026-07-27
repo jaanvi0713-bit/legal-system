@@ -588,7 +588,7 @@ if (!$selectedBank && !empty($invoice['bank_account_id'])) {
     $selectedBank = $bankOptions[(int) $invoice['bank_account_id']] ?? null;
 }
 
-$firmName = get_setting($pdo, 'company_name', app_config('name', 'LEGAL PRO'));
+$firmName = company_name($pdo);
 $firmEmail = get_setting($pdo, 'company_email', '');
 $firmPhone = get_setting($pdo, 'company_phone', '');
 $firmAddress = get_setting($pdo, 'company_address', '');

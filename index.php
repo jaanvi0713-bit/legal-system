@@ -45,13 +45,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $selectedRole = $role;
 }
 
-$appName = app_config('name', 'LEGAL PRO');
-$brandName = app_config('brand', 'LEGAL PRO');
-try {
-    $appName = get_setting(db(), 'company_name', app_config('name'));
-} catch (Throwable $e) {
-    $appName = app_config('name', 'LEGAL PRO');
-}
+$appName = company_name();
+$brandName = $appName;
 $accent = '#023e8a';
 try {
     $accent = get_setting(db(), 'branding_accent', '#023e8a') ?: '#023e8a';
@@ -110,7 +105,7 @@ $uiLang = current_lang();
             <div class="login-plate">
                 <div class="glass-card">
                     <div class="card-head">
-                        <div class="brand-badge<?= $companyLogo !== '' ? ' brand-badge--logo' : '' ?>" aria-hidden="true"><?php if ($companyLogo !== ''): ?><img src="<?= e($base . '/' . ltrim($companyLogo, '/')) ?>" alt=""><?php else: ?>L<?php endif; ?></div>
+                        <div class="brand-badge<?= $companyLogo !== '' ? ' brand-badge--logo' : '' ?>" aria-hidden="true"><?php if ($companyLogo !== ''): ?><img src="<?= e($base . '/' . ltrim($companyLogo, '/')) ?>" alt=""><?php else: ?><?= e(company_brand_initial()) ?><?php endif; ?></div>
                         <div class="company-name"><?= e(strtoupper($brandName)) ?></div>
                     </div>
 

@@ -1,6 +1,6 @@
 </main>
         <footer class="app-footer">
-            <span>&copy; <?= date('Y') ?> <?= e(get_setting(db(), 'company_name', app_config('name'))) ?></span>
+            <span>&copy; <?= date('Y') ?> <?= e(company_name()) ?></span>
             <span><?= __e('app.tagline') ?></span>
         </footer>
     </div>

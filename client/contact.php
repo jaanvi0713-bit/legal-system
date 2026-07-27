@@ -136,7 +136,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $caseOptions = array_values(array_filter($sendTargets, fn($t) => $t['case_id'] !== null));
 
-$companyName = get_setting($pdo, 'company_name', app_config('name'));
+$companyName = company_name($pdo);
 $companyAddress = get_setting($pdo, 'company_address', '');
 $businessHours = get_setting($pdo, 'company_hours', __('contact.default_hours'));
 

@@ -21,7 +21,6 @@ if ($lawyerId <= 0) {
         <div class="case-list-head">
             <div class="case-list-title">
                 <h2><?= __e('availability.view.select_lawyer') ?></h2>
-                <p class="muted"><?= __e('availability.view.pick_lawyer') ?></p>
             </div>
             <a class="btn btn-secondary btn-sm" href="lawyers.php"><?= __e('lawyers.back') ?></a>
         </div>
@@ -76,12 +75,10 @@ $availWeekLabel = availability_format_week_range($availWeekStart);
 $availWeekDates = availability_week_dates($availWeekStart);
 $availIsCurrentWeek = $availWeekStart === availability_week_start();
 $availMatrix = get_lawyer_availability_matrix($pdo, $lawyerId, $availWeekStart);
+$availDayHours = get_lawyer_week_day_hours($pdo, $lawyerId, $availWeekStart);
+$availLawyerId = $lawyerId;
+$availReadOnly = true;
 $availWeekHref = static fn(string $week): string => 'lawyer-availability.php?lawyer_id=' . $lawyerId . '&week=' . urlencode(availability_normalize_week_start($week));
-
-$slotCountStmt = $pdo->prepare('SELECT COUNT(*) FROM lawyer_availability_slots WHERE lawyer_id=?');
-$slotCountStmt->execute([$lawyerId]);
-$availTotalPublishedSlots = (int) $slotCountStmt->fetchColumn();
-$availLawyer = $lawyer;
 
 $pageTitle = __('availability.view.title', ['name' => full_name($lawyer)]);
 $pageSubtitle = __('availability.view.subtitle');
@@ -91,25 +88,13 @@ require __DIR__ . '/../includes/header.php';
     <div class="avail-view-top">
         <a class="btn btn-secondary btn-sm" href="lawyers.php?action=view&id=<?= (int) $lawyerId ?>">← <?= __e('lawyers.back_profile') ?></a>
         <div class="row-actions">
-            <a class="btn btn-secondary btn-sm" href="lawyer-availability.php"><?= __e('availability.view.all_lawyers') ?></a>
-            <a class="btn btn-primary btn-sm" href="lawyers.php?action=edit&id=<?= (int) $lawyerId ?>"><?= __e('lawyers.edit_profile') ?></a>
+            <a class="btn btn-row-open btn-sm btn-row-fit" href="lawyer-availability.php"><?= __e('availability.view.all_lawyers') ?></a>
+            <a class="btn btn-row-edit btn-sm btn-row-fit" href="lawyers.php?action=edit&id=<?= (int) $lawyerId ?>"><?= __e('lawyers.edit_profile') ?></a>
         </div>
     </div>
 
     <div class="panel avail-panel">
-        <div class="avail-view-lawyer-head">
-            <div>
-                <h2><?= e(full_name($lawyer)) ?></h2>
-                <p class="muted">
-                    <?= e($lawyer['specialization'] ?: __('lawyers.general_practice')) ?>
-                    · <?= e($lawyer['email']) ?>
-                    <?php if (!empty($lawyer['phone'])): ?>
-                    · <?= e($lawyer['phone']) ?>
-                    <?php endif; ?>
-                </p>
-            </div>
-        </div>
-        <?php require __DIR__ . '/../includes/availability-schedule-view.php'; ?>
+        <?php require __DIR__ . '/../includes/availability-schedule-form.php'; ?>
     </div>
 </div>
 <?php require __DIR__ . '/../includes/footer.php'; ?>
