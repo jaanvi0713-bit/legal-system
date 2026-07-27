@@ -79,8 +79,8 @@ foreach ($searchableSelectOptions as $opt) {
   const panel = root.querySelector('[data-searchable-panel]');
   const search = root.querySelector('[data-searchable-search]');
   const placeholder = <?= json_encode($searchableSelectPlaceholder) ?>;
-  const options = () => Array.from(root.querySelectorAll('.recipient-picker-option'));
-  const empty = root.querySelector('[data-searchable-empty]');
+  const options = () => Array.from(panel.querySelectorAll('.recipient-picker-option'));
+  const empty = panel.querySelector('[data-searchable-empty]');
   let repositionHandler = null;
 
   const positionPanel = () => {

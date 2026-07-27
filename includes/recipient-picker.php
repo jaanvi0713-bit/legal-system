@@ -78,8 +78,8 @@ $recipientGroups = [
   const label = root.querySelector('[data-recipient-label]');
   const panel = root.querySelector('[data-recipient-panel]');
   const search = root.querySelector('[data-recipient-search]');
-  const options = () => Array.from(root.querySelectorAll('.recipient-picker-option'));
-  const groups = () => Array.from(root.querySelectorAll('[data-recipient-group]'));
+  const options = () => Array.from(panel.querySelectorAll('.recipient-picker-option'));
+  const groups = () => Array.from(panel.querySelectorAll('[data-recipient-group]'));
   const empty = root.querySelector('[data-recipient-empty]');
   let repositionHandler = null;
 

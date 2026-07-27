@@ -551,6 +551,7 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
                         $searchableSelectValue = (int) ($case['client_id'] ?? 0) ?: '';
                         $searchableSelectPlaceholder = __('cases.form.select_client');
                         $searchableSelectRequired = true;
+                        $searchableSelectOptions = $clientSelectOptions;
                         require __DIR__ . '/../includes/searchable-select.php';
                         ?>
                         <a class="case-create-link" href="clients.php?action=create"><?= __e('cases.form.add_client_link') ?></a>
@@ -599,6 +600,7 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
                         $searchableSelectValue = $leadLawyerId ?: '';
                         $searchableSelectPlaceholder = __('cases.form.select_lawyer');
                         $searchableSelectRequired = true;
+                        $searchableSelectOptions = $lawyerSelectOptions;
                         require __DIR__ . '/../includes/searchable-select.php';
                         ?>
                     </div>
