@@ -23,6 +23,7 @@ function ai_create_session_with_welcome(PDO $pdo, int $userId, string $portal, s
 
 function render_ai_page(string $portal): void
 {
+    require_once __DIR__ . '/ai-email-draft.php';
     require_role($portal === 'admin' ? ['admin', 'staff'] : [$portal]);
     $pdo = db();
     $user = current_user();
@@ -140,7 +141,7 @@ function render_ai_page(string $portal): void
             [__('ai.prompt.create_client'), __('ai.prompt.create_client_body'), 'user'],
             [__('ai.prompt.create_case'), __('ai.prompt.create_case_body'), 'briefcase'],
             [__('ai.prompt.schedule_appt'), __('ai.prompt.schedule_appt_body'), 'calendar'],
-            [__('ai.prompt.draft_email'), __('ai.prompt.draft_email_body'), 'edit'],
+            [__('ai.prompt.draft_email'), '', 'edit', 'email_draft'],
             [__('ai.prompt.upload_doc'), __('ai.prompt.upload_doc_body'), 'doc'],
             [__('ai.prompt.total_revenue'), __('ai.prompt.total_revenue_body'), 'money'],
             [__('ai.prompt.calculate'), __('ai.prompt.calculate_body'), 'calc'],
@@ -155,7 +156,7 @@ function render_ai_page(string $portal): void
             [__('ai.prompt.my_cases'), __('ai.prompt.my_cases_body'), 'briefcase'],
             [__('ai.prompt.schedule_appt'), __('ai.prompt.schedule_appt_lawyer_body'), 'calendar'],
             [__('ai.prompt.cancel_appt'), __('ai.prompt.cancel_appt_body'), 'alert'],
-            [__('ai.prompt.draft_email'), __('ai.prompt.draft_email_body'), 'edit'],
+            [__('ai.prompt.draft_email'), '', 'edit', 'email_draft'],
             [__('ai.prompt.upload_doc'), __('ai.prompt.upload_doc_body'), 'doc'],
             [__('ai.prompt.todays_appointments'), __('ai.prompt.todays_appointments_body'), 'calendar'],
             [__('ai.prompt.upcoming_hearings'), __('ai.prompt.upcoming_hearings_body'), 'court'],
@@ -170,7 +171,7 @@ function render_ai_page(string $portal): void
             [__('ai.prompt.schedule_appt'), __('ai.prompt.schedule_appt_client_body'), 'calendar'],
             [__('ai.prompt.cancel_appt'), __('ai.prompt.cancel_appt_body'), 'alert'],
             [__('ai.prompt.upload_doc'), __('ai.prompt.upload_doc_client_body'), 'doc'],
-            [__('ai.prompt.draft_email'), __('ai.prompt.draft_email_client_body'), 'edit'],
+            [__('ai.prompt.message_lawyer'), '', 'edit', 'email_draft'],
             [__('ai.prompt.documents'), __('ai.prompt.documents_body'), 'doc'],
             [__('ai.prompt.appointments'), __('ai.prompt.appointments_client_body'), 'calendar'],
             [__('ai.prompt.outstanding_balance'), __('ai.prompt.outstanding_balance_body'), 'money'],
@@ -196,6 +197,7 @@ function render_ai_page(string $portal): void
     $pageTitle = __('page.ai');
     $pageSubtitle = $subtitle;
     $activeNav = 'ai';
+    $bodyClass = 'page-ai';
     require __DIR__ . '/header.php';
 
     $iconSvg = static function (string $name): string {
@@ -219,7 +221,8 @@ function render_ai_page(string $portal): void
     };
     ?>
     <div class="ai-workspace<?= $libraryOpen ? ' is-library-open' : '' ?>" id="ai-workspace">
-        <script type="application/json" id="ai-prompts-data"><?= json_encode(array_map(static fn($p) => ['label' => $p[0], 'prompt' => $p[1], 'icon' => $p[2]], $prompts), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS) ?></script>
+        <script type="application/json" id="ai-prompts-data"><?= json_encode(array_map(static fn($p) => ['label' => $p[0], 'prompt' => $p[1], 'icon' => $p[2], 'action' => $p[3] ?? ''], $prompts), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS) ?></script>
+        <script type="application/json" id="ai-email-draft-data"><?= json_encode(ai_email_draft_picker_payload($portal), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS) ?></script>
         <aside class="ai-library" id="ai-library"<?= $libraryOpen ? '' : ' hidden' ?>>
             <div class="ai-library-head">
                 <strong><?= __e('ai.library') ?></strong>
@@ -312,8 +315,8 @@ function render_ai_page(string $portal): void
                                 </svg>
                             </div>
                             <div class="ai-msg-stack">
-                                <div class="msg msg-assistant ai-bubble ai-welcome">
-                                    <div class="ai-msg-body" data-ai-raw="<?= e($welcome) ?>"><?= ai_format_message($welcome) ?></div>
+                                    <div class="msg msg-assistant ai-bubble ai-welcome">
+                                    <div class="ai-msg-body" data-ai-raw="<?= e($welcome) ?>"></div>
                                 </div>
                                 <div class="ai-msg-actions">
                                     <button type="button" class="ai-msg-action" data-ai-copy title="<?= __e('ai.copy') ?>" aria-label="<?= __e('ai.copy') ?>">
@@ -336,7 +339,7 @@ function render_ai_page(string $portal): void
                                 </div>
                                 <div class="ai-msg-stack">
                                     <div class="msg msg-assistant ai-bubble">
-                                        <div class="ai-msg-body" data-ai-raw="<?= e($m['content']) ?>"><?= ai_format_message($m['content']) ?></div>
+                                        <div class="ai-msg-body" data-ai-raw="<?= e($m['content']) ?>"></div>
                                     </div>
                                     <div class="ai-msg-actions">
                                         <button type="button" class="ai-msg-action" data-ai-copy title="<?= __e('ai.copy') ?>" aria-label="<?= __e('ai.copy') ?>">
@@ -363,6 +366,7 @@ function render_ai_page(string $portal): void
                             </div>
                         <?php endif; ?>
                     <?php endforeach; ?>
+                    <div id="ai-messages-end" class="ai-messages-end" aria-hidden="true"></div>
                 </div>
 
                 <form id="ai-compose-form" class="ai-compose-wrap" data-no-saving="1" data-session-id="<?= (int) $sessionId ?>" data-ai-endpoint="../api/ai-chat.php" data-app-url="<?= e(rtrim((string) app_config('url'), '/')) ?>">
@@ -389,7 +393,7 @@ function render_ai_page(string $portal): void
             </div>
             <div class="ai-prompt-list" id="ai-prompt-list">
                 <?php foreach (array_slice($prompts, 0, 8) as $p): ?>
-                    <button type="button" class="ai-prompt-btn" data-prompt="<?= e($p[1]) ?>">
+                    <button type="button" class="ai-prompt-btn" data-prompt="<?= e($p[1]) ?>" data-prompt-action="<?= e($p[3] ?? '') ?>">
                         <span class="ai-prompt-icon"><?= $iconSvg($p[2]) ?></span>
                         <span class="ai-prompt-label"><?= e($p[0]) ?></span>
                         <span class="ai-prompt-chevron" aria-hidden="true">›</span>

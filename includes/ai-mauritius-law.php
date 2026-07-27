@@ -32,101 +32,119 @@ function ai_legal_glossary_count(): int
 function ai_mauritius_sources_of_law(): string
 {
     if (ai_mauritius_law_is_fr()) {
-        return "Sources du droit à Maurice (hiérarchie indicative)\n"
-            . "1. Constitution de Maurice — norme suprême\n"
-            . "2. Lois du Parlement (Acts) — législation primaire\n"
-            . "3. Législation subsidiaire — règlements, ordres, notices pris sous une loi\n"
-            . "4. Jurisprudence — décisions des cours (rôle important en common law)\n"
-            . "5. Principes généraux / equity — là où la tradition de common law s’applique\n"
-            . "6. Coutume — seulement si reconnue et compatible avec la loi écrite\n"
-            . "7. Droit international — traités selon leur réception en droit interne";
+        return "**Sources du droit à Maurice**\n"
+            . "_Hiérarchie indicative — de la norme la plus élevée à la plus accessoire :_\n\n"
+            . "1. **Constitution de Maurice** — norme suprême ; droits fondamentaux et organisation de l'État\n"
+            . "2. **Lois du Parlement (Acts)** — législation primaire adoptée par l'Assemblée nationale\n"
+            . "3. **Législation subsidiaire** — règlements, ordres et notices pris en vertu d'une loi habilitante\n"
+            . "4. **Jurisprudence** — décisions des cours ; rôle central en common law et en interprétation\n"
+            . "5. **Principes généraux et equity** — là où la tradition de common law s'applique\n"
+            . "6. **Coutume** — uniquement si reconnue et compatible avec la loi écrite\n"
+            . "7. **Droit international** — traités et conventions selon leur réception en droit interne";
     }
 
-    return "Sources of law in Mauritius (indicative hierarchy)\n"
-        . "1. Constitution of Mauritius — supreme law\n"
-        . "2. Acts of Parliament — primary legislation\n"
-        . "3. Subsidiary legislation — regulations, orders, notices made under an Act\n"
-        . "4. Case law — court decisions (especially important in common-law areas)\n"
-        . "5. General principles / equity — where the common-law tradition applies\n"
-        . "6. Custom — only where recognised and compatible with written law\n"
-        . "7. International law — treaties according to how they are received domestically";
+    return "**Sources of Law in Mauritius**\n"
+        . "_Indicative hierarchy — highest authority first:_\n\n"
+        . "1. **Constitution of Mauritius** — supreme law; fundamental rights and State institutions\n"
+        . "2. **Acts of Parliament** — primary legislation enacted by the National Assembly\n"
+        . "3. **Subsidiary legislation** — regulations, orders, and notices made under an enabling Act\n"
+        . "4. **Case law** — court decisions; especially important in common-law areas and interpretation\n"
+        . "5. **General principles and equity** — where the English common-law tradition applies\n"
+        . "6. **Custom** — only where recognised and compatible with written law\n"
+        . "7. **International law** — treaties and conventions as received into domestic law";
 }
 
 function ai_mauritius_legal_system_overview(): string
 {
     if (ai_mauritius_law_is_fr()) {
-        return "Système juridique mauricien (aperçu)\n"
-            . "• Système hybride : forte influence du droit civil français (droit privé) et de la common law anglaise (procédure, certaines matières commerciales/pénales).\n"
-            . "• Langue des textes et des procédures : souvent l’anglais ; la terminologie civiliste française reste présente.\n"
-            . "• Séparation des pouvoirs : législatif (Assemblée nationale), exécutif, judiciaire.\n"
-            . "• La Constitution garantit des droits fondamentaux et organise les institutions.";
+        return "**Système juridique mauricien — Aperçu**\n\n"
+            . "Maurice applique un **système juridique hybride** : le droit privé s'inspire fortement de la tradition civiliste française, tandis que la procédure et plusieurs matières commerciales et pénales relèvent davantage de la common law anglaise.\n\n"
+            . "**Points essentiels**\n"
+            . "• **Influence civiliste** — Code civil adapté : personnes, biens, obligations, contrats, famille\n"
+            . "• **Influence common law** — procédure, preuve, droit pénal et commercial dans de larges mesures\n"
+            . "• **Langues** — l'anglais domine les textes législatifs et les procédures ; la terminologie civiliste française reste présente\n"
+            . "• **Séparation des pouvoirs** — Assemblée nationale (législatif), Gouvernement (exécutif), magistrature (judiciaire)\n"
+            . "• **Constitution** — garantit les droits fondamentaux et encadre les institutions publiques";
     }
 
-    return "Mauritian legal system (overview)\n"
-        . "• Hybrid system: strong French civil-law influence (private law) and English common-law influence (procedure and several commercial/criminal areas).\n"
-        . "• Language of statutes and proceedings: commonly English; French civil-law terminology remains influential.\n"
-        . "• Separation of powers: legislature (National Assembly), executive, and judiciary.\n"
-        . "• The Constitution protects fundamental rights and organises State institutions.";
+    return "**Mauritian Legal System — Overview**\n\n"
+        . "Mauritius operates a **hybrid legal system**: private law draws heavily on the French civil-law tradition, while procedure and several commercial and criminal areas follow English common-law methods.\n\n"
+        . "**Key characteristics**\n"
+        . "• **Civil-law influence** — adapted Civil Code: persons, property, obligations, contracts, family\n"
+        . "• **Common-law influence** — procedure, evidence, and much of commercial and criminal law\n"
+        . "• **Language** — statutes and court proceedings are commonly in English; French civil-law terminology remains influential\n"
+        . "• **Separation of powers** — National Assembly (legislature), Government (executive), judiciary\n"
+        . "• **Constitution** — protects fundamental rights and organises State institutions";
 }
 
 function ai_mauritius_courts_overview(): string
 {
     if (ai_mauritius_law_is_fr()) {
-        return "Organisation judiciaire (aperçu)\n"
-            . "• Cour suprême — juridiction supérieure (y compris chambres d’appel civil et pénal selon l’organisation en vigueur)\n"
-            . "• Cour intermédiaire — affaires civiles/pénales d’importance intermédiaire\n"
-            . "• District Courts — contentieux de première instance / valeur moindre\n"
-            . "• Industrial Court — litiges du travail\n"
-            . "• Juridictions / tribunaux spécialisés — selon les lois particulières (fiscal, réglementaire, etc.)";
+        return "**Organisation judiciaire**\n"
+            . "_Structure indicative des juridictions principales :_\n\n"
+            . "• **Cour suprême** — juridiction supérieure ; divisions d'appel et de première instance selon la loi\n"
+            . "• **Cour intermédiaire (Intermediate Court)** — affaires civiles et pénales de importance intermédiaire\n"
+            . "• **District Courts** — première instance et contentieux de moindre valeur\n"
+            . "• **Industrial Court** — litiges du travail et relations employeur–salarié\n"
+            . "• **Juridictions spécialisées** — tribunaux créés par des lois particulières (fiscal, réglementaire, etc.)";
     }
 
-    return "Court structure (overview)\n"
-        . "• Supreme Court — superior court (including appellate divisions as organised by law)\n"
-        . "• Intermediate Court — mid-level civil/criminal matters\n"
-        . "• District Courts — first-instance / lower-value matters\n"
-        . "• Industrial Court — employment disputes\n"
-        . "• Specialist courts/tribunals — created by particular statutes (tax, regulatory, etc.)";
+    return "**Court Structure**\n"
+        . "_Indicative layout of the main courts:_\n\n"
+        . "• **Supreme Court** — superior court of record; appellate and first-instance divisions as organised by law\n"
+        . "• **Intermediate Court** — mid-level civil and criminal matters\n"
+        . "• **District Courts** — first-instance and lower-value disputes\n"
+        . "• **Industrial Court** — employment and industrial-relations disputes\n"
+        . "• **Specialist courts and tribunals** — established under particular statutes (tax, regulatory, and other specialised areas)";
 }
 
 function ai_mauritius_main_law_areas(): string
 {
     if (ai_mauritius_law_is_fr()) {
-        return "Principales familles de règles / codes et lois types (liste indicative, non exhaustive)\n"
-            . "• Droit constitutionnel — Constitution ; lois organiques / institutionnelles\n"
-            . "• Droit civil — Code civil (tradition napoléonienne adaptée) : personnes, biens, obligations, contrats, famille\n"
-            . "• Procédure civile — Code / règles de procédure civile\n"
+        return "**Principales branches du droit**\n"
+            . "_Carte indicative — liste non exhaustive des familles de règles et textes types :_\n\n"
+            . "**Droit public et institutionnel**\n"
+            . "• Droit constitutionnel — Constitution ; lois organiques et institutionnelles\n"
             . "• Droit pénal — Code pénal et lois pénales spéciales\n"
-            . "• Procédure pénale — règles de procédure pénale et de preuve\n"
-            . "• Droit des sociétés / commercial — Companies Act et textes connexes\n"
-            . "• Droit du travail — Employment Rights Act et lois sociales connexes\n"
-            . "• Droit de la propriété / fonciers — titres, transcription, hypothèques\n"
+            . "• Procédure pénale — règles de procédure et de preuve\n"
+            . "• Droit administratif — contrôle et recours contre l'action administrative\n"
+            . "• Droit fiscal — Income Tax Act et autres textes fiscaux\n\n"
+            . "**Droit privé et civil**\n"
+            . "• Droit civil — Code civil (tradition napoléonienne adaptée)\n"
+            . "• Procédure civile — codes et règles de procédure civile\n"
             . "• Droit de la famille — mariage, divorce, filiation, pension alimentaire\n"
-            . "• Droit fiscal — Income Tax Act et textes fiscaux\n"
-            . "• Droit de la consommation / concurrence — protection du consommateur et marchés\n"
-            . "• Droit de l’environnement — lois environnementales et planification\n"
-            . "• Droit bancaire / financier — banques, titres, anti-blanchiment\n"
-            . "• Droit administratif — contrôle des actes administratifs\n"
+            . "• Droit de la propriété — titres, transcription, hypothèques et charges\n"
             . "• Droit international privé — conflits de lois et de juridictions\n\n"
-            . "Important : Maurice publie des centaines d’Acts et de règlements. Personne ne peut « lister toutes les lois » hors du recueil officiel (Government Gazette / législateur). Ci-dessus : carte des grandes catégories.";
+            . "**Droit économique et réglementaire**\n"
+            . "• Droit des sociétés et commercial — Companies Act et textes connexes\n"
+            . "• Droit du travail — Employment Rights Act et législation sociale\n"
+            . "• Droit bancaire et financier — banques, titres, anti-blanchiment\n"
+            . "• Consommation et concurrence — protection du consommateur et des marchés\n"
+            . "• Environnement et urbanisme — lois environnementales et de planification\n\n"
+            . "**Note importante** — Maurice compte des centaines d'Acts et de règlements. Cette liste est une **carte thématique**, pas le recueil officiel. Vérifiez toujours les textes à jour sur [legislation.govmu.org](https://legislation.govmu.org) ou dans la **Government Gazette**.";
     }
 
-    return "Main families of rules / typical codes and Acts (indicative, not exhaustive)\n"
-        . "• Constitutional law — Constitution; institutional statutes\n"
-        . "• Civil law — Civil Code (Napoleonic tradition, adapted): persons, property, obligations, contracts, family\n"
-        . "• Civil procedure — codes/rules of civil procedure\n"
+    return "**Main Branches of Law**\n"
+        . "_Indicative map — not an exhaustive list of every statute:_\n\n"
+        . "**Public and institutional law**\n"
+        . "• Constitutional law — Constitution; institutional and organic statutes\n"
         . "• Criminal law — Criminal Code and special penal statutes\n"
-        . "• Criminal procedure — criminal procedure and evidence rules\n"
-        . "• Company / commercial law — Companies Act and related statutes\n"
-        . "• Employment / labour law — Employment Rights Act and related social legislation\n"
-        . "• Property / land law — title, registration, mortgages/charges\n"
+        . "• Criminal procedure — procedure and rules of evidence\n"
+        . "• Administrative law — review and challenge of administrative action\n"
+        . "• Tax law — Income Tax Act and other revenue statutes\n\n"
+        . "**Private and civil law**\n"
+        . "• Civil law — Civil Code (adapted Napoleonic tradition)\n"
+        . "• Civil procedure — codes and rules of civil procedure\n"
         . "• Family law — marriage, divorce, parentage, maintenance\n"
-        . "• Tax law — Income Tax Act and other revenue statutes\n"
-        . "• Consumer / competition law — consumer protection and market rules\n"
-        . "• Environmental law — environmental and planning statutes\n"
-        . "• Banking / financial law — banks, securities, anti-money laundering\n"
-        . "• Administrative law — review of administrative action\n"
+        . "• Property and land law — title, registration, mortgages, and charges\n"
         . "• Private international law — conflict of laws and jurisdiction\n\n"
-        . "Important: Mauritius has hundreds of Acts and regulations. No assistant can list every statute outside the official corpus (Government Gazette / legislature). The list above is a map of the main categories.";
+        . "**Commercial and regulatory law**\n"
+        . "• Company and commercial law — Companies Act and related statutes\n"
+        . "• Employment and labour law — Employment Rights Act and social legislation\n"
+        . "• Banking and financial law — banks, securities, anti-money laundering\n"
+        . "• Consumer and competition law — consumer protection and market regulation\n"
+        . "• Environmental and planning law — environmental and land-use statutes\n\n"
+        . "**Important note** — Mauritius has hundreds of Acts and regulations. This is a **thematic map**, not the official corpus. Always verify current text on [legislation.govmu.org](https://legislation.govmu.org) or in the **Government Gazette**.";
 }
 
 function ai_legal_glossary_formatted(): string
@@ -392,9 +410,10 @@ function ai_mauritius_law_disclaimer_short(): string
 function ai_mauritius_law_disclaimer(): string
 {
     if (ai_mauritius_law_is_fr()) {
-        return "Avertissement : aperçu éducatif pour ce cabinet. Ce n’est pas un conseil juridique formel, ni le texte officiel complet des lois. Vérifiez toujours la Constitution, les Acts à jour et la Government Gazette.";
+        return "**Avertissement** — Aperçu éducatif pour ce cabinet. Ce n'est pas un conseil juridique formel ni le texte officiel intégral des lois. Vérifiez toujours la Constitution, les Acts à jour et la Government Gazette.";
     }
-    return "Disclaimer: educational overview for this firm workspace. This is not formal legal advice and not the full official text of every statute. Always verify against the Constitution, current Acts, and the Government Gazette.";
+
+    return "**Disclaimer** — Educational overview for this firm workspace. This is not formal legal advice and not the full official text of every statute. Always verify against the Constitution, current Acts, and the Government Gazette.";
 }
 
 /**

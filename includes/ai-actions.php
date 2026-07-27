@@ -6,6 +6,7 @@
 require_once __DIR__ . '/ai-client-intake.php';
 require_once __DIR__ . '/ai-client-case-intake.php';
 require_once __DIR__ . '/ai-appointment-intake.php';
+require_once __DIR__ . '/ai-email-draft.php';
 
 /**
  * Try to run a workspace mutation from the user message.
@@ -57,6 +58,10 @@ function ai_try_actions(PDO $pdo, array $user, string $portal, string $message, 
         if ($wantsUpload
             && !ai_actions_wants($q, ['create client', 'new client', 'from this document', 'from document', 'extract client'])) {
             return ai_action_upload_document($pdo, $user, $portal, $message, $q, $attachments);
+        }
+
+        if (ai_actions_wants_email_approve($message, $q)) {
+            return ai_action_approve_send_email($pdo, $user, $portal, $message, $q);
         }
 
         if (ai_actions_wants_email_draft($q)) {
@@ -231,12 +236,23 @@ function ai_actions_wants_email_draft(string $q): bool
     if (ai_actions_wants($q, [
         'draft email', 'draft an email', 'draft a professional email', 'write email', 'write an email',
         'compose email', 'compose an email', 'email draft', 'draft letter', 'professional email',
+        'write to client', 'email client', 'client email', 'message client', 'message my lawyer',
+        'write to my lawyer', 'email my lawyer',
         'redige un email', 'rediger un email', 'ecrire un email', 'lettre professionnelle',
+        'ecrire au client', 'email au client', 'message avocat',
     ])) {
         return true;
     }
     return (bool) preg_match('/\b(draft|write|compose|redige|rediger|ecrire)\b.{0,48}\b(email|mail|lettre)\b/u', $q)
         || (bool) preg_match('/\b(email|mail)\b.{0,48}\b(draft|brouillon)\b/u', $q);
+}
+
+function ai_actions_wants_email_approve(string $message, string $q): bool
+{
+    if (preg_match('/\[\[AI_EMAIL_APPROVE\]\]/', $message)) {
+        return true;
+    }
+    return (bool) preg_match('/^approve email\s+\{/i', trim($message));
 }
 
 function ai_actions_can_admin(string $portal, array $user): bool
@@ -263,11 +279,39 @@ function ai_actions_md_link(string $label, string $url): string
 function ai_actions_parse_kv(string $message): array
 {
     $out = [];
-    if (preg_match_all('/\b([a-z_]+)\s*[:=]\s*["\']?([^,"\'\n]+)["\']?/iu', $message, $m, PREG_SET_ORDER)) {
-        foreach ($m as $row) {
+    if (preg_match_all('/\b([a-z_]+)\s*=\s*"([^"]*)"/iu', $message, $quoted, PREG_SET_ORDER)) {
+        foreach ($quoted as $row) {
             $key = strtolower(trim($row[1]));
             $val = trim($row[2]);
             if ($key !== '' && $val !== '') {
+                $out[$key] = $val;
+            }
+        }
+    }
+    if (preg_match_all('/\b([a-z_]+)\s*:\s*"([^"]*)"/iu', $message, $colonQuoted, PREG_SET_ORDER)) {
+        foreach ($colonQuoted as $row) {
+            $key = strtolower(trim($row[1]));
+            $val = trim($row[2]);
+            if ($key !== '' && $val !== '' && !isset($out[$key])) {
+                $out[$key] = $val;
+            }
+        }
+    }
+    // Unquoted values stop at whitespace so `topic=hearing_reminder client="..."` parses correctly.
+    if (preg_match_all('/\b([a-z_]+)\s*=\s*([^\s"\'=,]+)/iu', $message, $m, PREG_SET_ORDER)) {
+        foreach ($m as $row) {
+            $key = strtolower(trim($row[1]));
+            $val = trim($row[2]);
+            if ($key !== '' && $val !== '' && !isset($out[$key])) {
+                $out[$key] = $val;
+            }
+        }
+    }
+    if (preg_match_all('/\b([a-z_]+)\s*:\s*([^\s"\'=,]+)/iu', $message, $colon, PREG_SET_ORDER)) {
+        foreach ($colon as $row) {
+            $key = strtolower(trim($row[1]));
+            $val = trim($row[2]);
+            if ($key !== '' && $val !== '' && !isset($out[$key])) {
                 $out[$key] = $val;
             }
         }
@@ -1319,16 +1363,65 @@ function ai_action_upload_document(PDO $pdo, array $user, string $portal, string
 function ai_action_draft_email(PDO $pdo, array $user, string $portal, string $message, string $q): string
 {
     $kv = ai_actions_parse_kv($message);
+    if (ai_email_draft_needs_picker($message, $q, $kv)) {
+        return ai_email_draft_picker_reply($portal);
+    }
+
+    $topicId = strtolower(trim((string) ($kv['topic'] ?? '')));
+    if ($topicId !== '' && preg_match('/^([a-z][a-z0-9_]*)/', $topicId, $topicMatch)) {
+        $topicId = $topicMatch[1];
+    }
+    $topics = ai_email_draft_topics($portal);
+    if ($topicId === '' || !isset($topics[$topicId])) {
+        if (preg_match('/\b(hearing|audience|court date)\b/iu', $message)) {
+            $topicId = 'hearing_reminder';
+        } elseif (preg_match('/\b(invoice|payment|facture|paiement)\b/iu', $message)) {
+            $topicId = 'payment_reminder';
+        } elseif (preg_match('/\b(document|documents|piece|pi[eè]ce)\b/iu', $message)) {
+            $topicId = 'document_request';
+        } elseif (preg_match('/\b(appointment|rendez-vous|meeting)\b/iu', $message)) {
+            $topicId = $portal === 'client' ? 'appointment_request' : 'appointment_confirm';
+        } elseif (preg_match('/\b(welcome|bienvenue|onboard)\b/iu', $message)) {
+            $topicId = 'welcome_client';
+        } elseif (preg_match('/\b(follow.?up|relance|checking in)\b/iu', $message)) {
+            $topicId = 'follow_up';
+        } elseif (preg_match('/\b(status|update|mise à jour|progress)\b/iu', $message)) {
+            $topicId = $portal === 'client' ? 'case_status' : 'case_update';
+        } else {
+            $topicId = $portal === 'client' ? 'general_message' : 'custom';
+        }
+    }
+    $topicDef = $topics[$topicId] ?? $topics['custom'] ?? reset($topics);
+
     $case = ai_actions_find_case($pdo, $portal, $user, $message);
-    [$cf, $cl] = ai_actions_extract_person_name($message, 'client');
-    $toUser = ai_actions_find_user_by_name($pdo, 'client', $cf, $cl, $kv['email'] ?? ai_actions_extract_email($message));
+    if (!empty($kv['case']) && !$case) {
+        $caseNo = trim((string) $kv['case']);
+        $stmt = $pdo->prepare('SELECT * FROM cases WHERE case_number = ? LIMIT 1');
+        $stmt->execute([$caseNo]);
+        $case = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+    [$cf, $cl] = ai_actions_extract_person_name($message, $portal === 'client' ? 'lawyer' : 'client');
+    if ((!$cf || !$cl) && !empty($kv['client'])) {
+        $parts = preg_split('/\s+/u', trim((string) $kv['client'])) ?: [];
+        $cf = $parts[0] ?? null;
+        $cl = count($parts) > 1 ? implode(' ', array_slice($parts, 1)) : null;
+    }
+    $toUser = ai_actions_find_user_by_name($pdo, $portal === 'client' ? 'lawyer' : 'client', $cf, $cl, $kv['email'] ?? ai_actions_extract_email($message));
     if (!$toUser && $case) {
-        $stmt = $pdo->prepare('SELECT * FROM users WHERE id=?');
-        $stmt->execute([(int) $case['client_id']]);
-        $toUser = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        $lookupRole = $portal === 'client' ? 'lawyer' : 'client';
+        $lookupId = $portal === 'client' ? (int) ($case['lawyer_id'] ?? 0) : (int) ($case['client_id'] ?? 0);
+        if ($lookupId > 0) {
+            $stmt = $pdo->prepare('SELECT * FROM users WHERE id=?');
+            $stmt->execute([$lookupId]);
+            $toUser = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        }
+        if (!$toUser && $lookupRole === 'client') {
+            $stmt = $pdo->prepare('SELECT * FROM users WHERE id=?');
+            $stmt->execute([(int) $case['client_id']]);
+            $toUser = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        }
     }
     if (!$toUser && $portal === 'client') {
-        // Draft to assigned lawyer
         if (!empty($user['assigned_lawyer_id'])) {
             $stmt = $pdo->prepare('SELECT * FROM users WHERE id=?');
             $stmt->execute([(int) $user['assigned_lawyer_id']]);
@@ -1336,37 +1429,50 @@ function ai_action_draft_email(PDO $pdo, array $user, string $portal, string $me
         }
     }
 
-    $topic = $kv['about'] ?? $kv['subject'] ?? null;
-    if (!$topic && preg_match('/(?:about|regarding|re|sujet|concerning)\s+(.+)$/iu', $message, $m)) {
-        $topic = trim($m[1], " \t\"'");
+    $notes = trim((string) ($kv['notes'] ?? ''));
+    if (in_array($topicId, ['custom', 'general_message'], true) && $notes === '') {
+        $fr = ai_mauritius_law_is_fr();
+        return ($fr
+            ? 'Pour un sujet personnalisé, ajoutez **Points à inclure** (de quoi parle l\'email, dates, montants, etc.) puis cliquez à nouveau sur **Rédiger l\'email**.'
+            : 'For a custom topic, add **Anything to include** (what the email is about, dates, amounts, etc.) then click **Draft email** again.')
+            . "\n\n[[AI_EMAIL_DRAFT_CARD]]\n"
+            . json_encode(ai_email_draft_picker_payload($portal), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS)
+            . "\n[[/AI_EMAIL_DRAFT_CARD]]";
     }
-    if (!$topic) {
-        $topic = $case ? ('Update on case ' . ($case['case_number'] ?? '')) : 'Professional correspondence';
-    }
+    $topicText = ai_email_draft_resolve_topic_text($topicId, $topicDef, $notes);
 
     $company = trim((string) get_setting($pdo, 'company_name', app_config('name', 'LEGAL PRO')));
     $sender = full_name($user);
     if ($toUser) {
-        $recipient = full_name($toUser);
+        $recipient = ai_email_draft_format_person_name(full_name($toUser));
         $toEmail = (string) ($toUser['email'] ?? ($kv['email'] ?? '[recipient@email.com]'));
     } elseif ($cf && $cl) {
-        $recipient = trim($cf . ' ' . $cl);
+        $recipient = ai_email_draft_format_person_name(trim($cf . ' ' . $cl));
         $toEmail = (string) ($kv['email'] ?? ai_actions_extract_email($message) ?? '[recipient@email.com]');
     } else {
-        $recipient = 'Valued Client';
+        $recipient = $portal === 'client'
+            ? (ai_mauritius_law_is_fr() ? 'Cabinet' : 'Counsel')
+            : (ai_mauritius_law_is_fr() ? 'Client' : 'Valued Client');
         $toEmail = (string) ($kv['email'] ?? ai_actions_extract_email($message) ?? '[recipient@email.com]');
     }
-    $caseLine = $case ? ("Case: " . ($case['case_number'] ?? '') . " — " . ($case['title'] ?? '')) : '';
+    $caseLine = $case ? ('Case: ' . ($case['case_number'] ?? '') . ' — ' . ($case['title'] ?? '')) : '';
 
-    // Prefer live LLM for higher-quality drafts when configured.
     $draftBody = null;
+    $guide = (string) ($topicDef['guide'] ?? '');
     if (function_exists('ai_llm_is_available') && ai_llm_is_available($pdo) && function_exists('ai_llm_request')) {
         try {
-            $prompt = "Draft a concise professional legal email in the user's language.\n"
-                . "From: {$sender} ({$company})\nTo: {$recipient} <{$toEmail}>\n"
+            $prompt = "Draft a concise professional legal email.\n"
+                . "Language: " . (ai_mauritius_law_is_fr() ? 'French' : 'English') . "\n"
+                . "From: {$sender} ({$company})\n"
+                . "To: {$recipient} <{$toEmail}>\n"
                 . ($caseLine ? $caseLine . "\n" : '')
-                . "Topic/instructions: {$message}\n"
-                . "Return only Subject + Body. No markdown fences.";
+                . "Email type: " . ($topicDef['label'] ?? $topicId) . "\n"
+                . "Instructions: {$guide}\n"
+                . ($topicText !== '' ? "Main point: {$topicText}\n" : '')
+                . ($notes !== '' ? "Details to include:\n{$notes}\n" : '')
+                . "Rules: Use proper name capitalisation in the greeting. Do not use placeholder labels like 'Custom topic'. "
+                . "Write natural, specific sentences — not generic filler.\n"
+                . "Return only:\nSubject: ...\n\n[email body]\nNo markdown fences.";
             $cfg = ai_llm_config($pdo);
             $system = 'You are a professional legal assistant drafting emails for a Mauritius law firm. Be clear, courteous, and concise.';
             $draftBody = ai_llm_request($cfg, $system, [['role' => 'user', 'content' => $prompt]]);
@@ -1376,70 +1482,79 @@ function ai_action_draft_email(PDO $pdo, array $user, string $portal, string $me
     }
 
     if (!$draftBody) {
-        $isHearing = (bool) preg_match('/\b(hearing|audience|court date|prochaine audience)\b/iu', $message . ' ' . (string) $topic);
-        $subject = $isHearing
-            ? ('Upcoming hearing' . ($case ? ' — ' . ($case['case_number'] ?? '') : ''))
-            : ('Re: ' . $topic);
-        if ($isHearing) {
-            $hearingWhen = '';
-            if ($case && !empty($case['next_hearing_date'])) {
-                $hearingWhen = date('l, j F Y', strtotime((string) $case['next_hearing_date']));
-            }
-            $body = "Dear {$recipient},\n\n"
-                . "I hope this message finds you well.\n\n"
-                . "I am writing to remind you of your upcoming hearing"
-                . ($hearingWhen !== '' ? " scheduled for **{$hearingWhen}**" : '')
-                . ($caseLine ? " in respect of {$caseLine}" : '')
-                . ".\n\n"
-                . "Please arrive a little early and bring any documents previously requested. "
-                . "If you have questions or cannot attend, contact our office as soon as possible so we can assist you.\n\n"
-                . "Kind regards,\n{$sender}\n{$company}";
-            // Keep plain text for copy/paste (no markdown bold in stored email)
-            $body = str_replace('**', '', $body);
-        } else {
-            $body = "Dear {$recipient},\n\n"
-                . "I hope this message finds you well.\n\n"
-                . "I am writing regarding {$topic}."
-                . ($caseLine ? "\n\n{$caseLine}." : '')
-                . "\n\nPlease let me know a convenient time to discuss the next steps, or if you require any additional information from our side.\n\n"
-                . "Kind regards,\n{$sender}\n{$company}";
-        }
-        $draftBody = "Subject: {$subject}\n\n{$body}";
-    }
-
-    // Store as in-app message thread when recipient known (does not require SMTP).
-    $storedNote = '';
-    if ($toUser && in_array($portal, ['admin', 'lawyer', 'client'], true)) {
-        try {
-            $subjectLine = 'Professional email draft';
-            if (preg_match('/^Subject:\s*(.+)$/mi', $draftBody, $sm)) {
-                $subjectLine = trim($sm[1]);
-            }
-            $bodyOnly = preg_replace('/^Subject:\s*.+\R+/mi', '', $draftBody, 1) ?? $draftBody;
-            if ($portal === 'client') {
-                $threadId = contact_create_thread($pdo, (int) $user['id'], (int) $toUser['id'], $case ? (int) $case['id'] : null, $subjectLine, trim($bodyOnly));
-            } else {
-                $receiverId = (int) $toUser['id'];
-                $senderId = (int) $user['id'];
-                // Admin/lawyer → client as a new contact-style message
-                ensure_contact_message_columns($pdo);
-                $pdo->prepare('INSERT INTO messages (sender_id, receiver_id, case_id, subject, body, status) VALUES (?,?,?,?,?,?)')
-                    ->execute([$senderId, $receiverId, $case ? (int) $case['id'] : null, $subjectLine, trim($bodyOnly), 'open']);
-                $threadId = (int) $pdo->lastInsertId();
-                $pdo->prepare('UPDATE messages SET thread_id=? WHERE id=?')->execute([$threadId, $threadId]);
-            }
-            create_notification($pdo, (int) $toUser['id'], 'New message', $subjectLine, 'message', null, (int) $user['id']);
-            $storedNote = "\n\n✅ Also saved as an in-app message to **{$recipient}**.";
-        } catch (Throwable $e) {
-            $storedNote = "\n\n(Note: draft ready, but in-app save skipped: " . $e->getMessage() . ')';
+        [$subject, $body] = ai_email_draft_fallback_body(
+            $portal,
+            $topicId,
+            $recipient,
+            $sender,
+            $company,
+            $topicText,
+            $case ?: null,
+            $notes !== '' ? $notes : null
+        );
+    } else {
+        [$subject, $body] = ai_email_draft_parse_subject_body(trim($draftBody));
+        if ($subject === '') {
+            $subject = ai_email_draft_resolve_subject($topicId, $topicDef, $notes, $case ?: null, ai_mauritius_law_is_fr());
         }
     }
+    $body = ai_email_draft_finalize_body($body);
 
-    return "📧 Professional email draft\n\n"
-        . "To: {$recipient} <{$toEmail}>\n\n"
-        . "```\n" . trim($draftBody) . "\n```"
-        . $storedNote
-        . "\n\nSay `send email to {$recipient}` if you want me to attempt SMTP delivery (when configured).";
+    $reviewNote = '';
+    if (ai_email_draft_can_send($portal, $user) && ai_email_draft_is_valid_email($toEmail)) {
+        $fr = ai_mauritius_law_is_fr();
+        $reviewNote = $fr
+            ? "\n\n" . 'Relisez le brouillon, puis cliquez **Approuver et envoyer** pour l\'envoyer à **' . $recipient . '** (' . $toEmail . ').'
+            : "\n\n" . 'Review the draft, then click **Approve & send** to deliver it to **' . $recipient . '** (' . $toEmail . ').';
+    }
+
+    $payload = ai_email_draft_result_payload(
+        $portal,
+        $topicId,
+        $recipient,
+        $toEmail,
+        $subject,
+        $body,
+        $caseLine !== '' ? $caseLine : null
+    );
+    if ($topicText !== '' && in_array($topicId, ['custom', 'general_message'], true)) {
+        $payload['topic_label'] = $topicText;
+    }
+    $payload['receiver_id'] = $toUser ? (int) $toUser['id'] : 0;
+    $payload['case_id'] = $case ? (int) $case['id'] : 0;
+    $payload['can_send'] = ai_email_draft_can_send($portal, $user) && ai_email_draft_is_valid_email($toEmail);
+
+    return ai_email_draft_result_reply($payload, $reviewNote);
+}
+
+function ai_action_approve_send_email(PDO $pdo, array $user, string $portal, string $message, string $q): string
+{
+    $fr = ai_mauritius_law_is_fr();
+    $payload = null;
+    if (preg_match('/\[\[AI_EMAIL_APPROVE\]\]\s*([\s\S]*?)\s*\[\[\/AI_EMAIL_APPROVE\]\]/', $message, $m)) {
+        $payload = json_decode(trim($m[1]), true);
+    } elseif (preg_match('/^approve email\s+(\{[\s\S]+\})\s*$/i', trim($message), $m)) {
+        $payload = json_decode(trim($m[1]), true);
+    }
+    if (!is_array($payload)) {
+        return $fr
+            ? 'Impossible de lire les détails de l\'email à envoyer. Utilisez le bouton **Approuver et envoyer** sur la carte.'
+            : 'Could not read the email to send. Use the **Approve & send** button on the draft card.';
+    }
+
+    $result = ai_email_draft_send_approved($pdo, $user, $portal, $payload);
+    if (!$result['ok']) {
+        return '⚠️ ' . ($result['message'] ?? ($fr ? 'Échec de l\'envoi.' : 'Send failed.'));
+    }
+
+    $sentPayload = $result['payload'] ?? $payload;
+    $sentPayload['sent'] = true;
+    $sentPayload['can_send'] = false;
+
+    return ($result['message'] ?? ($fr ? 'Email envoyé.' : 'Email sent.'))
+        . "\n\n[[AI_EMAIL_RESULT_CARD]]\n"
+        . json_encode($sentPayload, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS)
+        . "\n[[/AI_EMAIL_RESULT_CARD]]";
 }
 
 function ai_action_send_email(PDO $pdo, array $user, string $portal, string $message, string $q): string

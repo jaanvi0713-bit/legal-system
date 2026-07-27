@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/role-access.php';
+require_once __DIR__ . '/../includes/ai-llm.php';
 require_role(['admin']);
 $pdo = db();
 $user = current_user();
@@ -186,9 +187,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             set_setting($pdo, 'ai_api_key', $apiKey);
         }
 
-        foreach (['ai_model', 'ai_base_url'] as $key) {
-            set_setting($pdo, $key, trim((string) post($key, '')));
-        }
+        $model = trim((string) post('ai_model', ''));
+        set_setting($pdo, 'ai_model', $model !== '' ? $model : 'gpt-4o-mini');
+
+        $baseUrl = rtrim(trim((string) post('ai_base_url', '')), '/');
+        set_setting($pdo, 'ai_base_url', $baseUrl !== '' ? $baseUrl : 'https://api.openai.com/v1');
 
         $maxTokens = max(256, (int) post('ai_max_tokens', '4096'));
         set_setting($pdo, 'ai_max_tokens', (string) $maxTokens);
@@ -735,14 +738,33 @@ require __DIR__ . '/../includes/header.php';
             <?php
             $aiKeyStored = trim((string) $get('ai_api_key', app_config('ai_api_key', '')));
             $aiKeyPreview = $aiKeyStored !== '' ? str_repeat('•', min(20, max(8, strlen($aiKeyStored)))) : '';
+            $aiEnabled = $get('ai_enabled', '1') === '1';
+            $aiConfigured = ai_llm_is_available($pdo);
             ?>
-            <form method="post" class="settings-form">
+            <form method="post" class="settings-form" id="ai-settings-form">
                 <?= csrf_field() ?>
                 <input type="hidden" name="settings_tab" value="ai">
                 <div class="settings-block">
                     <div class="settings-block-head">
                         <h3><?= __e('settings.ai.title') ?></h3>
                         <p><?= __e('settings.ai.help') ?></p>
+                        <p class="ai-settings-status" id="ai-settings-status">
+                            <?php if ($aiConfigured): ?>
+                                <span class="badge badge-success"><?= __e('settings.ai.status_ready') ?></span>
+                            <?php elseif ($aiEnabled): ?>
+                                <span class="badge badge-warning"><?= __e('settings.ai.status_missing_key') ?></span>
+                            <?php else: ?>
+                                <span class="badge badge-muted"><?= __e('settings.ai.status_builtin') ?></span>
+                            <?php endif; ?>
+                        </p>
+                        <?php if (!$aiConfigured): ?>
+                        <ol class="ai-setup-steps">
+                            <li><?= __e('settings.ai.step_get_key') ?></li>
+                            <li><?= __e('settings.ai.step_paste') ?></li>
+                            <li><?= __e('settings.ai.step_save') ?></li>
+                            <li><?= __e('settings.ai.step_test') ?></li>
+                        </ol>
+                        <?php endif; ?>
                     </div>
                     <div class="form-grid">
                         <div class="form-group full">
@@ -751,6 +773,7 @@ require __DIR__ . '/../includes/header.php';
                                 <?= __e('settings.ai.enabled') ?>
                             </label>
                             <span class="field-hint"><?= __e('settings.ai.enabled_help') ?></span>
+                            <span class="field-hint"><?= __e('settings.ai.free_help') ?></span>
                         </div>
                         <div class="entity-field-row entity-field-row--2">
                             <div class="form-group">
@@ -804,8 +827,63 @@ require __DIR__ . '/../includes/header.php';
                     </div>
                 </div>
 
-                <div class="form-actions"><button class="btn btn-primary" type="submit"><?= __e('settings.ai.save') ?></button></div>
+                <div class="form-actions form-actions--split">
+                    <button class="btn btn-secondary" type="button" id="ai-test-connection"><?= __e('settings.ai.test') ?></button>
+                    <button class="btn btn-primary" type="submit"><?= __e('settings.ai.save') ?></button>
+                </div>
+                <p class="field-hint ai-test-result" id="ai-test-result" hidden></p>
             </form>
+            <script>
+            (function () {
+                const form = document.getElementById('ai-settings-form');
+                const btn = document.getElementById('ai-test-connection');
+                const resultEl = document.getElementById('ai-test-result');
+                if (!form || !btn || !resultEl) return;
+
+                btn.addEventListener('click', async () => {
+                    btn.disabled = true;
+                    btn.classList.add('is-busy');
+                    resultEl.hidden = false;
+                    resultEl.className = 'field-hint ai-test-result';
+                    resultEl.textContent = <?= json_encode(__('settings.ai.testing')) ?>;
+
+                    const payload = {
+                        ai_enabled: form.querySelector('[name="ai_enabled"]')?.checked ? '1' : '0',
+                        ai_api_key: form.querySelector('[name="ai_api_key"]')?.value || '',
+                        ai_model: form.querySelector('[name="ai_model"]')?.value || '',
+                        ai_base_url: form.querySelector('[name="ai_base_url"]')?.value || '',
+                    };
+
+                    try {
+                        const res = await fetch(<?= json_encode(rtrim(app_config('url'), '/') . '/api/ai-test.php') ?>, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            credentials: 'same-origin',
+                            body: JSON.stringify(payload),
+                        });
+                        const data = await res.json();
+                        resultEl.className = 'field-hint ai-test-result ' + (data.ok ? 'is-success' : (data.connection_ok ? 'is-warning' : 'is-error'));
+                        let msg = data.message || (data.ok ? 'OK' : 'Failed');
+                        if (data.connection_ok && !data.ok) {
+                            msg = <?= json_encode(__('settings.ai.error_connected_no_quota')) ?> + ' ' + msg;
+                        }
+                        if (data.hint) {
+                            msg += '\n\n' + data.hint;
+                        }
+                        if (data.ok && data.reply_preview) {
+                            msg += ' — "' + data.reply_preview + '"';
+                        }
+                        resultEl.textContent = msg;
+                    } catch (err) {
+                        resultEl.className = 'field-hint ai-test-result is-error';
+                        resultEl.textContent = <?= json_encode(__('settings.ai.test_failed')) ?>;
+                    } finally {
+                        btn.disabled = false;
+                        btn.classList.remove('is-busy');
+                    }
+                });
+            })();
+            </script>
 
         <?php elseif ($tab === 'email'): ?>
             <form method="post" class="settings-form">

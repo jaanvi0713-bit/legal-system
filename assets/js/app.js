@@ -430,12 +430,20 @@ document.addEventListener('DOMContentLoaded', () => {
       const i18n = window.LEXORA_I18N || {};
       if (copyBtn) {
         e.preventDefault();
+        let copyText = raw;
+        const emailCard = stack ? stack.querySelector('[data-ai-email-result-card]') : null;
+        if (emailCard) {
+          const fullEl = emailCard.querySelector('[data-email-full]');
+          if (fullEl && fullEl.value) {
+            copyText = fullEl.value;
+          }
+        }
         try {
           if (navigator.clipboard && navigator.clipboard.writeText) {
-            await navigator.clipboard.writeText(raw);
+            await navigator.clipboard.writeText(copyText);
           } else {
             const ta = document.createElement('textarea');
-            ta.value = raw;
+            ta.value = copyText;
             document.body.appendChild(ta);
             ta.select();
             document.execCommand('copy');
@@ -601,6 +609,341 @@ document.addEventListener('DOMContentLoaded', () => {
       + '</div></form></div>';
   };
 
+  const renderAiEmailDraftCard = (card) => {
+    const esc = (v) => String(v == null ? '' : v)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+    const labels = (card && card.labels) || {};
+    const topics = Array.isArray(card && card.topics) ? card.topics : [];
+    const uid = 'email' + Math.random().toString(36).slice(2, 8);
+    let topicOptions = '<option value="">' + esc(labels.topic_ph || 'Select a topic…') + '</option>';
+    topics.forEach((topic) => {
+      topicOptions += '<option value="' + esc(topic.id || '') + '" data-hint="' + esc(topic.hint || '') + '">' + esc(topic.label || '') + '</option>';
+    });
+    const clientRow = card.client_mode ? '' : (
+      '<div class="ai-email-draft-row">'
+      + '<label for="' + uid + '-client">' + esc(labels.client || 'Client name') + '</label>'
+      + '<input id="' + uid + '-client" name="client" type="text" placeholder="' + esc(labels.client_ph || '') + '">'
+      + '</div>'
+    );
+    return '<div class="ai-email-draft-card" data-ai-email-draft-card>'
+      + '<div class="ai-email-draft-head">'
+      + '<span class="ai-draft-eyebrow">' + esc(card.title || 'Write to client') + '</span>'
+      + '<strong>' + esc(card.subtitle || '') + '</strong>'
+      + '</div>'
+      + '<form class="ai-email-draft-form" data-ai-email-draft-form onsubmit="return false;">'
+      + '<div class="ai-email-draft-row">'
+      + '<label for="' + uid + '-topic">' + esc(labels.topic || 'Email topic') + ' <span class="req">*</span></label>'
+      + '<select id="' + uid + '-topic" name="topic" required>' + topicOptions + '</select>'
+      + '<p class="ai-email-topic-hint muted" data-email-topic-hint hidden></p>'
+      + '</div>'
+      + clientRow
+      + '<div class="ai-email-draft-row">'
+      + '<label for="' + uid + '-case">' + esc(labels.case || 'Case number') + '</label>'
+      + '<input id="' + uid + '-case" name="case" type="text" placeholder="' + esc(labels.case_ph || '') + '">'
+      + '</div>'
+      + '<div class="ai-email-draft-row">'
+      + '<label for="' + uid + '-notes">' + esc(labels.notes || 'Anything to include') + '</label>'
+      + '<textarea id="' + uid + '-notes" name="notes" rows="3" placeholder="' + esc(labels.notes_ph || '') + '"></textarea>'
+      + '</div>'
+      + '<div class="ai-draft-actions">'
+      + '<button type="button" class="btn btn-primary btn-sm" data-ai-email-draft-generate>' + esc(labels.generate || 'Draft email') + '</button>'
+      + '</div></form></div>';
+  };
+
+  const buildAiEmailFormattedText = (card) => {
+    const labels = (card && card.labels) || {};
+    const parts = [];
+    const toName = String((card && card.to_name) || '').trim();
+    const toEmail = String((card && card.to_email) || '').trim();
+    if (toName || toEmail) {
+      const toLine = (labels.to || 'To') + ': ' + toName + (toEmail ? ' <' + toEmail + '>' : '');
+      parts.push(toLine);
+    }
+    const subject = String((card && card.subject) || '').trim();
+    if (subject) {
+      parts.push((labels.subject || 'Subject') + ': ' + subject);
+    }
+    const caseLine = String((card && card.case_line) || '').trim();
+    if (caseLine) {
+      parts.push((labels.case || 'Case') + ': ' + caseLine);
+    }
+    const body = String((card && card.body) || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+    if (parts.length) {
+      parts.push('');
+    }
+    if (body) {
+      parts.push(body);
+    }
+    return parts.join('\n').replace(/\n/g, '\r\n');
+  };
+
+  const formatEmailBodyDisplay = (body) => {
+    return String(body || '')
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n')
+      .split('\n')
+      .map((line) => (line === '' ? '<br aria-hidden="true">' : escAi(line)))
+      .join('');
+  };
+
+  const copyPlainText = async (text) => {
+    const value = String(text || '');
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(value);
+        return true;
+      }
+    } catch (e) { /* fallback below */ }
+    const ta = document.createElement('textarea');
+    ta.value = value;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try {
+      ok = document.execCommand('copy');
+    } catch (err) {
+      ok = false;
+    }
+    ta.remove();
+    return ok;
+  };
+
+    const renderAiEmailResultCard = (card) => {
+    const esc = (v) => String(v == null ? '' : v)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+    const labels = (card && card.labels) || {};
+    const subject = String(card.subject || '');
+    const body = String(card.body || '');
+    const formattedEmail = buildAiEmailFormattedText(card);
+    const bodyDisplay = formatEmailBodyDisplay(body);
+    const isSent = !!(card && card.sent);
+    const canSend = !!(card && card.can_send) && !isSent;
+    const sendPayload = JSON.stringify({
+      to_email: card.to_email || '',
+      to_name: card.to_name || '',
+      subject,
+      body,
+      receiver_id: Number(card.receiver_id || 0),
+      case_id: Number(card.case_id || 0),
+    });
+    let actionsHtml = '';
+    if (canSend) {
+      actionsHtml += '<button type="button" class="btn btn-primary btn-sm" data-ai-email-approve>' + esc(labels.approve_send || 'Approve & send') + '</button>';
+    } else if (isSent) {
+      actionsHtml += '<span class="ai-email-sent-badge">' + esc(labels.sent_badge || 'Sent') + '</span>';
+    }
+    actionsHtml += '<button type="button" class="btn btn-secondary btn-sm" data-ai-email-copy="subject">' + esc(labels.copy_subject || 'Copy subject') + '</button>'
+      + '<button type="button" class="btn btn-secondary btn-sm" data-ai-email-copy="body">' + esc(labels.copy_body || 'Copy email') + '</button>'
+      + '<button type="button" class="btn btn-secondary btn-sm" data-ai-email-copy="all">' + esc(labels.copy_all || 'Copy all') + '</button>';
+    return '<div class="ai-email-result-card' + (isSent ? ' is-sent' : '') + '" data-ai-email-result-card>'
+      + '<div class="ai-email-result-head">'
+      + '<span class="ai-draft-eyebrow">' + esc(labels.eyebrow || 'Email ready to review') + '</span>'
+      + '<strong>' + esc(card.topic_label || '') + '</strong>'
+      + '</div>'
+      + '<div class="ai-email-result-meta">'
+      + '<div><span>' + esc(labels.to || 'To') + '</span><strong>' + esc(card.to_name || '') + ' &lt;' + esc(card.to_email || '') + '&gt;</strong></div>'
+      + (card.case_line ? '<div><span>Case</span><strong>' + esc(card.case_line) + '</strong></div>' : '')
+      + '</div>'
+      + '<div class="ai-email-result-subject"><span>' + esc(labels.subject || 'Subject') + '</span><strong data-email-subject>' + esc(subject) + '</strong></div>'
+      + '<div class="ai-email-result-body"><span>' + esc(labels.body || 'Message') + '</span>'
+      + '<div class="ai-email-result-body-text" data-email-body-display>' + bodyDisplay + '</div>'
+      + '<textarea class="sr-only" readonly data-email-subject-raw>' + esc(subject) + '</textarea>'
+      + '<textarea class="sr-only" readonly data-email-body-raw>' + esc(body) + '</textarea>'
+      + '</div>'
+      + '<div class="ai-draft-actions">'
+      + actionsHtml
+      + '</div>'
+      + '<textarea class="sr-only" readonly data-email-send-payload>' + esc(sendPayload) + '</textarea>'
+      + '<textarea class="sr-only" readonly data-email-full>' + esc(formattedEmail) + '</textarea>'
+      + '</div>';
+  };
+
+  const bindAiEmailDraftCards = (root) => {
+    if (!root) return;
+    root.querySelectorAll('[data-ai-email-draft-card]').forEach((card) => {
+      if (card.dataset.bound === '1') return;
+      card.dataset.bound = '1';
+      const form = card.querySelector('[data-ai-email-draft-form]');
+      const topicSelect = form ? form.querySelector('[name="topic"]') : null;
+      const hintEl = form ? form.querySelector('[data-email-topic-hint]') : null;
+      const genBtn = card.querySelector('[data-ai-email-draft-generate]');
+      const updateHint = () => {
+        if (!topicSelect || !hintEl) return;
+        const opt = topicSelect.options[topicSelect.selectedIndex];
+        const hint = opt ? (opt.getAttribute('data-hint') || '') : '';
+        hintEl.textContent = hint;
+        hintEl.hidden = !hint;
+      };
+      if (topicSelect) {
+        topicSelect.addEventListener('change', updateHint);
+        updateHint();
+      }
+      if (genBtn && form) {
+        genBtn.addEventListener('click', () => {
+          const topic = (form.querySelector('[name="topic"]') || {}).value || '';
+          if (!topic) {
+            topicSelect && topicSelect.focus();
+            return;
+          }
+          const notes = ((form.querySelector('[name="notes"]') || {}).value || '').trim();
+          if ((topic === 'custom' || topic === 'general_message') && !notes) {
+            const notesEl = form.querySelector('[name="notes"]');
+            if (notesEl) {
+              notesEl.focus();
+              notesEl.classList.add('is-invalid');
+              setTimeout(() => notesEl.classList.remove('is-invalid'), 2200);
+            }
+            return;
+          }
+          const parts = ['Draft a professional email topic=' + topic];
+          const client = (form.querySelector('[name="client"]') || {}).value || '';
+          const caseNo = (form.querySelector('[name="case"]') || {}).value || '';
+          const q = (v) => '"' + String(v).trim().replace(/"/g, '') + '"';
+          if (client.trim()) parts.push('client=' + q(client));
+          if (caseNo.trim()) parts.push('case=' + caseNo.trim());
+          if (notes) parts.push('notes=' + q(notes));
+          if (typeof window.lexoraSendAiMessage === 'function') {
+            window.lexoraSendAiMessage(parts.join(' '));
+          }
+        });
+      }
+    });
+  };
+
+  const bindAiEmailResultCards = (root) => {
+    if (!root) return;
+    root.querySelectorAll('[data-ai-email-result-card]').forEach((card) => {
+      if (card.dataset.bound === '1') return;
+      card.dataset.bound = '1';
+      const approveBtn = card.querySelector('[data-ai-email-approve]');
+      if (approveBtn) {
+        approveBtn.addEventListener('click', async () => {
+          if (approveBtn.disabled || aiSending) return;
+          let payload = null;
+          const payloadEl = card.querySelector('[data-email-send-payload]');
+          const rawPayload = payloadEl ? payloadEl.value : '';
+          try { payload = JSON.parse(rawPayload); } catch (e) { payload = null; }
+          if (!payload) return;
+          approveBtn.disabled = true;
+          approveBtn.classList.add('is-busy');
+          const msg = 'approve email ' + JSON.stringify(payload);
+          if (typeof window.lexoraSendAiMessage === 'function') {
+            await window.lexoraSendAiMessage(msg);
+          }
+          if (!card.classList.contains('is-sent')) {
+            approveBtn.disabled = false;
+            approveBtn.classList.remove('is-busy');
+          }
+        });
+      }
+      card.querySelectorAll('[data-ai-email-copy]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const mode = btn.getAttribute('data-ai-email-copy') || 'all';
+          let text = '';
+          if (mode === 'subject') {
+            const el = card.querySelector('[data-email-subject-raw]');
+            text = el ? el.value : '';
+          } else {
+            const el = card.querySelector('[data-email-full]');
+            text = el ? el.value : '';
+          }
+          const ok = await copyPlainText(text);
+          if (ok) {
+            btn.classList.add('is-copied');
+            setTimeout(() => btn.classList.remove('is-copied'), 1500);
+          }
+        });
+      });
+    });
+  };
+
+  const showLocalEmailDraftPicker = () => {
+    const messages = document.getElementById('ai-messages');
+    const dataEl = document.getElementById('ai-email-draft-data');
+    if (!messages || !dataEl) return;
+    let payload = null;
+    try { payload = JSON.parse(dataEl.textContent || '{}'); } catch (e) { payload = null; }
+    if (!payload) return;
+    const welcome = messages.querySelector('.ai-welcome');
+    if (welcome) {
+      const row = welcome.closest('.ai-msg-row');
+      (row || welcome).remove();
+    }
+    const row = document.createElement('div');
+    row.className = 'ai-msg-row ai-msg-row--assistant';
+    row.innerHTML = '<div class="ai-bot-mark sm" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="7" width="14" height="11" rx="3"/><circle cx="9.5" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="14.5" cy="12" r="1.2" fill="currentColor" stroke="none"/><path d="M9 18v2M15 18v2M12 4v3"/></svg></div>'
+      + '<div class="ai-msg-stack"><div class="msg msg-assistant ai-bubble"><div class="ai-msg-body">'
+      + renderAiEmailDraftCard(payload)
+      + '</div></div></div>';
+    appendAiChatRow(messages, row);
+    bindAiEmailDraftCards(row);
+    scrollAiChatToBottom(messages);
+  };
+
+  const appendAiChatRow = (messages, row) => {
+    if (!messages || !row) return;
+    const anchor = messages.querySelector('#ai-messages-end');
+    if (anchor) {
+      messages.insertBefore(row, anchor);
+    } else {
+      messages.appendChild(row);
+    }
+  };
+
+  const scrollAiChatToBottom = (el) => {
+    const box = el || document.getElementById('ai-messages');
+    if (!box) return;
+    const jump = () => { box.scrollTop = box.scrollHeight; };
+    jump();
+    requestAnimationFrame(jump);
+    [0, 50, 150, 350].forEach((ms) => setTimeout(jump, ms));
+  };
+
+  const preserveAiChatScrollOnFocus = () => {
+    const box = document.getElementById('ai-messages');
+    if (!box || box.dataset.scrollFocusBound === '1') return;
+    box.dataset.scrollFocusBound = '1';
+    let scrollLock = null;
+    const lockScroll = () => { scrollLock = box.scrollTop; };
+    const restoreScroll = () => {
+      if (scrollLock === null) return;
+      if (box.scrollTop < scrollLock - 2) {
+        box.scrollTop = scrollLock;
+      }
+      scrollLock = null;
+    };
+    box.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      if (e.target.closest('button, a, input, select, textarea, label, [contenteditable="true"]')) return;
+      lockScroll();
+    });
+    box.addEventListener('mouseup', () => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(restoreScroll);
+      });
+    });
+    box.addEventListener('focusin', (e) => {
+      const target = e.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (!target.closest('.ai-email-draft-card, .ai-draft-card, .ai-intake-card, .ai-email-result-card')) return;
+      lockScroll();
+      requestAnimationFrame(() => {
+        requestAnimationFrame(restoreScroll);
+      });
+    });
+  };
+
+  window.lexoraShowEmailDraftPicker = showLocalEmailDraftPicker;
+
   const renderAiInvoiceCard = (card) => {
     const esc = (v) => String(v == null ? '' : v)
       .replace(/&/g, '&amp;')
@@ -691,6 +1034,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let draftCardHtml = '';
     let invoiceCardHtml = '';
     let intakeCardHtml = '';
+    let emailDraftCardHtml = '';
+    let emailResultCardHtml = '';
     const cardMatch = text.match(/\[\[AI_DRAFT_CARD\]\]\s*([\s\S]*?)\s*\[\[\/AI_DRAFT_CARD\]\]/);
     if (cardMatch) {
       try {
@@ -708,6 +1053,24 @@ document.addEventListener('DOMContentLoaded', () => {
         invoiceCardHtml = '';
       }
       text = text.replace(invMatch[0], '').trim();
+    }
+    const emailDraftMatch = text.match(/\[\[AI_EMAIL_DRAFT_CARD\]\]\s*([\s\S]*?)\s*\[\[\/AI_EMAIL_DRAFT_CARD\]\]/);
+    if (emailDraftMatch) {
+      try {
+        emailDraftCardHtml = renderAiEmailDraftCard(JSON.parse(emailDraftMatch[1]));
+      } catch (e) {
+        emailDraftCardHtml = '';
+      }
+      text = text.replace(emailDraftMatch[0], '').trim();
+    }
+    const emailResultMatch = text.match(/\[\[AI_EMAIL_RESULT_CARD\]\]\s*([\s\S]*?)\s*\[\[\/AI_EMAIL_RESULT_CARD\]\]/);
+    if (emailResultMatch) {
+      try {
+        emailResultCardHtml = renderAiEmailResultCard(JSON.parse(emailResultMatch[1]));
+      } catch (e) {
+        emailResultCardHtml = '';
+      }
+      text = text.replace(emailResultMatch[0], '').trim();
     }
     const intakeMatch = text.match(/\[\[AI_INTAKE_CARD\]\]\s*([\s\S]*?)\s*\[\[\/AI_INTAKE_CARD\]\]/);
     if (intakeMatch) {
@@ -740,16 +1103,31 @@ document.addEventListener('DOMContentLoaded', () => {
       (match, prefix, url) => prefix + linkHtml(url, url.replace(/[.,);]+$/, ''))
     );
     escaped = escaped.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-    escaped = escaped.replace(/^• /gm, '&bull; ');
+    escaped = escaped.replace(/(^|[\s])_([^_\n]+)_([\s.,;:!?]|$)/g, '$1<em class="ai-md-em">$2</em>$3');
+    escaped = escaped.replace(/^• /gm, '<span class="ai-md-bullet" aria-hidden="true">•</span> ');
+    escaped = escaped.replace(/^\d+\.\s+/gm, (match) => '<span class="ai-md-num">' + match.trim() + '</span> ');
     escaped = escaped
       .replace(/\r\n/g, '\n')
       .replace(/\r/g, '\n')
       .trim()
       .split(/\n{2,}/)
       .filter((part) => part.trim() !== '')
-      .map((part) => '<p>' + part.trim().replace(/\n/g, '<br>') + '</p>')
+      .map((part) => {
+        const trimmed = part.trim();
+        const plain = trimmed.replace(/<[^>]+>/g, '');
+        if (/^(Disclaimer|Avertissement)\s*—/i.test(plain)) {
+          return '<div class="ai-law-disclaimer">' + trimmed.replace(/\n/g, '<br>') + '</div>';
+        }
+        if (/^<strong>[^<]+<\/strong>$/.test(trimmed) && !trimmed.includes('<br>')) {
+          return '<h3 class="ai-md-h3">' + trimmed.replace(/<\/?strong>/g, '') + '</h3>';
+        }
+        if (/^<em class="ai-md-em">/.test(trimmed) && !trimmed.includes('<br>')) {
+          return '<p class="ai-md-lead">' + trimmed + '</p>';
+        }
+        return '<p class="ai-md-p">' + trimmed.replace(/\n/g, '<br>') + '</p>';
+      })
       .join('');
-    return escaped + intakeCardHtml + invoiceCardHtml + draftCardHtml;
+    return escaped + emailDraftCardHtml + emailResultCardHtml + intakeCardHtml + invoiceCardHtml + draftCardHtml;
   };
 
   const collectAiDraftFields = (form) => {
@@ -814,18 +1192,18 @@ document.addEventListener('DOMContentLoaded', () => {
       )).join('') + '</div>';
     }
     userMsg.innerHTML = `<div class="ai-msg-stack"><div class="msg msg-user"><div class="ai-msg-body" data-ai-raw="${escAi(displayText)}">${bodyHtml}</div></div>${aiActionsHtml('user')}</div>`;
-      messages.appendChild(userMsg);
+      appendAiChatRow(messages, userMsg);
       if (input) input.value = '';
     aiPendingFiles = [];
     renderAiAttachList();
-      messages.scrollTop = messages.scrollHeight;
+      scrollAiChatToBottom(messages);
 
       const thinking = document.createElement('div');
     thinking.className = 'ai-msg-row ai-msg-row--assistant';
     thinking.innerHTML = '<div class="ai-bot-mark sm" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="7" width="14" height="11" rx="3"/><circle cx="9.5" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="14.5" cy="12" r="1.2" fill="currentColor" stroke="none"/><path d="M9 18v2M15 18v2M12 4v3"/></svg></div><div class="ai-msg-stack"><div class="msg msg-assistant ai-bubble"><div class="ai-msg-body"></div></div></div>';
     const thinkingText = thinking.querySelector('.ai-msg-body');
     thinkingText.textContent = i18n.thinking || 'Thinking…';
-      messages.appendChild(thinking);
+      appendAiChatRow(messages, thinking);
 
     try {
       const endpoint = aiForm.getAttribute('data-ai-endpoint') || '../api/ai-chat.php';
@@ -863,6 +1241,8 @@ document.addEventListener('DOMContentLoaded', () => {
       thinkingText.setAttribute('data-ai-raw', reply);
       thinkingText.innerHTML = renderAiHtml(reply);
       bindAiDraftCard(thinkingText);
+      bindAiEmailDraftCards(thinkingText);
+      bindAiEmailResultCards(thinkingText);
       const stack = thinking.querySelector('.ai-msg-stack');
       if (stack && !stack.querySelector('.ai-msg-actions')) {
         stack.insertAdjacentHTML('beforeend', aiActionsHtml('assistant'));
@@ -880,19 +1260,24 @@ document.addEventListener('DOMContentLoaded', () => {
     } finally {
       aiSending = false;
       }
-      messages.scrollTop = messages.scrollHeight;
+      scrollAiChatToBottom(messages);
     };
 
   bindAiMessageActions(document.getElementById('ai-messages'));
 
   document.querySelectorAll('#ai-messages .ai-msg-body[data-ai-raw]').forEach((el) => {
     const raw = el.getAttribute('data-ai-raw') || '';
-    if (raw.indexOf('[[AI_DRAFT_CARD]]') === -1
-      && raw.indexOf('[[AI_INVOICE_CARD]]') === -1
-      && raw.indexOf('[[AI_INTAKE_CARD]]') === -1) return;
+    if (!raw) return;
+    if (el.dataset.aiRendered === '1' && el.childElementCount > 0) return;
     el.innerHTML = renderAiHtml(raw);
+    el.dataset.aiRendered = '1';
     bindAiDraftCard(el);
+    bindAiEmailDraftCards(el);
+    bindAiEmailResultCards(el);
   });
+  preserveAiChatScrollOnFocus();
+  scrollAiChatToBottom();
+  window.addEventListener('load', () => scrollAiChatToBottom());
 
   window.lexoraSendAiMessage = sendAiMessage;
   window.__aiPendingFilesRef = {
@@ -1142,9 +1527,9 @@ function initAiAssistantUi() {
     edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 20h4L18 10l-4-4L4 16v4z"/><path d="M12 8l4 4"/></svg>',
     users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="9" cy="8" r="3"/><circle cx="16" cy="9" r="2.5"/><path d="M3 19c1.2-3 3.5-4.5 6-4.5S13.8 16 15 19"/></svg>',
     court: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 20h16M6 20V10M10 20V10M14 20V10M18 20V10M3 10h18M12 4l9 6H3l9-6z"/></svg>',
+    calc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 11h2M12 11h2M16 11h2M8 15h2M12 15h2M16 15h2M8 19h2M12 19h2M16 19h2"/></svg>',
     tasks: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 11l2 2 4-4"/><rect x="4" y="3" width="16" height="18" rx="2"/></svg>',
   };
-
   let prompts = [];
   const promptsData = document.getElementById('ai-prompts-data');
   if (promptsData) {
@@ -1177,7 +1562,7 @@ function initAiAssistantUi() {
     const slice = prompts.slice(start, start + perPage);
     list.innerHTML = slice.map((item) => {
       const icon = icons[item.icon] || icons.grid;
-      return `<button type="button" class="ai-prompt-btn" data-prompt="${escapeHtml(item.prompt || '')}">
+      return `<button type="button" class="ai-prompt-btn" data-prompt="${escapeHtml(item.prompt || '')}" data-prompt-action="${escapeHtml(item.action || '')}">
         <span class="ai-prompt-icon">${icon}</span>
         <span class="ai-prompt-label">${escapeHtml(item.label || '')}</span>
         <span class="ai-prompt-chevron" aria-hidden="true">›</span>
@@ -1192,6 +1577,13 @@ function initAiAssistantUi() {
       const btn = e.target.closest('.ai-prompt-btn');
       if (!btn || !list.contains(btn)) return;
       e.preventDefault();
+      const action = btn.getAttribute('data-prompt-action') || '';
+      if (action === 'email_draft') {
+        if (typeof window.lexoraShowEmailDraftPicker === 'function') {
+          window.lexoraShowEmailDraftPicker();
+        }
+        return;
+      }
       const prompt = btn.getAttribute('data-prompt') || '';
       if (!prompt) return;
       const input = document.getElementById('ai-message');
@@ -1211,6 +1603,13 @@ function initAiAssistantUi() {
       // Avoid double-firing when list handler already ran.
       if (btn.closest('#ai-prompt-list')?.dataset.promptBound === '1') return;
       e.preventDefault();
+      const action = btn.getAttribute('data-prompt-action') || '';
+      if (action === 'email_draft') {
+        if (typeof window.lexoraShowEmailDraftPicker === 'function') {
+          window.lexoraShowEmailDraftPicker();
+        }
+        return;
+      }
       const prompt = btn.getAttribute('data-prompt') || '';
       if (!prompt) return;
       const input = document.getElementById('ai-message');

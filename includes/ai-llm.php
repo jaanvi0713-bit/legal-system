@@ -181,58 +181,180 @@ function ai_llm_request(array $config, string $systemPrompt, array $messages): ?
         'max_tokens' => $config['max_tokens'],
     ];
 
-    $url = $config['base_url'] . '/chat/completions';
-    $body = json_encode($payload, JSON_UNESCAPED_UNICODE);
-    if ($body === false) {
-        return null;
-    }
+    $result = ai_llm_http_post($config, $payload);
+    return $result['ok'] ? $result['content'] : null;
+}
 
-    if (!function_exists('curl_init')) {
-        return ai_llm_request_stream_context($url, $config['api_key'], $body);
-    }
+function ai_llm_is_local_dev(): bool
+{
+    $url = (string) app_config('url', '');
+    return (bool) preg_match('#^https?://(localhost|127\.0\.0\.1)(:\d+)?(/|$)#i', $url);
+}
 
+/**
+ * @return array{response:string|false,http_code:int,curl_error:string}
+ */
+function ai_llm_curl_post(string $url, string $apiKey, string $body, int $timeout, bool $verifySsl): array
+{
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_POST => true,
         CURLOPT_HTTPHEADER => [
             'Content-Type: application/json',
-            'Authorization: Bearer ' . $config['api_key'],
+            'Authorization: Bearer ' . $apiKey,
         ],
         CURLOPT_POSTFIELDS => $body,
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => max(5, (int) ($config['timeout'] ?? 25)),
-        CURLOPT_CONNECTTIMEOUT => min(8, max(3, (int) ($config['timeout'] ?? 25))),
+        CURLOPT_TIMEOUT => $timeout,
+        CURLOPT_CONNECTTIMEOUT => min(8, $timeout),
+        CURLOPT_SSL_VERIFYPEER => $verifySsl,
+        CURLOPT_SSL_VERIFYHOST => $verifySsl ? 2 : 0,
     ]);
 
     $response = curl_exec($ch);
     $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
     curl_close($ch);
 
-    if ($response === false || $httpCode < 200 || $httpCode >= 300) {
-        return null;
-    }
-
-    return ai_llm_parse_response($response);
+    return [
+        'response' => $response,
+        'http_code' => $httpCode,
+        'curl_error' => $curlError,
+    ];
 }
 
-function ai_llm_request_stream_context(string $url, string $apiKey, string $body): ?string
+/**
+ * @return array{ok:bool,content:?string,error:string,http_code:int}
+ */
+function ai_llm_http_post(array $config, array $payload): array
 {
+    $fail = static function (string $error, int $httpCode = 0): array {
+        return ['ok' => false, 'content' => null, 'error' => $error, 'http_code' => $httpCode];
+    };
+
+    $baseUrl = rtrim(trim((string) ($config['base_url'] ?? '')), '/');
+    $apiKey = trim((string) ($config['api_key'] ?? ''));
+    $model = trim((string) ($config['model'] ?? ''));
+
+    if ($apiKey === '') {
+        return $fail('No API key configured.');
+    }
+    if ($baseUrl === '' || !filter_var($baseUrl, FILTER_VALIDATE_URL)) {
+        return $fail('Invalid API base URL.');
+    }
+    if ($model === '') {
+        return $fail('No model configured.');
+    }
+
+    $payload['model'] = $model;
+    $url = $baseUrl . '/chat/completions';
+    $body = json_encode($payload, JSON_UNESCAPED_UNICODE);
+    if ($body === false) {
+        return $fail('Could not encode the API request.');
+    }
+
+    $timeout = max(5, (int) ($config['timeout'] ?? 25));
+
+    if (function_exists('curl_init')) {
+        $attempt = ai_llm_curl_post($url, $apiKey, $body, $timeout, true);
+        $response = $attempt['response'];
+        $httpCode = $attempt['http_code'];
+        $curlError = $attempt['curl_error'];
+
+        if ($response === false && stripos($curlError, 'ssl') !== false && ai_llm_is_local_dev()) {
+            $attempt = ai_llm_curl_post($url, $apiKey, $body, $timeout, false);
+            $response = $attempt['response'];
+            $httpCode = $attempt['http_code'];
+            $curlError = $attempt['curl_error'];
+        }
+
+        if ($response === false) {
+            $hint = stripos($curlError, 'ssl') !== false
+                ? ' SSL certificate problem — on local WAMP, set curl.cainfo in php.ini to a CA bundle (cacert.pem), or run the app on localhost where SSL verify is relaxed automatically.'
+                : '';
+            return $fail(trim($curlError !== '' ? $curlError . '.' : 'Network request failed.') . $hint);
+        }
+
+        if ($httpCode < 200 || $httpCode >= 300) {
+            return $fail(ai_llm_error_from_body($response, $httpCode), $httpCode);
+        }
+
+        $content = ai_llm_parse_response($response);
+        if ($content === null) {
+            return $fail('The API returned an empty or unexpected response.', $httpCode);
+        }
+
+        return ['ok' => true, 'content' => $content, 'error' => '', 'http_code' => $httpCode];
+    }
+
+    $verifySsl = !ai_llm_is_local_dev();
     $context = stream_context_create([
         'http' => [
             'method' => 'POST',
             'header' => "Content-Type: application/json\r\nAuthorization: Bearer {$apiKey}\r\n",
             'content' => $body,
-            'timeout' => 120,
+            'timeout' => max(30, $timeout),
             'ignore_errors' => true,
+        ],
+        'ssl' => [
+            'verify_peer' => $verifySsl,
+            'verify_peer_name' => $verifySsl,
         ],
     ]);
 
     $response = @file_get_contents($url, false, $context);
     if ($response === false) {
-        return null;
+        return $fail('Network request failed (PHP streams). Enable the curl extension for better compatibility.');
     }
 
-    return ai_llm_parse_response($response);
+    $httpCode = 0;
+    if (isset($http_response_header[0]) && preg_match('/\s(\d{3})\s/', (string) $http_response_header[0], $m)) {
+        $httpCode = (int) $m[1];
+    }
+    if ($httpCode < 200 || $httpCode >= 300) {
+        return $fail(ai_llm_error_from_body($response, $httpCode), $httpCode);
+    }
+
+    $content = ai_llm_parse_response($response);
+    if ($content === null) {
+        return $fail('The API returned an empty or unexpected response.', $httpCode);
+    }
+
+    return ['ok' => true, 'content' => $content, 'error' => '', 'http_code' => $httpCode];
+}
+
+function ai_llm_error_from_body(string $response, int $httpCode): string
+{
+    $data = json_decode($response, true);
+    if (is_array($data)) {
+        $msg = $data['error']['message'] ?? $data['message'] ?? null;
+        if (is_string($msg) && trim($msg) !== '') {
+            return trim($msg) . ($httpCode > 0 ? " (HTTP {$httpCode})" : '');
+        }
+    }
+
+    $preview = trim(preg_replace('/\s+/', ' ', $response));
+    if ($preview !== '') {
+        $preview = function_exists('mb_substr') ? mb_substr($preview, 0, 180) : substr($preview, 0, 180);
+        return $preview . ($httpCode > 0 ? " (HTTP {$httpCode})" : '');
+    }
+
+    return $httpCode > 0 ? "API request failed (HTTP {$httpCode})." : 'API request failed.';
+}
+
+function ai_llm_error_hint(int $httpCode, string $message): string
+{
+    $lower = strtolower($message);
+    if ($httpCode === 429 || str_contains($lower, 'quota') || str_contains($lower, 'billing')) {
+        return __('settings.ai.error_quota');
+    }
+    if ($httpCode === 401 || str_contains($lower, 'incorrect api key') || str_contains($lower, 'invalid api key')) {
+        return __('settings.ai.error_key');
+    }
+    if ($httpCode === 404 || str_contains($lower, 'model') && str_contains($lower, 'not found')) {
+        return __('settings.ai.error_model');
+    }
+    return '';
 }
 
 function ai_llm_parse_response(string $response): ?string
@@ -249,6 +371,78 @@ function ai_llm_parse_response(string $response): ?string
 
     $content = trim($content);
     return $content !== '' ? $content : null;
+}
+
+/**
+ * Test external AI connectivity using stored settings or optional overrides.
+ *
+ * @param array<string, mixed> $overrides api_key, model, base_url, enabled
+ * @return array{ok:bool,message:string,model:string,reply_preview:string}
+ */
+function ai_llm_test_connection(PDO $pdo, array $overrides = []): array
+{
+    $cfg = ai_llm_config($pdo);
+
+    if (array_key_exists('enabled', $overrides)) {
+        $cfg['enabled'] = (bool) $overrides['enabled'];
+    }
+    if (!empty($overrides['api_key']) && is_string($overrides['api_key'])) {
+        $cfg['api_key'] = trim($overrides['api_key']);
+    }
+    if (!empty($overrides['model']) && is_string($overrides['model'])) {
+        $cfg['model'] = trim($overrides['model']);
+    }
+    if (!empty($overrides['base_url']) && is_string($overrides['base_url'])) {
+        $cfg['base_url'] = rtrim(trim($overrides['base_url']), '/');
+    }
+
+    if ($cfg['api_key'] === '') {
+        return [
+            'ok' => false,
+            'message' => 'Add an API key and save, or enter one in the field before testing.',
+            'model' => $cfg['model'],
+            'reply_preview' => '',
+        ];
+    }
+
+    $result = ai_llm_http_post($cfg, [
+        'model' => $cfg['model'],
+        'messages' => [
+            ['role' => 'system', 'content' => 'Reply with exactly: OK'],
+            ['role' => 'user', 'content' => 'Say OK'],
+        ],
+        'temperature' => 0,
+        'max_tokens' => 16,
+    ]);
+
+    if (!$result['ok']) {
+        $hint = ai_llm_error_hint($result['http_code'], $result['error']);
+        $connectionOk = $result['http_code'] === 429
+            || str_contains(strtolower($result['error']), 'quota')
+            || str_contains(strtolower($result['error']), 'billing');
+        return [
+            'ok' => false,
+            'connection_ok' => $connectionOk,
+            'message' => $result['error'],
+            'hint' => $hint,
+            'model' => $cfg['model'],
+            'reply_preview' => '',
+        ];
+    }
+
+    $preview = trim((string) $result['content']);
+    if (function_exists('mb_substr')) {
+        $preview = mb_substr($preview, 0, 120);
+    } else {
+        $preview = substr($preview, 0, 120);
+    }
+
+    return [
+        'ok' => true,
+        'message' => 'Connected successfully using model ' . $cfg['model'] . '.',
+        'model' => $cfg['model'],
+        'reply_preview' => $preview,
+    ];
 }
 
 /**
