@@ -109,6 +109,10 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
                             </div>
                         </div>
                         <div class="form-group full">
+                            <label for="company_name"><?= __e('form.company') ?></label>
+                            <input id="company_name" name="company_name" value="<?= e($client['company_name']) ?>" placeholder="<?= __e('form.placeholder.company') ?>">
+                        </div>
+                        <div class="form-group full">
                             <label for="address"><?= __e('common.address') ?></label>
                             <textarea id="address" name="address" rows="2" placeholder="<?= __e('form.placeholder.address') ?>"><?= e($client['address']) ?></textarea>
                         </div>
@@ -154,11 +158,7 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
                         <p><?= __e('clients.section.firm_help') ?></p>
                     </div>
                     <div class="form-grid">
-                        <div class="entity-field-row entity-field-row--2">
-                            <div class="form-group">
-                                <label for="company_name"><?= __e('form.company') ?></label>
-                                <input id="company_name" name="company_name" value="<?= e($client['company_name']) ?>" placeholder="<?= __e('form.placeholder.company') ?>">
-                            </div>
+                        <div class="entity-field-row">
                             <div class="form-group">
                                 <label for="assigned_lawyer_id"><?= __e('form.assigned_lawyer') ?></label>
                                 <select id="assigned_lawyer_id" name="assigned_lawyer_id">

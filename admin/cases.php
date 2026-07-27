@@ -34,10 +34,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $caseType = trim((string) post('case_type')) ?: 'Commercial';
         $status = post('status') ?: 'open';
         $priority = post('priority') ?: 'medium';
-        if ($clientId < 1 || $title === '') {
+        if ($title === '') {
             flash('error', __('flash.case.need_client_title'));
             redirect($editId ? ('cases.php?action=edit&id=' . $editId) : 'cases.php?action=create');
         }
+        if ($clientId < 1 || !$lawyerId) {
+            flash('error', __('flash.case.need_client_lawyer'));
+            redirect($editId ? ('cases.php?action=edit&id=' . $editId) : 'cases.php?action=create');
+        }
+        $clientCheck = $pdo->prepare("SELECT id FROM users WHERE id = ? AND role = 'client' LIMIT 1");
+        $clientCheck->execute([$clientId]);
+        $lawyerCheck = $pdo->prepare("SELECT id FROM users WHERE id = ? AND role = 'lawyer' AND is_active = 1 LIMIT 1");
+        $lawyerCheck->execute([$lawyerId]);
+        if (!$clientCheck->fetchColumn() || !$lawyerCheck->fetchColumn()) {
+            flash('error', __('flash.case.invalid_reference'));
+            redirect($editId ? ('cases.php?action=edit&id=' . $editId) : 'cases.php?action=create');
+        }
+        $validationError = validate_case_save_input($pdo, [
+            'title' => $title,
+            'description' => $description,
+            'client_instructions' => $clientInstructions,
+            'client_id' => $clientId,
+            'edit_id' => $editId,
+            'nonvat_description' => $_POST['nonvat_description'] ?? [],
+            'vat_description' => $_POST['vat_description'] ?? [],
+        ]);
+        if ($validationError) {
+            flash('error', $validationError);
+            redirect($editId ? ('cases.php?action=edit&id=' . $editId) : 'cases.php?action=create');
+        }
+        try {
         if ($editId) {
             if ($hasAssignedAdminColumn) {
                 $pdo->prepare(
@@ -180,6 +206,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         log_activity($pdo, current_user()['id'], $editId ? 'update' : 'create', 'case', $caseId, 'Case saved');
         redirect('cases.php?action=view&id=' . $caseId);
+        } catch (Throwable $e) {
+            flash('error', pdo_exception_user_message($e));
+            redirect($editId ? ('cases.php?action=edit&id=' . $editId) : 'cases.php?action=create');
+        }
     }
     if ($fa === 'upload') {
         try {
@@ -374,10 +404,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash('success', __('cases.tasks.flash.deleted'));
         redirect('cases.php?action=view&id=' . $caseId . '&tab=tasks');
     }
+    if ($fa === 'save_checklist') {
+        $caseId = (int) post('case_id');
+        save_case_checklist_from_post($pdo, $caseId);
+        flash('success', __('cases.checklist.flash.saved'));
+        redirect('cases.php?action=view&id=' . $caseId . '&tab=checklist');
+    }
+    if ($fa === 'delete_checklist_item') {
+        $caseId = (int) post('case_id');
+        $itemId = (int) post('item_id');
+        if (delete_case_checklist_item($pdo, $caseId, $itemId)) {
+            flash('success', __('cases.checklist.flash.deleted'));
+        } else {
+            flash('error', __('cases.checklist.flash.delete_failed'));
+        }
+        $returnEdit = post('return_edit') === '1';
+        redirect('cases.php?action=view&id=' . $caseId . '&tab=checklist' . ($returnEdit ? '&compose=checklist' : ''));
+    }
 }
 
-$clients = $pdo->query("SELECT id, first_name, last_name FROM users WHERE role='client' ORDER BY first_name")->fetchAll();
-$lawyers = $pdo->query("SELECT id, first_name, last_name FROM users WHERE role='lawyer' AND is_active=1 ORDER BY first_name")->fetchAll();
+$clients = $pdo->query("SELECT id, first_name, last_name, email, company_name, phone FROM users WHERE role='client' ORDER BY first_name")->fetchAll();
+$lawyers = $pdo->query("SELECT id, first_name, last_name, email, phone, specialization FROM users WHERE role='lawyer' AND is_active=1 ORDER BY first_name")->fetchAll();
 $admins = $pdo->query("SELECT id, first_name, last_name FROM users WHERE role = 'admin' AND is_active=1 ORDER BY first_name")->fetchAll();
 $pageTitle = __('page.cases');
 $pageSubtitle = __('page.cases.subtitle');
@@ -482,12 +529,30 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
                 <div class="case-create-grid-2">
                     <div class="form-group">
                         <label for="client_id"><?= __e('common.client') ?> <span class="req">*</span></label>
-                        <select id="client_id" name="client_id" required>
-                            <option value=""><?= __e('cases.form.select_client') ?></option>
-                            <?php foreach ($clients as $c): ?>
-                                <option value="<?= (int) $c['id'] ?>" <?= (int) $case['client_id'] === (int) $c['id'] ? 'selected' : '' ?>><?= e(full_name($c)) ?></option>
-                            <?php endforeach; ?>
-                        </select>
+                        <?php
+                        $clientSelectOptions = [];
+                        foreach ($clients as $c) {
+                            $clientSelectOptions[] = [
+                                'id' => (int) $c['id'],
+                                'label' => full_name($c) . ($c['company_name'] ? ' — ' . $c['company_name'] : ''),
+                                'search' => strtolower(trim(implode(' ', [
+                                    full_name($c),
+                                    $c['first_name'] ?? '',
+                                    $c['last_name'] ?? '',
+                                    $c['email'] ?? '',
+                                    $c['company_name'] ?? '',
+                                    $c['phone'] ?? '',
+                                ]))),
+                            ];
+                        }
+                        $searchableSelectId = 'client_id_picker';
+                        $searchableSelectInputId = 'client_id';
+                        $searchableSelectName = 'client_id';
+                        $searchableSelectValue = (int) ($case['client_id'] ?? 0) ?: '';
+                        $searchableSelectPlaceholder = __('cases.form.select_client');
+                        $searchableSelectRequired = true;
+                        require __DIR__ . '/../includes/searchable-select.php';
+                        ?>
                         <a class="case-create-link" href="clients.php?action=create"><?= __e('cases.form.add_client_link') ?></a>
                     </div>
                     <?php if ($hasAssignedAdminColumn && count($admins) > 1): ?>
@@ -510,13 +575,32 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
                 </div>
                 <div class="case-create-grid-2 case-team-lead-row">
                     <div class="form-group">
-                        <label for="lead_lawyer_id"><?= __e('cases.team.lead_lawyer') ?></label>
-                        <select id="lead_lawyer_id" name="lead_lawyer_id">
-                            <option value=""><?= __e('form.unassigned_simple') ?></option>
-                            <?php foreach ($lawyers as $l): ?>
-                                <option value="<?= (int) $l['id'] ?>" <?= $leadLawyerId === (int) $l['id'] ? 'selected' : '' ?>><?= e(full_name($l)) ?></option>
-                            <?php endforeach; ?>
-                        </select>
+                        <label for="lead_lawyer_id"><?= __e('cases.team.lead_lawyer') ?> <span class="req">*</span></label>
+                        <?php
+                        $lawyerSelectOptions = [];
+                        foreach ($lawyers as $l) {
+                            $spec = trim((string) ($l['specialization'] ?? ''));
+                            $lawyerSelectOptions[] = [
+                                'id' => (int) $l['id'],
+                                'label' => full_name($l) . ($spec ? ' — ' . t_content($spec) : ''),
+                                'search' => strtolower(trim(implode(' ', [
+                                    full_name($l),
+                                    $l['first_name'] ?? '',
+                                    $l['last_name'] ?? '',
+                                    $l['email'] ?? '',
+                                    $l['phone'] ?? '',
+                                    $spec,
+                                ]))),
+                            ];
+                        }
+                        $searchableSelectId = 'lead_lawyer_picker';
+                        $searchableSelectInputId = 'lead_lawyer_id';
+                        $searchableSelectName = 'lead_lawyer_id';
+                        $searchableSelectValue = $leadLawyerId ?: '';
+                        $searchableSelectPlaceholder = __('cases.form.select_lawyer');
+                        $searchableSelectRequired = true;
+                        require __DIR__ . '/../includes/searchable-select.php';
+                        ?>
                     </div>
                     <div class="form-group">
                         <label for="status"><?= __e('common.status') ?></label>
@@ -811,13 +895,26 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
       }
       if (leadSelect) leadSelect.addEventListener('change', syncAssociateDropdown);
       syncAssociateDropdown();
+
+      var caseForm = document.getElementById('caseCreateForm');
+      var clientInput = document.getElementById('client_id');
+      if (caseForm && clientInput) {
+        caseForm.addEventListener('submit', function (e) {
+          var clientVal = clientInput.value || '';
+          var lawyerVal = leadSelect ? (leadSelect.value || '') : '';
+          if (!clientVal || !lawyerVal) {
+            e.preventDefault();
+            window.alert(<?= json_encode(__('flash.case.need_client_lawyer')) ?>);
+          }
+        });
+      }
     })();
     </script>
     <?php require __DIR__ . '/../includes/footer.php'; exit;
 }
 
 if ($action === 'view' && $id) {
-    $viewSql = 'SELECT c.*, cl.first_name AS client_first, cl.last_name AS client_last, cl.email AS client_email, cl.company_name AS client_company, cl.phone AS client_phone, CONCAT(lw.first_name," ",lw.last_name) AS lawyer_name, CONCAT(cb.first_name," ",cb.last_name) AS created_by_name';
+    $viewSql = 'SELECT c.*, cl.first_name AS client_first, cl.last_name AS client_last, cl.email AS client_email, cl.company_name AS client_company, cl.phone AS client_phone, lw.id AS lawyer_user_id, CONCAT(lw.first_name," ",lw.last_name) AS lawyer_name, lw.email AS lawyer_email, lw.phone AS lawyer_phone, lw.specialization AS lawyer_specialization, CONCAT(cb.first_name," ",cb.last_name) AS created_by_name';
     if ($hasAssignedAdminColumn) {
         $viewSql .= ', CONCAT(aa.first_name," ",aa.last_name) AS assigned_admin_name';
     } else {
@@ -874,6 +971,11 @@ if ($action === 'view' && $id) {
     $feeTotal = array_sum(array_map(static fn($i) => (float) $i['total'], $invoicesAll));
     $paidTotal = array_sum(array_map(static fn($p) => (float) $p['amount'], $payments));
 
+    $caseQuoteReturn = 'cases.php?action=view&id=' . $id . '&tab=quotations';
+    $caseInvReturn = 'cases.php?action=view&id=' . $id . '&tab=invoices';
+    $caseRcpReturn = 'cases.php?action=view&id=' . $id . '&tab=receipts';
+    $caseActivityReturn = 'cases.php?action=view&id=' . $id . '&tab=activity';
+
     $activity = [];
     foreach ($docs as $d) {
         $docLabel = trim((string) ($d['file_name'] ?: $d['title']));
@@ -887,12 +989,14 @@ if ($action === 'view' && $id) {
     }
     foreach ($invoicesAll as $i) {
         $isQuote = $i['status'] === 'draft';
+        $returnTab = $isQuote ? $caseQuoteReturn : $caseInvReturn;
         $activity[] = [
             'type' => $isQuote ? 'quote' : 'invoice',
             'title' => __($isQuote ? 'cases.activity.quotation' : 'cases.activity.invoice'),
             'ref' => $i['invoice_number'] . ' · ' . money($i['total']),
             'at' => $i['created_at'],
             'by' => trim((string) ($i['creator_name'] ?? '')),
+            'url' => 'invoice.php?id=' . (int) $i['id'] . '&from=' . rawurlencode($returnTab),
         ];
     }
     foreach ($payments as $p) {
@@ -908,6 +1012,7 @@ if ($action === 'view' && $id) {
             'ref' => $payRef,
             'at' => $p['paid_at'],
             'by' => trim((string) ($p['recorder_name'] ?? '')),
+            'url' => 'receipt.php?id=' . (int) $p['id'] . '&from=' . rawurlencode($caseRcpReturn),
         ];
     }
     foreach ($notes as $n) {
@@ -981,15 +1086,18 @@ if ($action === 'view' && $id) {
     }
     $compose = get('compose', '');
 
-    $checklist = [
-        [__('cases.checklist.client_details'), !empty($case['client_email'])],
-        [__('cases.checklist.team_assigned'), count($caseTeamRows) > 0 || !empty($case['lawyer_id'])],
-        [__('cases.checklist.description'), !empty(trim((string) $case['description']))],
-        [__('cases.checklist.document'), count($docs) > 0],
-        [__('cases.checklist.invoice'), count($invoicesAll) > 0],
-        [__('cases.checklist.payment'), count($payments) > 0],
-        [__('cases.checklist.hearing'), !empty($case['next_hearing_date']) || count($hearings) > 0],
+    $checklistContext = [
+        'client_email' => $case['client_email'] ?? '',
+        'lawyer_id' => $case['lawyer_id'] ?? null,
+        'team_count' => count($caseTeamRows),
+        'description' => $case['description'] ?? '',
+        'document_count' => count($docs),
+        'invoice_count' => count($invoicesAll),
+        'payment_count' => count($payments),
+        'hearing_count' => count($hearings),
+        'next_hearing_date' => $case['next_hearing_date'] ?? null,
     ];
+    $checklistItems = case_checklist_items($pdo, $id, $checklistContext);
 
     $pageTitle = __('page.cases');
     $pageSubtitle = __('cases.hub.subtitle');
@@ -1133,23 +1241,75 @@ if ($action === 'view' && $id) {
         <div class="case-hub-grid">
             <section class="panel case-hub-card case-overview-details">
                 <h2><?= __e('cases.hub.case_details') ?></h2>
-                <div class="case-hub-meta-grid">
-                    <div>
-                        <span class="case-hub-label"><?= __e('common.client') ?></span>
-                        <strong><?= e($clientName) ?></strong>
-                        <span class="muted"><?= e($case['client_company'] ?: '') ?></span>
+                <div class="case-hub-meta-grid case-hub-parties-grid">
+                    <div class="case-hub-party-block">
+                        <h3><?= __e('common.client') ?></h3>
+                        <div class="case-hub-party-fields">
+                            <div>
+                                <span class="case-hub-label"><?= __e('common.name') ?></span>
+                                <strong><?= e($clientName) ?></strong>
+                            </div>
+                            <?php if (!empty($case['client_company'])): ?>
+                            <div>
+                                <span class="case-hub-label"><?= __e('common.company') ?></span>
+                                <strong><?= e($case['client_company']) ?></strong>
+                            </div>
+                            <?php endif; ?>
+                            <div>
+                                <span class="case-hub-label"><?= __e('common.email') ?></span>
+                                <strong><?= e($case['client_email'] ?: __('common.em_dash')) ?></strong>
+                            </div>
+                            <div>
+                                <span class="case-hub-label"><?= __e('common.phone') ?></span>
+                                <strong><?= e($case['client_phone'] ?: __('common.em_dash')) ?></strong>
+                            </div>
+                        </div>
                     </div>
-                    <div>
-                        <span class="case-hub-label"><?= __e('common.email') ?></span>
-                        <strong><?= e($case['client_email'] ?: __('common.em_dash')) ?></strong>
+                    <div class="case-hub-party-block">
+                        <h3><?= __e('cases.hub.assigned_lawyer') ?></h3>
+                        <div class="case-hub-party-fields">
+                            <div>
+                                <span class="case-hub-label"><?= __e('common.name') ?></span>
+                                <strong><?= e($case['lawyer_name'] ?: __('common.unassigned')) ?></strong>
+                            </div>
+                            <?php if (!empty($case['lawyer_specialization'])): ?>
+                            <div>
+                                <span class="case-hub-label"><?= __e('common.specialization') ?></span>
+                                <strong><?= e(t_content($case['lawyer_specialization'])) ?></strong>
+                            </div>
+                            <?php endif; ?>
+                            <div>
+                                <span class="case-hub-label"><?= __e('common.email') ?></span>
+                                <strong><?= e($case['lawyer_email'] ?: __('common.em_dash')) ?></strong>
+                            </div>
+                            <div>
+                                <span class="case-hub-label"><?= __e('common.phone') ?></span>
+                                <strong><?= e($case['lawyer_phone'] ?: __('common.em_dash')) ?></strong>
+                            </div>
+                        </div>
+                        <?php
+                        $associateNames = [];
+                        foreach (case_lawyers_for_case($pdo, $id) as $teamRow) {
+                            if (($teamRow['role'] ?? '') !== 'lead') {
+                                $associateNames[] = full_name($teamRow);
+                            }
+                        }
+                        if ($associateNames):
+                        ?>
+                        <div class="case-hub-party-associates">
+                            <span class="case-hub-label"><?= __e('cases.team.associates') ?></span>
+                            <strong><?= e(implode(', ', $associateNames)) ?></strong>
+                        </div>
+                        <?php endif; ?>
                     </div>
-                    <div>
-                        <span class="case-hub-label"><?= __e('cases.team.title') ?></span>
-                        <strong><?= e(case_lawyers_label($pdo, $id) ?: ($case['lawyer_name'] ?: __('common.unassigned'))) ?></strong>
-                    </div>
-                    <div>
-                        <span class="case-hub-label"><?= __e('cases.hub.assigned_admin') ?></span>
-                        <strong><?= e($case['assigned_admin_name'] ?: ($case['created_by_name'] ?: __('common.unassigned'))) ?></strong>
+                    <div class="case-hub-party-block case-hub-party-block--admin">
+                        <h3><?= __e('cases.hub.assigned_admin') ?></h3>
+                        <div class="case-hub-party-fields">
+                            <div>
+                                <span class="case-hub-label"><?= __e('common.name') ?></span>
+                                <strong><?= e($case['assigned_admin_name'] ?: ($case['created_by_name'] ?: __('common.unassigned'))) ?></strong>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -1213,16 +1373,10 @@ if ($action === 'view' && $id) {
                     <h2><?= __e('cases.hub.recent_activity') ?></h2>
                 </div>
                 <div class="case-activity-timeline case-activity-timeline--compact">
-                    <?php foreach ($overviewActivitySlice as $a): ?>
-                        <div class="case-activity-item type-<?= e($a['type']) ?>">
-                            <div class="case-activity-icon" aria-hidden="true"><?= $activityIcons[$a['type']] ?? $activityIcons['case'] ?></div>
-                            <div class="case-activity-body">
-                                <strong><?= e($a['title']) ?></strong>
-                                <span class="case-activity-ref"><?= e($a['ref']) ?></span>
-                                <span class="case-activity-meta"><?= e($a['at'] ? date('M d, Y', strtotime($a['at'])) : '—') ?></span>
-                            </div>
-                        </div>
-                    <?php endforeach; ?>
+                    <?php foreach ($overviewActivitySlice as $a):
+                        $compact = true;
+                        require __DIR__ . '/../includes/case-activity-item.php';
+                    endforeach; ?>
                     <?php if (!$overviewActivitySlice): ?>
                         <div class="empty-state"><?= __e('cases.activity.empty') ?></div>
                     <?php endif; ?>
@@ -1553,16 +1707,19 @@ if ($action === 'view' && $id) {
             <?php endif; ?>
             <div class="table-wrap">
                 <table>
-                    <thead><tr><th><?= __e('common.quotation') ?></th><th><?= __e('common.total') ?></th><th><?= __e('common.created') ?></th></tr></thead>
+                    <thead><tr><th><?= __e('common.quotation') ?></th><th><?= __e('common.total') ?></th><th><?= __e('common.created') ?></th><th class="col-actions"><?= __e('common.actions') ?></th></tr></thead>
                     <tbody>
                     <?php foreach ($pageQuotations as $q): ?>
                         <tr>
                             <td><strong><?= e($q['invoice_number']) ?></strong><div class="muted"><?= e($q['title']) ?></div></td>
                             <td><?= e(money($q['total'])) ?></td>
                             <td><?= e(format_date($q['created_at'])) ?></td>
+                            <td class="col-actions">
+                                <a class="btn btn-row-open btn-sm" href="invoice.php?id=<?= (int) $q['id'] ?>&from=<?= e(urlencode($caseQuoteReturn)) ?>"><?= __e('common.view') ?></a>
+                            </td>
                         </tr>
                     <?php endforeach; ?>
-                    <?php if (!$pageQuotations): ?><tr><td colspan="3" class="muted"><?= __e('cases.no_quotations') ?></td></tr><?php endif; ?>
+                    <?php if (!$pageQuotations): ?><tr><td colspan="4" class="muted"><?= __e('cases.no_quotations') ?></td></tr><?php endif; ?>
                     </tbody>
                 </table>
             </div>
@@ -1863,17 +2020,135 @@ if ($action === 'view' && $id) {
             </div>
         </section>
 
-        <?php elseif ($tab === 'checklist'): ?>
+        <?php elseif ($tab === 'checklist'):
+            $editingChecklist = $compose === 'checklist';
+        ?>
         <section class="panel case-hub-card">
-            <h2><?= __e('cases.checklist_title') ?></h2>
+            <div class="panel-header">
+                <div>
+                    <h2><?= __e('cases.checklist_title') ?></h2>
+                    <?php if (!$editingChecklist): ?>
+                    <p class="muted" style="margin:0.35rem 0 0;"><?= __e('cases.checklist.help') ?></p>
+                    <?php endif; ?>
+                </div>
+                <?php if (!$editingChecklist): ?>
+                <a class="btn btn-secondary btn-sm" href="<?= e($tabUrl('checklist') . '&compose=checklist') ?>"><?= __e('cases.checklist.edit') ?></a>
+                <?php endif; ?>
+            </div>
+
+            <?php if ($editingChecklist): ?>
+            <form method="post" class="case-checklist-form" id="caseChecklistForm">
+                <?= csrf_field() ?>
+                <input type="hidden" name="form_action" value="save_checklist">
+                <input type="hidden" name="case_id" value="<?= (int) $id ?>">
+                <div class="case-hub-checklist case-hub-checklist-edit">
+                    <?php foreach ($checklistItems as $item): ?>
+                    <div class="case-hub-check-edit-row">
+                        <label class="case-hub-check-edit-item">
+                            <input type="checkbox" name="checklist[<?= (int) $item['id'] ?>][done]" value="1" <?= $item['is_done'] ? 'checked' : '' ?>>
+                            <?php if ($item['item_key']): ?>
+                            <input type="hidden" name="checklist[<?= (int) $item['id'] ?>][label]" value="<?= e($item['label']) ?>">
+                            <span><?= e($item['label']) ?></span>
+                            <?php else: ?>
+                            <input type="text" name="checklist[<?= (int) $item['id'] ?>][label]" value="<?= e($item['label']) ?>" required>
+                            <?php endif; ?>
+                        </label>
+                        <button
+                            type="button"
+                            class="btn btn-row-delete btn-sm js-checklist-delete"
+                            data-item-id="<?= (int) $item['id'] ?>"
+                            data-confirm="<?= __e('cases.checklist.delete_confirm') ?>"
+                        ><?= __e('common.delete') ?></button>
+                    </div>
+                    <?php endforeach; ?>
+                    <div id="caseChecklistNewRows"></div>
+                </div>
+                <div class="case-checklist-add">
+                    <input type="text" id="caseChecklistNewInput" name="checklist_pending" placeholder="<?= __e('cases.checklist.add_item_ph') ?>" autocomplete="off">
+                    <button type="button" class="btn btn-secondary btn-sm" id="caseChecklistAddBtn">+ <?= __e('cases.checklist.add_item') ?></button>
+                </div>
+                <div class="case-checklist-actions">
+                    <a class="btn btn-secondary" href="<?= e($tabUrl('checklist')) ?>"><?= __e('common.cancel') ?></a>
+                    <button class="btn btn-primary" type="submit"><?= __e('cases.checklist.save') ?></button>
+                </div>
+            </form>
+            <form method="post" id="caseChecklistDeleteForm" class="is-hidden" hidden>
+                <?= csrf_field() ?>
+                <input type="hidden" name="form_action" value="delete_checklist_item">
+                <input type="hidden" name="case_id" value="<?= (int) $id ?>">
+                <input type="hidden" name="item_id" id="caseChecklistDeleteId" value="">
+                <input type="hidden" name="return_edit" value="1">
+            </form>
+            <script>
+            (function () {
+                var form = document.getElementById('caseChecklistForm');
+                var deleteForm = document.getElementById('caseChecklistDeleteForm');
+                var deleteId = document.getElementById('caseChecklistDeleteId');
+                var rows = document.getElementById('caseChecklistNewRows');
+                var input = document.getElementById('caseChecklistNewInput');
+                var addBtn = document.getElementById('caseChecklistAddBtn');
+                if (!form || !rows || !input || !addBtn) return;
+
+                document.querySelectorAll('.js-checklist-delete').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        var message = btn.getAttribute('data-confirm') || 'Remove this checklist item?';
+                        if (!window.confirm(message)) return;
+                        if (!deleteForm || !deleteId) return;
+                        deleteId.value = btn.getAttribute('data-item-id') || '';
+                        deleteForm.submit();
+                    });
+                });
+
+                var addRow = function (label) {
+                    label = (label || '').trim();
+                    if (!label) return;
+                    var idx = rows.children.length;
+                    var row = document.createElement('div');
+                    row.className = 'case-hub-check-edit-row';
+                    row.innerHTML =
+                        '<label class="case-hub-check-edit-item">' +
+                        '<input type="checkbox" name="checklist_new[' + idx + '][done]" value="1">' +
+                        '<input type="text" name="checklist_new[' + idx + '][label]" value="' + label.replace(/"/g, '&quot;') + '" required>' +
+                        '</label>' +
+                        '<button type="button" class="btn btn-row-delete btn-sm case-checklist-remove-new">' + <?= json_encode(__('common.delete')) ?> + '</button>';
+                    rows.appendChild(row);
+                    row.querySelector('.case-checklist-remove-new').addEventListener('click', function () {
+                        row.remove();
+                    });
+                    input.value = '';
+                };
+
+                addBtn.addEventListener('click', function () { addRow(input.value); });
+                input.addEventListener('keydown', function (e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addRow(input.value);
+                    }
+                });
+                form.addEventListener('submit', function () {
+                    if (input.value.trim() !== '') {
+                        addRow(input.value);
+                    }
+                });
+            })();
+            </script>
+            <?php else: ?>
             <div class="case-hub-checklist">
-                <?php foreach ($checklist as [$label, $done]): ?>
-                    <div class="case-hub-check <?= $done ? 'is-done' : '' ?>">
-                        <span class="case-hub-check-mark"><?= $done ? '✓' : '○' ?></span>
-                        <span><?= e($label) ?></span>
+                <?php foreach ($checklistItems as $item): ?>
+                    <div class="case-hub-check <?= $item['is_done'] ? 'is-done' : '' ?>">
+                        <span class="case-hub-check-mark"><?= $item['is_done'] ? '✓' : '○' ?></span>
+                        <span class="case-hub-check-label"><?= e($item['label']) ?></span>
+                        <form method="post" class="row-actions case-hub-check-actions" data-confirm="<?= __e('cases.checklist.delete_confirm') ?>">
+                            <?= csrf_field() ?>
+                            <input type="hidden" name="form_action" value="delete_checklist_item">
+                            <input type="hidden" name="case_id" value="<?= (int) $id ?>">
+                            <input type="hidden" name="item_id" value="<?= (int) $item['id'] ?>">
+                            <button class="btn btn-row-delete btn-sm" type="submit"><?= __e('common.delete') ?></button>
+                        </form>
                     </div>
                 <?php endforeach; ?>
             </div>
+            <?php endif; ?>
         </section>
 
         <?php elseif ($tab === 'tasks'):
@@ -2188,11 +2463,19 @@ if ($action === 'view' && $id) {
 
         <?php else:
             $activityQ = trim((string) get('q', ''));
-            $filteredActivity = array_values(array_filter($activity, static function ($a) use ($activityQ) {
+            $activityType = (string) get('atype', 'all');
+            $activityTypeOptions = ['all', 'document', 'invoice', 'quote', 'payment', 'note', 'hearing', 'case'];
+            if (!in_array($activityType, $activityTypeOptions, true)) {
+                $activityType = 'all';
+            }
+            $filteredActivity = array_values(array_filter($activity, static function ($a) use ($activityQ, $activityType) {
+                if ($activityType !== 'all' && ($a['type'] ?? '') !== $activityType) {
+                    return false;
+                }
                 if ($activityQ === '') {
                     return true;
                 }
-                $hay = strtolower(($a['title'] ?? '') . ' ' . ($a['ref'] ?? '') . ' ' . ($a['type'] ?? ''));
+                $hay = strtolower(($a['title'] ?? '') . ' ' . ($a['ref'] ?? '') . ' ' . ($a['type'] ?? '') . ' ' . ($a['by'] ?? ''));
                 return str_contains($hay, strtolower($activityQ));
             }));
             $activityTotal = count($filteredActivity);
@@ -2205,9 +2488,10 @@ if ($action === 'view' && $id) {
             $pageActivity = array_slice($filteredActivity, ($activityPage - 1) * $activityPerPage, $activityPerPage);
             $activityFrom = $activityTotal === 0 ? 0 : (($activityPage - 1) * $activityPerPage) + 1;
             $activityTo = min($activityPage * $activityPerPage, $activityTotal);
-            $activityPageUrl = static function (int $p) use ($tabUrl, $activityQ): string {
+            $activityPageUrl = static function (int $p) use ($tabUrl, $activityQ, $activityType): string {
                 $params = array_filter([
                     'q' => $activityQ !== '' ? $activityQ : null,
+                    'atype' => $activityType !== 'all' ? $activityType : null,
                     'activity_page' => $p,
                 ], static fn($v) => $v !== null && $v !== '');
                 return $tabUrl('activity') . ($params ? '&' . http_build_query($params) : '');
@@ -2231,17 +2515,18 @@ if ($action === 'view' && $id) {
                     </label>
                     <label class="case-activity-filter">
                         <span class="sr-only"><?= __e('notifications.filter_status') ?></span>
-                        <select id="caseActivityFilter" aria-label="<?= __e('notifications.filter_status') ?>">
-                        <option value="all"><?= __e('notifications.filter.all') ?></option>
-                        <option value="document"><?= __e('cases.tab.documents') ?></option>
-                        <option value="invoice"><?= __e('cases.tab.invoices') ?></option>
-                        <option value="quote"><?= __e('cases.tab.quotations') ?></option>
-                        <option value="payment"><?= __e('cases.tab.receipts') ?></option>
-                        <option value="note"><?= __e('cases.tab.notes') ?></option>
-                        <option value="hearing"><?= __e('cases.tab.deadlines') ?></option>
-                        <option value="case"><?= __e('common.case') ?></option>
+                        <select id="caseActivityFilter" name="atype" aria-label="<?= __e('notifications.filter_status') ?>" onchange="this.form.submit()">
+                        <option value="all" <?= $activityType === 'all' ? 'selected' : '' ?>><?= __e('notifications.filter.all') ?></option>
+                        <option value="document" <?= $activityType === 'document' ? 'selected' : '' ?>><?= __e('cases.tab.documents') ?></option>
+                        <option value="invoice" <?= $activityType === 'invoice' ? 'selected' : '' ?>><?= __e('cases.tab.invoices') ?></option>
+                        <option value="quote" <?= $activityType === 'quote' ? 'selected' : '' ?>><?= __e('cases.tab.quotations') ?></option>
+                        <option value="payment" <?= $activityType === 'payment' ? 'selected' : '' ?>><?= __e('cases.tab.receipts') ?></option>
+                        <option value="note" <?= $activityType === 'note' ? 'selected' : '' ?>><?= __e('cases.tab.notes') ?></option>
+                        <option value="hearing" <?= $activityType === 'hearing' ? 'selected' : '' ?>><?= __e('cases.tab.deadlines') ?></option>
+                        <option value="case" <?= $activityType === 'case' ? 'selected' : '' ?>><?= __e('common.case') ?></option>
                     </select>
                 </label>
+                </form>
             </div>
             <div class="case-activity-scroll" id="caseActivityList">
                 <?php if ($activityTotal > 0): ?>
@@ -2249,16 +2534,10 @@ if ($action === 'view' && $id) {
                         <div class="case-activity-day" data-day>
                             <div class="case-activity-day-label"><?= e($formatActivityDay($dayItems[0]['at'])) ?></div>
                             <div class="case-activity-timeline">
-                                <?php foreach ($dayItems as $a): ?>
-                                    <div class="case-activity-item type-<?= e($a['type']) ?>" data-type="<?= e($a['type']) ?>">
-                                        <div class="case-activity-icon" aria-hidden="true"><?= $activityIcons[$a['type']] ?? $activityIcons['case'] ?></div>
-                                        <div class="case-activity-body">
-                                            <strong><?= e($a['title']) ?></strong>
-                                            <span class="case-activity-ref"><?= e($a['ref']) ?></span>
-                                            <span class="case-activity-meta"><?= e($formatActivityWhen($a['at'])) ?><?= !empty($a['by']) ? ' · ' . e($a['by']) : '' ?></span>
-                                        </div>
-                                    </div>
-                                <?php endforeach; ?>
+                                <?php foreach ($dayItems as $a):
+                                    $compact = false;
+                                    require __DIR__ . '/../includes/case-activity-item.php';
+                                endforeach; ?>
                             </div>
                         </div>
                     <?php endforeach; ?>
@@ -2287,31 +2566,6 @@ if ($action === 'view' && $id) {
                 <?php endif; ?>
             </div>
         </section>
-        <script>
-        (function () {
-            var filter = document.getElementById('caseActivityFilter');
-            var list = document.getElementById('caseActivityList');
-            var footer = document.getElementById('caseActivityFooter');
-            if (!filter || !list || !footer) return;
-            var total = <?= (int) $activityTotal ?>;
-            filter.addEventListener('change', function () {
-                var value = filter.value;
-                var visible = 0;
-                list.querySelectorAll('.case-activity-item').forEach(function (item) {
-                    var show = value === 'all' || item.getAttribute('data-type') === value;
-                    item.hidden = !show;
-                    if (show) visible += 1;
-                });
-                list.querySelectorAll('[data-day]').forEach(function (day) {
-                    var any = day.querySelector('.case-activity-item:not([hidden])');
-                    day.hidden = !any;
-                });
-                footer.textContent = visible > 0
-                    ? ('Showing 1–' + visible + ' of ' + total + ' activities')
-                    : ('Showing 0 of ' + total + ' activities');
-            });
-        })();
-        </script>
         <?php endif; ?>
     </div>
     <?php require __DIR__ . '/../includes/footer.php'; exit;

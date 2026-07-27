@@ -1489,6 +1489,11 @@ button.btn-row-delete,
     color: var(--danger) !important;
     border-color: color-mix(in srgb, var(--danger) 28%, #fff) !important;
 }
+.btn-row-fit {
+    width: auto !important;
+    min-width: 6.25rem !important;
+    max-width: none !important;
+}
 @supports not (background: color-mix(in srgb, red 10%, white)) {
     .btn-row-open,
     .btn-row-approve,
@@ -6518,9 +6523,13 @@ html:not([data-theme]) .glass-dash-pager {
     height: 100%;
     min-height: 0;
 }
+.case-hub-grid > .case-overview-activity {
+    justify-content: flex-start;
+}
 .case-overview-activity > .case-activity-timeline {
     flex: 1 1 auto;
     min-height: 0;
+    align-content: start;
     overflow: auto;
 }
 
@@ -6538,6 +6547,33 @@ html:not([data-theme]) .glass-dash-pager {
     color: var(--ink);
     font-weight: 600;
     font-size: 0.95rem;
+}
+.case-hub-parties-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.case-hub-party-block h3 {
+    margin: 0 0 0.75rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+}
+.case-hub-party-fields {
+    display: grid;
+    gap: 0.75rem;
+}
+.case-hub-party-associates {
+    margin-top: 0.85rem;
+    padding-top: 0.85rem;
+    border-top: 1px solid var(--line);
+}
+.searchable-select {
+    width: 100%;
+}
+.recipient-picker-label.is-placeholder {
+    color: var(--ink-soft);
+    font-weight: 400;
 }
 .case-hub-label {
     display: block;
@@ -6781,7 +6817,8 @@ html:not([data-theme]) .glass-dash-pager {
     background: rgba(2, 62, 138, 0.12);
 }
 .case-activity-timeline--compact {
-    gap: 0.95rem;
+    gap: 0.55rem;
+    align-content: start;
 }
 .case-activity-timeline--compact::before { left: 16px; }
 .case-activity-item {
@@ -6854,6 +6891,14 @@ html:not([data-theme]) .glass-dash-pager {
     color: #8b93a7;
     margin-top: 0.1rem;
 }
+.case-activity-item.has-action {
+    grid-template-columns: 36px minmax(0, 1fr) auto;
+    align-items: start;
+}
+.case-activity-actions {
+    align-self: start;
+    padding-top: 0.15rem;
+}
 .case-activity-footer {
     margin-top: 1.15rem;
     padding-top: 0.85rem;
@@ -6873,6 +6918,9 @@ html:not([data-theme]) .glass-dash-pager {
 .case-activity-timeline--compact .case-activity-item {
     grid-template-columns: 32px minmax(0, 1fr);
     gap: 0.7rem;
+}
+.case-activity-timeline--compact .case-activity-item.has-action {
+    grid-template-columns: 32px minmax(0, 1fr) auto;
 }
 .case-activity-timeline--compact .case-activity-body strong { font-size: 0.9rem; }
 .case-activity-timeline--compact .case-activity-ref { font-size: 0.82rem; }
@@ -6903,6 +6951,14 @@ html:not([data-theme]) .glass-dash-pager {
     color: var(--ink-soft);
     font-weight: 500;
 }
+.case-hub-check-label {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.case-hub-check-actions {
+    margin-left: auto;
+    flex-shrink: 0;
+}
 .case-hub-check.is-done {
     color: var(--ink);
     border-color: rgba(var(--primary-rgb), 0.25);
@@ -6923,6 +6979,65 @@ html:not([data-theme]) .glass-dash-pager {
     background: var(--success);
     border-color: var(--success);
     color: #fff;
+}
+.case-hub-checklist-edit {
+    margin-top: 0.75rem;
+}
+.case-hub-check-edit-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--panel-soft);
+}
+.case-hub-check-edit-item {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    flex: 1 1 auto;
+    min-width: 0;
+    font-weight: 500;
+    color: var(--ink);
+}
+.case-hub-check-edit-item input[type="checkbox"] {
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+}
+.case-hub-check-edit-item input[type="text"] {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.case-hub-check-delete {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.78rem;
+    color: var(--ink-soft);
+    white-space: nowrap;
+}
+.case-checklist-add {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.65rem;
+    margin-top: 1rem;
+}
+.case-checklist-add input[type="text"] {
+    flex: 1 1 16rem;
+    min-width: 0;
+}
+.case-checklist-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.65rem;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--line);
 }
 
 .case-hub-menu { position: relative; }
@@ -10089,6 +10204,96 @@ html[data-theme="dark"] .notify-item.is-unread {
 .avail-slot-warning {
     color: var(--danger) !important;
     font-weight: 600;
+}
+.avail-view-page {
+    display: grid;
+    gap: 1rem;
+}
+.avail-view-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem;
+}
+.avail-view-stats {
+    margin: 0;
+}
+.avail-view-panel {
+    padding: 0;
+    overflow: hidden;
+}
+.avail-view-lawyer-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.15rem 1.5rem 0.35rem;
+}
+.avail-view-lawyer-head h2 {
+    margin: 0 0 0.25rem;
+    font-size: 1.15rem;
+}
+.avail-view-notes {
+    max-width: 22rem;
+}
+.avail-view-notes p {
+    margin: 0.2rem 0 0;
+    color: var(--ink);
+    font-size: 0.92rem;
+    line-height: 1.45;
+}
+.avail-view-flash {
+    margin: 0 1.5rem 0.75rem;
+}
+.avail-view-empty {
+    margin: 0 1.5rem 1rem;
+}
+.avail-status-strip-readonly {
+    background: var(--panel);
+}
+.avail-status-readonly-value {
+    min-height: 2.45rem;
+    display: flex;
+    align-items: center;
+    font-size: 0.92rem;
+    color: var(--ink);
+    line-height: 1.45;
+}
+.avail-view-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.65rem 1rem;
+}
+.avail-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--ink-soft);
+}
+.avail-legend-item .avail-cell {
+    width: 1.65rem;
+    min-height: 1.65rem;
+    pointer-events: none;
+}
+.avail-schedule-footer-readonly {
+    justify-content: flex-start;
+}
+.avail-cell-readonly {
+    cursor: default;
+    pointer-events: none;
+}
+.avail-cell-readonly:hover {
+    border-color: transparent;
+    background: var(--panel-soft);
+}
+.avail-cell-readonly.is-on:hover {
+    filter: none;
+    background: var(--grad-btn);
 }
 @media (max-width: 900px) {
     .avail-board-top,

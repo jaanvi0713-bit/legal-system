@@ -783,12 +783,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   };
 
-  const sendAiMessage = async (text) => {
-    const input = document.getElementById('ai-message');
-    const messages = document.getElementById('ai-messages');
+    const sendAiMessage = async (text) => {
+      const input = document.getElementById('ai-message');
+      const messages = document.getElementById('ai-messages');
     if (!aiForm || !messages) return;
     const sessionId = parseInt(aiForm.dataset.sessionId || '0', 10);
-    const value = (text || '').trim();
+      const value = (text || '').trim();
     const files = aiPendingFiles.slice();
     if ((!value && !files.length) || aiSending) return;
     if (!sessionId) {
@@ -798,12 +798,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     aiSending = true;
 
-    const welcome = messages.querySelector('.ai-welcome');
+      const welcome = messages.querySelector('.ai-welcome');
     if (welcome) {
       const row = welcome.closest('.ai-msg-row');
       (row || welcome).remove();
     }
-    const userMsg = document.createElement('div');
+      const userMsg = document.createElement('div');
     userMsg.className = 'ai-msg-row ai-msg-row--user';
     const i18n = window.LEXORA_I18N || {};
     const displayText = value || (i18n.attach_default_prompt || 'Please review the attached file(s).');
@@ -814,18 +814,18 @@ document.addEventListener('DOMContentLoaded', () => {
       )).join('') + '</div>';
     }
     userMsg.innerHTML = `<div class="ai-msg-stack"><div class="msg msg-user"><div class="ai-msg-body" data-ai-raw="${escAi(displayText)}">${bodyHtml}</div></div>${aiActionsHtml('user')}</div>`;
-    messages.appendChild(userMsg);
-    if (input) input.value = '';
+      messages.appendChild(userMsg);
+      if (input) input.value = '';
     aiPendingFiles = [];
     renderAiAttachList();
-    messages.scrollTop = messages.scrollHeight;
+      messages.scrollTop = messages.scrollHeight;
 
-    const thinking = document.createElement('div');
+      const thinking = document.createElement('div');
     thinking.className = 'ai-msg-row ai-msg-row--assistant';
     thinking.innerHTML = '<div class="ai-bot-mark sm" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="7" width="14" height="11" rx="3"/><circle cx="9.5" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="14.5" cy="12" r="1.2" fill="currentColor" stroke="none"/><path d="M9 18v2M15 18v2M12 4v3"/></svg></div><div class="ai-msg-stack"><div class="msg msg-assistant ai-bubble"><div class="ai-msg-body"></div></div></div>';
     const thinkingText = thinking.querySelector('.ai-msg-body');
     thinkingText.textContent = i18n.thinking || 'Thinking…';
-    messages.appendChild(thinking);
+      messages.appendChild(thinking);
 
     try {
       const endpoint = aiForm.getAttribute('data-ai-endpoint') || '../api/ai-chat.php';
@@ -867,7 +867,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (stack && !stack.querySelector('.ai-msg-actions')) {
         stack.insertAdjacentHTML('beforeend', aiActionsHtml('assistant'));
       }
-    } catch (err) {
+      } catch (err) {
       const fail = (err && err.message)
         ? String(err.message)
         : (i18n.service_error || 'Unable to reach the AI service. Please try again.');
@@ -879,9 +879,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     } finally {
       aiSending = false;
-    }
-    messages.scrollTop = messages.scrollHeight;
-  };
+      }
+      messages.scrollTop = messages.scrollHeight;
+    };
 
   bindAiMessageActions(document.getElementById('ai-messages'));
 
@@ -902,7 +902,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   if (aiForm) {
-    aiForm.dataset.noSaving = '1';
+      aiForm.dataset.noSaving = '1';
     const sendBtn = document.getElementById('ai-send-btn');
     const triggerAiSend = () => {
       const input = document.getElementById('ai-message');
@@ -1148,11 +1148,11 @@ function initAiAssistantUi() {
   let prompts = [];
   const promptsData = document.getElementById('ai-prompts-data');
   if (promptsData) {
-    try {
+  try {
       prompts = JSON.parse(promptsData.textContent || '[]');
-    } catch (e) {
-      prompts = [];
-    }
+  } catch (e) {
+    prompts = [];
+  }
   }
   if (!Array.isArray(prompts)) prompts = [];
 

@@ -69,6 +69,7 @@ $area = static function (string $label, string $value) use ($dash): void {
                     <?php $field(__('common.email'), (string) ($client['email'] ?? '')); ?>
                     <?php $field(__('common.phone'), (string) ($client['phone'] ?? '')); ?>
                 </div>
+                <?php $field(__('form.company'), (string) ($client['company_name'] ?? ''), true); ?>
                 <?php $area(__('common.address'), (string) ($client['address'] ?? '')); ?>
             </div>
         </section>
@@ -93,7 +94,6 @@ $area = static function (string $label, string $value) use ($dash): void {
             </div>
             <div class="form-grid">
                 <div class="entity-field-row entity-field-row--2">
-                    <?php $field(__('form.company'), (string) ($client['company_name'] ?? '')); ?>
                     <?php $field(__('form.assigned_lawyer'), $clientLawyerName !== '' ? $clientLawyerName : __('form.unassigned')); ?>
                 </div>
                 <?php $area(__('form.notes_history'), (string) ($client['notes'] ?? '')); ?>

@@ -36,10 +36,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('lawyers.php');
     }
     if ($postAction === 'assign_case') {
-        $pdo->prepare('UPDATE cases SET lawyer_id=? WHERE id=?')->execute([(int) post('lawyer_id'), (int) post('case_id')]);
-        create_notification($pdo, (int) post('lawyer_id'), 'notify.case_assigned_short', 'A case has been assigned to you.', 'case', '../lawyer/cases.php', current_user()['id']);
+        $lawyerId = (int) post('lawyer_id');
+        $caseId = (int) post('case_id');
+        if ($lawyerId < 1 || $caseId < 1) {
+            flash('error', __('flash.case.invalid_reference'));
+            redirect('lawyers.php?action=view&id=' . max(0, $lawyerId));
+        }
+        sync_case_lawyers($pdo, $caseId, $lawyerId, [], (int) current_user()['id']);
+        create_notification($pdo, $lawyerId, 'notify.case_assigned_short', 'A case has been assigned to you.', 'case', '../lawyer/cases.php?id=' . $caseId, current_user()['id']);
         flash('success', __('flash.case.assigned'));
-        redirect('lawyers.php?action=view&id=' . (int) post('lawyer_id'));
+        redirect('lawyers.php?action=view&id=' . $lawyerId);
     }
 }
 
@@ -202,7 +208,10 @@ if ($action === 'view' && $id) {
                 <h2><?= e(full_name($lawyer)) ?></h2>
                 <p class="muted"><?= e($lawyer['specialization'] ?: __('lawyers.general_practice')) ?> · <?= e($lawyer['bar_number'] ?: __('lawyers.no_bar')) ?></p>
             </div>
-            <a class="btn btn-primary btn-sm" href="?action=edit&id=<?= $id ?>"><?= __e('lawyers.edit_profile') ?></a>
+            <div class="row-actions">
+                <a class="btn btn-row-open btn-sm btn-row-fit" href="lawyer-availability.php?lawyer_id=<?= (int) $id ?>"><?= __e('lawyers.view_schedule') ?></a>
+                <a class="btn btn-primary btn-sm" href="?action=edit&id=<?= $id ?>"><?= __e('lawyers.edit_profile') ?></a>
+            </div>
         </div>
         <div class="grid grid-2">
             <div class="list-item"><strong><?= __e('common.email') ?></strong><?= e($lawyer['email']) ?></div>
@@ -280,6 +289,7 @@ $shownTo = min($offset + count($pageLawyers), $totalLawyers);
                     <td><?= status_badge($l['availability']) ?></td>
                     <td class="col-actions">
                         <div class="row-actions">
+                            <a class="btn btn-row-open btn-sm btn-row-fit" href="lawyer-availability.php?lawyer_id=<?= (int)$l['id'] ?>"><?= __e('lawyers.view_schedule') ?></a>
                             <a class="btn btn-row-edit btn-sm" href="?action=edit&id=<?= (int)$l['id'] ?>"><?= __e('common.edit') ?></a>
                             <form method="post" data-confirm="<?= __e('confirm.remove_lawyer') ?>"><?= csrf_field() ?><input type="hidden" name="form_action" value="delete"><input type="hidden" name="id" value="<?= (int)$l['id'] ?>"><button class="btn btn-row-delete btn-sm" type="submit"><?= __e('common.remove') ?></button></form>
                         </div>

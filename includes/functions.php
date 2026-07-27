@@ -328,9 +328,107 @@ function status_badge(string $status): string
 function generate_case_number(PDO $pdo): string
 {
     $year = date('Y');
-    $stmt = $pdo->query("SELECT COUNT(*) FROM cases WHERE YEAR(created_at) = YEAR(CURDATE())");
-    $count = (int) $stmt->fetchColumn() + 1;
-    return sprintf('CASE-%s-%03d', $year, $count);
+    $prefix = 'CASE-' . $year . '-';
+
+    $stmt = $pdo->prepare('SELECT case_number FROM cases WHERE case_number LIKE ?');
+    $stmt->execute([$prefix . '%']);
+    $max = 0;
+    foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $num) {
+        if (preg_match('/^CASE-' . preg_quote($year, '/') . '-(\d+)$/i', (string) $num, $m)) {
+            $max = max($max, (int) $m[1]);
+        }
+    }
+    $next = $max + 1;
+
+    for ($attempt = 0; $attempt < 500; $attempt++) {
+        $candidate = sprintf('CASE-%s-%03d', $year, $next + $attempt);
+        $check = $pdo->prepare('SELECT id FROM cases WHERE case_number = ? LIMIT 1');
+        $check->execute([$candidate]);
+        if (!$check->fetch()) {
+            return $candidate;
+        }
+    }
+
+    return sprintf('CASE-%s-%s', $year, strtoupper(substr(uniqid('', true), -6)));
+}
+
+function normalize_case_field_text(string $value): string
+{
+    $value = trim(preg_replace('/\s+/u', ' ', $value));
+    if (function_exists('mb_strtolower')) {
+        return mb_strtolower($value, 'UTF-8');
+    }
+    return strtolower($value);
+}
+
+/**
+ * Validate case create/edit form input. Returns a user-facing error message or null if OK.
+ */
+function validate_case_save_input(PDO $pdo, array $input): ?string
+{
+    $title = trim((string) ($input['title'] ?? ''));
+    $description = trim((string) ($input['description'] ?? ''));
+    $clientInstructions = trim((string) ($input['client_instructions'] ?? ''));
+    $clientId = (int) ($input['client_id'] ?? 0);
+    $editId = (int) ($input['edit_id'] ?? 0);
+
+    $textValues = array_values(array_filter([
+        $title,
+        $description,
+        $clientInstructions,
+    ], static fn(string $v): bool => $v !== ''));
+
+    foreach (['nonvat_description', 'vat_description'] as $key) {
+        foreach ((array) ($input[$key] ?? []) as $desc) {
+            $desc = trim((string) $desc);
+            if ($desc !== '') {
+                $textValues[] = $desc;
+            }
+        }
+    }
+
+    if (count($textValues) >= 2) {
+        $norms = array_map('normalize_case_field_text', $textValues);
+        if (count(array_unique($norms)) === 1) {
+            return __('flash.case.same_fields');
+        }
+    }
+
+    if ($clientId > 0 && $title !== '') {
+        $sql = 'SELECT case_number FROM cases WHERE client_id = ? AND LOWER(TRIM(title)) = LOWER(TRIM(?))';
+        $params = [$clientId, $title];
+        if ($editId > 0) {
+            $sql .= ' AND id <> ?';
+            $params[] = $editId;
+        }
+        $sql .= ' LIMIT 1';
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $existingNumber = $stmt->fetchColumn();
+        if ($existingNumber) {
+            return __('flash.case.duplicate', ['number' => (string) $existingNumber]);
+        }
+    }
+
+    return null;
+}
+
+function pdo_exception_user_message(Throwable $e, ?string $fallback = null): string
+{
+    $fallback ??= __('flash.case.save_failed');
+    if ($e instanceof PDOException) {
+        $driverCode = (int) (($e->errorInfo[1] ?? 0));
+        if ($driverCode === 1062) {
+            if (stripos($e->getMessage(), 'case_number') !== false) {
+                return __('flash.case.number_conflict');
+            }
+            return __('flash.case.save_failed');
+        }
+        if ($driverCode === 1452) {
+            return __('flash.case.invalid_reference');
+        }
+    }
+    return $fallback;
 }
 
 function ensure_case_create_columns(PDO $pdo): void
