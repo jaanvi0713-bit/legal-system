@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/role-access.php';
 require_once __DIR__ . '/../includes/ai-llm.php';
+require_once __DIR__ . '/../includes/deadline-alerts.php';
 require_role(['admin']);
 $pdo = db();
 $user = current_user();
@@ -112,7 +113,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             set_setting($pdo, 'notify_' . $cat . '_inapp', post('notify_' . $cat . '_inapp', '0') === '1' ? '1' : '0');
             set_setting($pdo, 'notify_' . $cat . '_email', post('notify_' . $cat . '_email', '0') === '1' ? '1' : '0');
         }
+        set_setting($pdo, 'deadline_alerts_enabled', post('deadline_alerts_enabled', '0') === '1' ? '1' : '0');
+        set_setting($pdo, 'deadline_alerts_email', post('deadline_alerts_email', '0') === '1' ? '1' : '0');
+        $dayChoices = [];
+        foreach ([7, 3, 1, 0] as $day) {
+            if (post('deadline_day_' . $day, '0') === '1') {
+                $dayChoices[] = $day;
+            }
+        }
+        set_setting($pdo, 'deadline_alert_days', $dayChoices !== [] ? implode(',', $dayChoices) : '7,3,1,0');
         flash('success', __('settings.notifications.saved'));
+    } elseif ($section === 'deadline_run') {
+        $result = run_deadline_alerts($pdo);
+        if ($result['skipped']) {
+            flash('info', __('settings.deadline.run_skipped'));
+        } else {
+            flash('success', __('settings.deadline.run_done', [
+                'hearings' => $result['hearings'],
+                'tasks' => $result['tasks'],
+            ]));
+        }
     } elseif ($section === 'branding') {
         foreach ([
             'company_name', 'company_email', 'company_phone', 'company_address',
@@ -340,7 +360,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    redirect('settings.php?tab=' . urlencode($section));
+    redirect('settings.php?tab=' . urlencode($section === 'deadline_run' ? 'notifications' : $section));
 }
 
 $get = fn($k, $d = '') => get_setting($pdo, $k, $d);
@@ -452,7 +472,64 @@ require __DIR__ . '/../includes/header.php';
                     </div>
                     <p class="field-hint settings-matrix-note"><?= __e('settings.notif.smtp_note') ?></p>
                 </div>
+
+                <?php
+                $deadlineDays = deadline_alert_days($pdo);
+                $cronSecret = trim((string) $get('cron_secret', ''));
+                if ($cronSecret === '') {
+                    $cronSecret = bin2hex(random_bytes(16));
+                    set_setting($pdo, 'cron_secret', $cronSecret);
+                }
+                $cronUrl = rtrim((string) app_config('url'), '/') . '/tools/run-deadline-alerts.php?key=' . urlencode($cronSecret);
+                $lastRun = trim((string) $get('deadline_alerts_last_run', ''));
+                ?>
+                <div class="settings-block">
+                    <div class="settings-block-head">
+                        <h3><?= __e('settings.deadline.title') ?></h3>
+                        <p><?= __e('settings.deadline.help') ?></p>
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group full">
+                            <label class="settings-matrix-check" style="display:flex;align-items:center;gap:.55rem;">
+                                <input type="checkbox" name="deadline_alerts_enabled" value="1" <?= deadline_alerts_enabled($pdo) ? 'checked' : '' ?>>
+                                <?= __e('settings.deadline.enabled') ?>
+                            </label>
+                        </div>
+                        <div class="form-group full">
+                            <label><?= __e('settings.deadline.days_before') ?></label>
+                            <div class="quick-links" style="margin-top:.35rem;">
+                                <?php foreach ([7, 3, 1, 0] as $day): ?>
+                                <label class="chip" style="cursor:pointer;">
+                                    <input type="checkbox" name="deadline_day_<?= $day ?>" value="1" <?= in_array($day, $deadlineDays, true) ? 'checked' : '' ?> style="margin-right:.35rem;">
+                                    <?= $day === 0 ? __e('settings.deadline.same_day') : __e('settings.deadline.days_option', ['count' => $day]) ?>
+                                </label>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                        <div class="form-group full">
+                            <label class="settings-matrix-check" style="display:flex;align-items:center;gap:.55rem;">
+                                <input type="checkbox" name="deadline_alerts_email" value="1" <?= deadline_alerts_email_enabled($pdo) ? 'checked' : '' ?>>
+                                <?= __e('settings.deadline.email') ?>
+                            </label>
+                        </div>
+                        <div class="form-group full">
+                            <label><?= __e('settings.deadline.cron_url') ?></label>
+                            <input value="<?= e($cronUrl) ?>" readonly onclick="this.select()">
+                            <?php if ($lastRun !== ''): ?>
+                            <span class="field-hint"><?= __e('settings.deadline.last_run', ['time' => format_datetime($lastRun)]) ?></span>
+                            <?php endif; ?>
+                            <span class="field-hint"><?= __e('settings.deadline.cron_help') ?></span>
+                        </div>
+                    </div>
+                </div>
                 <div class="form-actions"><button class="btn btn-primary" type="submit"><?= __e('settings.notifications.save') ?></button></div>
+            </form>
+            <form method="post" class="settings-form" style="margin-top:1rem;">
+                <?= csrf_field() ?>
+                <input type="hidden" name="settings_tab" value="deadline_run">
+                <div class="form-actions">
+                    <button class="btn btn-secondary" type="submit"><?= __e('settings.deadline.run_now') ?></button>
+                </div>
             </form>
 
         <?php elseif ($tab === 'branding'): ?>

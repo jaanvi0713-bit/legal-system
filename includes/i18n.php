@@ -169,7 +169,7 @@ function t_stored(string $stored, array $extra = []): string
         return __($m[1], $params);
     }
 
-    if (str_starts_with($stored, 'notify.') || str_starts_with($stored, 'ai.')) {
+    if (str_starts_with($stored, 'notify.') || str_starts_with($stored, 'deadline.') || str_starts_with($stored, 'ai.')) {
         $translated = __($stored, $extra);
         return $translated !== $stored ? $translated : $stored;
     }

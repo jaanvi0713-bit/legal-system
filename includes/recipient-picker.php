@@ -36,6 +36,24 @@ $recipientGroups = [
                 data-search="all <?= e(__('notifications.recipient.all')) ?>">
                 <?= __e('notifications.recipient.all') ?>
             </button>
+            <button type="button" class="recipient-picker-option" role="option" aria-selected="false"
+                data-value="lawyers"
+                data-label="<?= e(__('notifications.recipient.all_lawyers')) ?>"
+                data-search="lawyers <?= e(__('notifications.recipient.all_lawyers')) ?>">
+                <?= __e('notifications.recipient.all_lawyers') ?>
+            </button>
+            <button type="button" class="recipient-picker-option" role="option" aria-selected="false"
+                data-value="clients"
+                data-label="<?= e(__('notifications.recipient.all_clients')) ?>"
+                data-search="clients <?= e(__('notifications.recipient.all_clients')) ?>">
+                <?= __e('notifications.recipient.all_clients') ?>
+            </button>
+            <button type="button" class="recipient-picker-option" role="option" aria-selected="false"
+                data-value="staff"
+                data-label="<?= e(__('notifications.recipient.all_staff')) ?>"
+                data-search="staff <?= e(__('notifications.recipient.all_staff')) ?>">
+                <?= __e('notifications.recipient.all_staff') ?>
+            </button>
             <?php foreach ($recipientGroups as $group): ?>
                 <?php if (!$group['items']) continue; ?>
                 <div class="recipient-picker-group" data-recipient-group>

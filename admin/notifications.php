@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/broadcasts.php';
 require_role(['admin', 'staff']);
 $pdo = db();
 $user = current_user();
@@ -12,19 +13,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     $fa = post('form_action');
     if ($fa === 'send') {
-        $target = post('user_id');
-        $title = post('title');
-        $message = post('message');
+        $target = trim((string) post('user_id', ''));
+        $title = trim((string) post('title'));
+        $message = trim((string) post('message'));
         $type = post('type') ?: 'info';
-        if ($target === 'all') {
-            $ids = $pdo->query('SELECT id FROM users WHERE is_active=1')->fetchAll(PDO::FETCH_COLUMN);
-            foreach ($ids as $uid) {
-                create_notification($pdo, (int)$uid, $title, $message, $type, null, $user['id']);
-            }
+        $sendEmail = post('send_email') === '1';
+
+        if ($title === '' || $message === '') {
+            flash('error', __('flash.notification.required'));
+            redirect('notifications.php#send');
+        }
+
+        if (in_array($target, ['all', 'lawyers', 'clients', 'staff'], true)) {
+            $result = send_broadcast($pdo, $title, $message, $type, $target, 0, $sendEmail, (int) $user['id']);
+            flash('success', __('flash.broadcast.sent', ['count' => $result['count']]));
+        } elseif (ctype_digit($target)) {
+            $result = send_broadcast($pdo, $title, $message, $type, 'user', (int) $target, $sendEmail, (int) $user['id']);
             flash('success', __('flash.notification.sent'));
         } else {
-            create_notification($pdo, (int)$target, $title, $message, $type, null, $user['id']);
-            flash('success', __('flash.notification.sent'));
+            flash('error', __('flash.notification.recipient_required'));
+            redirect('notifications.php#send');
         }
         redirect('notifications.php');
     }
@@ -45,6 +53,8 @@ foreach ($users as $u) {
         $recipientUsers[] = $u;
     }
 }
+
+$broadcasts = broadcasts_recent($pdo, 12);
 
 $perPage = 10;
 $listPage = max(1, (int) get('page', 1));
@@ -77,44 +87,43 @@ require __DIR__ . '/../includes/header.php';
     <section class="panel notify-compose" id="send">
         <div class="notify-board-banner">
             <div class="notify-board-banner-copy">
-                <h2><?= __e('notifications.send') ?></h2>
-                <p><?= __e('notifications.send_help') ?></p>
+                <h2><?= __e('notifications.broadcast_title') ?></h2>
+                <p><?= __e('notifications.broadcast_help') ?></p>
             </div>
         </div>
         <form method="post" class="form-grid notify-form entity-inline-form notify-compose-body" id="notifyComposeForm">
             <?= csrf_field() ?><input type="hidden" name="form_action" value="send">
-            <div class="form-group full">
-                <label><?= __e('common.recipient') ?></label>
-                <?php
-                $recipientPickerId = 'notifyRecipientPicker';
-                $recipientPickerLawyers = $recipientLawyers;
-                $recipientPickerClients = $recipientClients;
-                $recipientPickerUsers = $recipientUsers;
-                require __DIR__ . '/../includes/recipient-picker.php';
-                ?>
+            <div class="entity-field-row entity-field-row--2">
+                <div class="form-group">
+                    <label><?= __e('common.recipient') ?></label>
+                    <?php
+                    $recipientPickerId = 'notifyRecipientPicker';
+                    $recipientPickerLawyers = $recipientLawyers;
+                    $recipientPickerClients = $recipientClients;
+                    $recipientPickerUsers = $recipientUsers;
+                    require __DIR__ . '/../includes/recipient-picker.php';
+                    ?>
+                </div>
+                <div class="form-group">
+                    <label for="notifyComposeTitle"><?= __e('notifications.title_field') ?></label>
+                    <input name="title" id="notifyComposeTitle" required placeholder="<?= __e('notifications.title_ph') ?>">
+                </div>
             </div>
             <div class="entity-field-row entity-field-row--2">
                 <div class="form-group">
-                    <label><?= __e('common.type') ?></label>
+                    <label for="notifyComposeType"><?= __e('common.type') ?></label>
                     <select name="type" id="notifyComposeType">
                         <?php foreach (['info','success','case','appointment','payment','document','reminder'] as $t): ?>
                             <option value="<?= $t ?>"><?= e(__('notification.type.' . $t)) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="form-group">
-                    <div class="notify-field-label-row">
-                        <label for="notifyComposeTitle"><?= __e('notifications.title_field') ?></label>
-                        <div class="notify-field-tools">
-                            <button type="button" class="notify-field-icon-btn" data-copy-for="notifyComposeTitle" title="<?= __e('common.copy') ?>" aria-label="<?= __e('common.copy') ?>">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                            </button>
-                            <button type="button" class="notify-field-icon-btn" data-edit-for="notifyComposeTitle" title="<?= __e('common.edit') ?>" aria-label="<?= __e('common.edit') ?>">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
-                            </button>
-                        </div>
-                    </div>
-                    <input name="title" id="notifyComposeTitle" required placeholder="<?= __e('notifications.title_ph') ?>">
+                <div class="form-group notify-compose-checkbox">
+                    <span class="notify-compose-checkbox-label" aria-hidden="true">&nbsp;</span>
+                    <label class="notify-inline-check" for="notifyComposeSendEmail">
+                        <input type="checkbox" name="send_email" id="notifyComposeSendEmail" value="1">
+                        <span><?= __e('notifications.send_email_also') ?></span>
+                    </label>
                 </div>
             </div>
             <div class="form-group full">
@@ -132,7 +141,7 @@ require __DIR__ . '/../includes/header.php';
                 <textarea name="message" id="notifyComposeMessage" required rows="5" placeholder="<?= __e('notifications.message_ph') ?>"></textarea>
             </div>
             <div class="form-actions full">
-                <button class="btn btn-primary" type="submit"><?= __e('common.send') ?></button>
+                <button class="btn btn-primary" type="submit"><?= __e('notifications.broadcast_send') ?></button>
             </div>
         </form>
     </section>
@@ -178,6 +187,43 @@ require __DIR__ . '/../includes/header.php';
       });
     })();
     </script>
+
+    <?php if ($broadcasts): ?>
+    <section class="panel notify-broadcast-history">
+        <div class="panel-header">
+            <h2><?= __e('notifications.broadcast_history') ?></h2>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th><?= __e('common.date') ?></th>
+                        <th><?= __e('notifications.title_field') ?></th>
+                        <th><?= __e('common.recipient') ?></th>
+                        <th><?= __e('notifications.broadcast_recipients') ?></th>
+                        <th><?= __e('common.email') ?></th>
+                        <th><?= __e('common.sent_by') ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($broadcasts as $bc): ?>
+                    <tr>
+                        <td><?= e(format_date($bc['created_at'], 'M j, Y g:i A')) ?></td>
+                        <td>
+                            <strong><?= e($bc['title']) ?></strong>
+                            <div class="muted"><?= e(mb_strimwidth(strip_tags((string) $bc['message']), 0, 90, '…')) ?></div>
+                        </td>
+                        <td><?= e(broadcast_audience_label((string) $bc['audience'])) ?></td>
+                        <td><?= (int) $bc['recipient_count'] ?></td>
+                        <td><?= (int) $bc['email_sent'] ? __e('common.yes') : __e('common.no') ?></td>
+                        <td><?= e($bc['sender_name'] ?: __('common.system')) ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </section>
+    <?php endif; ?>
 
     <?php
     $notifyBoardItems = $rows;

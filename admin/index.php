@@ -1,7 +1,9 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
 require_role(['admin', 'staff']);
+require_once __DIR__ . '/../includes/deadline-alerts.php';
 $pdo = db();
+deadline_alerts_maybe_run($pdo);
 $user = current_user();
 
 $stats = [
