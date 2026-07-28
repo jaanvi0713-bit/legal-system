@@ -1469,8 +1469,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   initSelectWraps();
   initAiAssistantUi();
-  initAvailabilityIntervalInput();
-  initAvailabilitySchedule();
+  if (document.querySelector('[data-avail-blocks-form]')) {
+    initAvailabilityBlocks();
+  } else {
+    initAvailabilityIntervalInput();
+    initAvailabilitySchedule();
+  }
   initAppointmentSlotPicker();
   initDashboardCharts();
   initAppointmentsCalendar();
@@ -2821,6 +2825,178 @@ function refreshAvailabilityCounts(form) {
   });
   if (totalEl) {
     totalEl.textContent = String(totalTpl).replace(':count', String(total));
+  }
+}
+
+function initAvailabilityBlocks() {
+  const form = document.getElementById('availBlocksForm');
+  const body = document.getElementById('availBlocksBody');
+  const template = document.getElementById('availBlockRowTemplate');
+  const addBtn = document.querySelector('[data-avail-add-block]');
+  const dayTitle = document.getElementById('availBlocksDayTitle');
+  const dayMeta = document.getElementById('availBlocksDayMeta');
+  const totalEl = document.getElementById('availBlocksTotal');
+  if (!form || !body) {
+    return;
+  }
+
+  const readOnly = form.classList.contains('avail-schedule-readonly');
+  const defaultDate = body.getAttribute('data-default-date') || '';
+  const defaultDay = body.getAttribute('data-default-day') || '';
+  const emptyLabel = body.getAttribute('data-empty-label') || 'No periods for this day.';
+  let activeDate = defaultDate;
+  let activeDay = defaultDay;
+  let nextIndex = body.querySelectorAll('[data-avail-block-row]').length;
+
+  function rowDate(row) {
+    if (row.getAttribute('data-block-date')) {
+      return row.getAttribute('data-block-date');
+    }
+    const select = row.querySelector('[data-avail-block-date-select]');
+    return select ? select.value : '';
+  }
+
+  function syncRowDate(row) {
+    const select = row.querySelector('[data-avail-block-date-select]');
+    if (select) {
+      row.setAttribute('data-block-date', select.value);
+    }
+  }
+
+  function countForDate(date) {
+    return Array.from(body.querySelectorAll('[data-avail-block-row]')).filter((row) => rowDate(row) === date).length;
+  }
+
+  function updateCounts() {
+    form.querySelectorAll('[data-avail-day-count]').forEach((el) => {
+      const day = el.getAttribute('data-avail-day-count');
+      const tab = form.querySelector(`[data-avail-tab="${day}"]`);
+      const date = tab ? tab.getAttribute('data-avail-date') : '';
+      el.textContent = String(countForDate(date));
+    });
+    const total = body.querySelectorAll('[data-avail-block-row]').length;
+    if (totalEl && totalEl.dataset.totalTpl) {
+      totalEl.textContent = totalEl.dataset.totalTpl.replace(':count', String(total));
+    }
+    if (dayMeta && dayMeta.dataset.dayTpl) {
+      dayMeta.textContent = dayMeta.dataset.dayTpl.replace(':count', String(countForDate(activeDate)));
+    }
+  }
+
+  function ensureEmptyRow() {
+    let empty = body.querySelector('[data-avail-empty-row]');
+    const visibleRows = Array.from(body.querySelectorAll('[data-avail-block-row]')).filter((row) => rowDate(row) === activeDate);
+    if (visibleRows.length) {
+      if (empty) empty.remove();
+      return;
+    }
+    if (!empty) {
+      const cols = readOnly ? 4 : 5;
+      empty = document.createElement('tr');
+      empty.className = 'avail-blocks-empty-row';
+      empty.setAttribute('data-avail-empty-row', '');
+      empty.innerHTML = `<td colspan="${cols}" class="muted avail-blocks-empty">${emptyLabel}</td>`;
+      body.appendChild(empty);
+    }
+    empty.hidden = false;
+  }
+
+  function filterRows() {
+    body.querySelectorAll('[data-avail-block-row]').forEach((row) => {
+      row.hidden = rowDate(row) !== activeDate;
+    });
+    const empty = body.querySelector('[data-avail-empty-row]');
+    if (empty) {
+      empty.hidden = true;
+    }
+    ensureEmptyRow();
+    updateCounts();
+  }
+
+  function showDay(day, date, label) {
+    activeDay = day;
+    activeDate = date;
+    form.querySelectorAll('[data-avail-tab]').forEach((tab) => {
+      const on = tab.getAttribute('data-avail-tab') === day;
+      tab.classList.toggle('is-active', on);
+      tab.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    if (dayTitle && label) {
+      dayTitle.textContent = label;
+    }
+    filterRows();
+  }
+
+  function reindexRows() {
+    body.querySelectorAll('[data-avail-block-row]').forEach((row, index) => {
+      row.querySelectorAll('[name^="blocks["]').forEach((input) => {
+        input.name = input.name.replace(/blocks\[\d+\]/, `blocks[${index}]`);
+      });
+    });
+    nextIndex = body.querySelectorAll('[data-avail-block-row]').length;
+    updateCounts();
+  }
+
+  function bindRemove(row) {
+    const btn = row.querySelector('[data-avail-remove-block]');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      row.remove();
+      reindexRows();
+      filterRows();
+    });
+  }
+
+  function bindDateSelect(row) {
+    const select = row.querySelector('[data-avail-block-date-select]');
+    if (!select) return;
+    select.addEventListener('change', () => {
+      syncRowDate(row);
+      filterRows();
+    });
+  }
+
+  body.querySelectorAll('[data-avail-block-row]').forEach((row) => {
+    bindRemove(row);
+    bindDateSelect(row);
+  });
+
+  form.querySelectorAll('[data-avail-tab]').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      showDay(
+        tab.getAttribute('data-avail-tab') || '',
+        tab.getAttribute('data-avail-date') || '',
+        tab.getAttribute('data-avail-day-label') || ''
+      );
+    });
+  });
+
+  if (!readOnly && addBtn && template) {
+    addBtn.addEventListener('click', () => {
+      const html = template.innerHTML
+        .replace(/__INDEX__/g, String(nextIndex))
+        .replace(/__DATE__/g, activeDate);
+      const wrap = document.createElement('tbody');
+      wrap.innerHTML = html.trim();
+      const row = wrap.firstElementChild;
+      if (!row) return;
+      const select = row.querySelector('[data-avail-block-date-select]');
+      if (select) {
+        select.value = activeDate;
+      }
+      body.appendChild(row);
+      bindRemove(row);
+      bindDateSelect(row);
+      nextIndex += 1;
+      filterRows();
+    });
+  }
+
+  const defaultTab = form.querySelector(`[data-avail-tab="${defaultDay}"]`);
+  if (defaultTab) {
+    showDay(defaultDay, defaultDate, defaultTab.getAttribute('data-avail-day-label') || '');
+  } else {
+    filterRows();
   }
 }
 

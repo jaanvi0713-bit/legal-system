@@ -8,6 +8,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     $fa = post('form_action');
 
+    if ($fa === 'blocks') {
+        $weekStart = post('week_start', availability_week_start());
+        try {
+            $blocks = isset($_POST['blocks']) && is_array($_POST['blocks']) ? array_values($_POST['blocks']) : [];
+            save_lawyer_availability_blocks($pdo, $uid, $weekStart, $blocks);
+            flash('success', __('flash.availability.blocks_saved'));
+        } catch (InvalidArgumentException $ex) {
+            flash('error', $ex->getMessage());
+        }
+        redirect('availability.php?week=' . urlencode(availability_normalize_week_start($weekStart)));
+    }
+
     if ($fa === 'slots') {
         $weekStart = post('week_start', availability_week_start());
         try {
@@ -36,6 +48,7 @@ $availIsCurrentWeek = $availWeekStart === availability_week_start();
 $u = current_user();
 $availDayHours = get_lawyer_week_day_hours($pdo, $uid, $availWeekStart);
 $availMatrix = get_lawyer_availability_matrix($pdo, $uid, $availWeekStart);
+$availLawyerId = $uid;
 $pageTitle = __('page.availability');
 $pageSubtitle = __('availability.schedule.subtitle');
 $portal = 'lawyer';

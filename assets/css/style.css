@@ -10839,6 +10839,98 @@ html[data-theme="dark"] .avail-slot-toggle {
     opacity: 0;
     pointer-events: none;
 }
+.avail-board-blocks {
+    gap: 0;
+}
+.avail-board-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.25rem 0.85rem;
+    border-bottom: 1px solid var(--line);
+}
+.avail-board-intro { min-width: 0; }
+.avail-board-eyebrow {
+    margin: 0 0 0.25rem;
+    font-size: 0.72rem;
+    font-weight: 750;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--primary);
+}
+.avail-board-lead {
+    margin: 0;
+    font-size: 0.86rem;
+    color: var(--ink-soft);
+    max-width: 42rem;
+}
+.avail-week-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.85rem 1.25rem;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel-soft);
+}
+.avail-week-label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.2rem;
+    text-align: center;
+}
+.avail-week-range {
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--ink);
+}
+.avail-week-today {
+    font-size: 0.78rem;
+    font-weight: 650;
+}
+.avail-blocks-toolbar {
+    padding: 0.85rem 1.25rem 0;
+}
+.avail-blocks-table-wrap {
+    margin: 0.85rem 1.25rem 0;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    overflow: hidden;
+}
+.avail-blocks-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.avail-blocks-table thead th {
+    padding: 0.75rem 0.85rem;
+    font-size: 0.74rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--ink-soft);
+    background: var(--panel-soft);
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+}
+.avail-blocks-table tbody td {
+    padding: 0.65rem 0.85rem;
+    border-bottom: 1px solid var(--line);
+    vertical-align: middle;
+}
+.avail-blocks-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+.avail-blocks-table select,
+.avail-blocks-table input[type="time"] {
+    width: 100%;
+    min-width: 0;
+}
+.avail-blocks-empty {
+    text-align: center;
+    padding: 1.25rem !important;
+}
 .avail-schedule-footer {
     display: flex;
     flex-wrap: wrap;
