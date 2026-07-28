@@ -35,14 +35,16 @@ if ($lawyerId <= 0) {
                     </tr>
                 </thead>
                 <tbody>
-                <?php foreach ($lawyers as $l): ?>
+                <?php foreach ($lawyers as $l):
+                    $liveStatus = resolve_lawyer_live_availability($pdo, (int) $l['id']);
+                ?>
                     <tr>
                         <td>
                             <strong><?= e(full_name($l)) ?></strong>
                             <div class="muted"><?= e($l['email']) ?></div>
                         </td>
                         <td><?= e($l['specialization'] ?: __('common.em_dash')) ?></td>
-                        <td><?= status_badge($l['availability']) ?></td>
+                        <td><?= status_badge($liveStatus) ?></td>
                         <td class="col-actions">
                             <a class="btn btn-row-open btn-sm btn-row-fit" href="lawyer-availability.php?lawyer_id=<?= (int) $l['id'] ?>"><?= __e('lawyers.view_schedule') ?></a>
                         </td>
@@ -74,9 +76,8 @@ $availNextWeek = date('Y-m-d', strtotime($availWeekStart . ' +7 days'));
 $availWeekLabel = availability_format_week_range($availWeekStart);
 $availWeekDates = availability_week_dates($availWeekStart);
 $availIsCurrentWeek = $availWeekStart === availability_week_start();
-$availMatrix = get_lawyer_availability_matrix($pdo, $lawyerId, $availWeekStart);
-$availDayHours = get_lawyer_week_day_hours($pdo, $lawyerId, $availWeekStart);
 $availLawyerId = $lawyerId;
+$availLawyer = $lawyer;
 $availReadOnly = true;
 $availWeekHref = static fn(string $week): string => 'lawyer-availability.php?lawyer_id=' . $lawyerId . '&week=' . urlencode(availability_normalize_week_start($week));
 

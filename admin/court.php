@@ -33,7 +33,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->prepare('UPDATE cases SET next_hearing_date = DATE(?) WHERE id=?')->execute([post('hearing_date'), $caseId]);
             flash('success', __('flash.hearing.recorded'));
         }
-        redirect('court.php');
+        $returnUrl = is_safe_relative_url(post('return_url', '')) ? post('return_url') : 'court.php';
+        redirect($returnUrl);
     }
     if ($fa === 'delete') {
         $pdo->prepare('DELETE FROM court_hearings WHERE id=?')->execute([(int) post('id')]);
@@ -73,10 +74,10 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
     }
     require __DIR__ . '/../includes/header.php';
     $isEdit = (bool) $id;
-    $formCancelUrl = 'court.php';
+    $formCancelUrl = is_safe_relative_url(get('from', '')) ? get('from') : 'court.php';
     $hearingFormConfig = [];
-    if ($preLawyerId > 0 && !$isEdit) {
-        $hearingFormConfig['lockLawyerId'] = $preLawyerId;
+    if ($formCancelUrl !== 'court.php') {
+        $hearingFormConfig['returnUrl'] = $formCancelUrl;
     }
     require __DIR__ . '/../includes/hearing-form.php';
     require __DIR__ . '/../includes/footer.php'; exit;

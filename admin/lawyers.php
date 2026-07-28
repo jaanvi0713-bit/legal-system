@@ -13,7 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $fields = [
             post('first_name'), post('last_name'), post('username'), post('email'), post('phone'),
             post('address'), post('specialization'), post('bar_number'),
-            post('availability'), (int) (post('is_active') === '1'),
+            normalize_lawyer_availability((string) post('availability')), (int) (post('is_active') === '1'),
         ];
         if ($editId) {
             $fields[] = $editId;
@@ -24,7 +24,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->prepare('INSERT INTO users (role, first_name, last_name, username, email, password, phone, address, specialization, bar_number, availability, is_active) VALUES ("lawyer",?,?,?,?,?,?,?,?,?,?,?)')
                 ->execute([
                     post('first_name'), post('last_name'), post('username'), post('email'), $password, post('phone'),
-                    post('address'), post('specialization'), post('bar_number'), post('availability'), (int) (post('is_active') === '1'),
+                    post('address'), post('specialization'), post('bar_number'), normalize_lawyer_availability((string) post('availability')), (int) (post('is_active') === '1'),
                 ]);
             flash('success', __('flash.lawyer.added'));
         }
@@ -66,6 +66,7 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
         $stmt = $pdo->prepare('SELECT * FROM users WHERE id=? AND role="lawyer"');
         $stmt->execute([$id]);
         $lawyer = $stmt->fetch() ?: $lawyer;
+        $lawyer['availability'] = normalize_lawyer_availability((string) ($lawyer['availability'] ?? 'available'));
     }
     require __DIR__ . '/../includes/header.php';
     $isEdit = (bool) $id;
@@ -178,7 +179,7 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
                             <div class="form-group">
                                 <label for="availability"><?= __e('form.availability') ?> <span class="req" title="<?= __e('form.required') ?>">*</span></label>
                                 <select id="availability" name="availability" required>
-                                    <?php foreach (['available', 'busy', 'unavailable'] as $val): ?>
+                                    <?php foreach (lawyer_availability_statuses() as $val): ?>
                                         <option value="<?= $val ?>" <?= $lawyer['availability'] === $val ? 'selected' : '' ?>><?= e(translate_status($val)) ?></option>
                                     <?php endforeach; ?>
                                 </select>
@@ -203,6 +204,7 @@ if ($action === 'view' && $id) {
     $stmt->execute([$id]);
     $lawyer = $stmt->fetch();
     if (!$lawyer) { flash('error', __('lawyers.not_found')); redirect('lawyers.php'); }
+    $lawyer['availability'] = resolve_lawyer_live_availability($pdo, $id);
     $cases = $pdo->prepare(
         'SELECT c.*, CONCAT(u.first_name," ",u.last_name) AS client_name,
                 COALESCE(
@@ -274,8 +276,9 @@ if ($action === 'view' && $id) {
 
     $lawyerProfileUrl = 'lawyers.php?action=view&id=' . $id;
     $lawyerScheduleUrl = 'lawyer-availability.php?lawyer_id=' . $id;
-    $lawyerApptCreateUrl = 'appointments.php?action=create&lawyer_id=' . $id;
-    $lawyerHearingCreateUrl = 'court.php?action=create&lawyer_id=' . $id;
+    $lawyerProfileScheduleUrl = $lawyerProfileUrl . '&tab=schedule';
+    $lawyerApptCreateUrl = 'appointments.php?action=create&lawyer_id=' . $id . '&from=' . urlencode($lawyerProfileScheduleUrl);
+    $lawyerHearingCreateUrl = 'court.php?action=create&lawyer_id=' . $id . '&from=' . urlencode($lawyerProfileScheduleUrl);
 
     $workloadPct = count($cases) > 0 ? (int) round(($openCases / count($cases)) * 100) : 0;
     $initials = strtoupper(mb_substr((string) $lawyer['first_name'], 0, 1) . mb_substr((string) $lawyer['last_name'], 0, 1));
@@ -681,6 +684,10 @@ $offset = ($page - 1) * $perPage;
 $pageLawyers = array_slice($lawyers, $offset, $perPage);
 $shownFrom = $totalLawyers === 0 ? 0 : $offset + 1;
 $shownTo = min($offset + count($pageLawyers), $totalLawyers);
+$liveAvailability = resolve_lawyers_live_availability_map(
+    $pdo,
+    array_map(static fn(array $l): int => (int) $l['id'], $pageLawyers)
+);
 ?>
 <div class="panel case-list-panel">
     <div class="case-list-head">
@@ -693,12 +700,14 @@ $shownTo = min($offset + count($pageLawyers), $totalLawyers);
         <table class="case-table">
             <thead><tr><th><?= __e('common.lawyer') ?></th><th><?= __e('form.specialization') ?></th><th><?= __e('common.workload') ?></th><th><?= __e('form.availability') ?></th><th class="col-actions"><?= __e('common.actions') ?></th></tr></thead>
             <tbody>
-            <?php foreach ($pageLawyers as $l): ?>
+            <?php foreach ($pageLawyers as $l):
+                $liveStatus = $liveAvailability[(int) $l['id']] ?? ($l['availability'] ?? 'unavailable');
+            ?>
                 <tr>
                     <td><a href="?action=view&id=<?= (int)$l['id'] ?>"><strong><?= e(full_name($l)) ?></strong></a><div class="muted"><?= e($l['email']) ?></div></td>
                     <td><?= e($l['specialization'] ?: __('common.em_dash')) ?></td>
                     <td><?= e(__('lawyers.open_count', ['count' => (int)$l['open_cases']])) ?></td>
-                    <td><?= status_badge($l['availability']) ?></td>
+                    <td><?= status_badge($liveStatus) ?></td>
                     <td class="col-actions">
                         <div class="row-actions">
                             <a class="btn btn-row-open btn-sm btn-row-fit" href="lawyer-availability.php?lawyer_id=<?= (int)$l['id'] ?>"><?= __e('lawyers.view_schedule') ?></a>

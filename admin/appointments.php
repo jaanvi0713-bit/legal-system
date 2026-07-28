@@ -54,7 +54,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             flash('success', __('flash.appointment.created'));
         }
-        redirect('appointments.php');
+        $returnUrl = is_safe_relative_url(post('return_url', '')) ? post('return_url') : 'appointments.php';
+        redirect($returnUrl);
     }
     if ($fa === 'cancel') {
         $pdo->prepare('UPDATE appointments SET status="cancelled" WHERE id=?')->execute([(int) post('id')]);
@@ -98,11 +99,11 @@ if ($action === 'create' || ($action === 'edit' && $id)) {
     }
     require __DIR__ . '/../includes/header.php';
     $isEdit = (bool) $id;
-    $formCancelUrl = 'appointments.php';
+    $formCancelUrl = is_safe_relative_url(get('from', '')) ? get('from') : 'appointments.php';
     $apptAvailabilityLawyerId = (int) ($row['lawyer_id'] ?? 0) ?: null;
     $apptFormConfig = [];
-    if ($prefillLawyerId > 0 && !$isEdit) {
-        $apptFormConfig['lockLawyerId'] = $prefillLawyerId;
+    if ($formCancelUrl !== 'appointments.php') {
+        $apptFormConfig['returnUrl'] = $formCancelUrl;
     }
     require __DIR__ . '/../includes/appointment-form.php';
     require __DIR__ . '/../includes/footer.php'; exit;

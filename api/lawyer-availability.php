@@ -63,6 +63,7 @@ if ($date !== '') {
     echo json_encode([
         'date' => $date,
         'duration' => $duration,
+        'source' => lawyer_has_availability_blocks_for_date($pdo, $lawyerId, $date) ? 'blocks' : 'slots',
         'slots' => $slots,
     ], JSON_UNESCAPED_UNICODE);
     exit;

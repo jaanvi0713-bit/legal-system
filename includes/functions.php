@@ -178,6 +178,12 @@ function redirect(string $url): void
     exit;
 }
 
+function is_safe_relative_url(string $url): bool
+{
+    $url = trim($url);
+    return $url !== '' && !str_contains($url, '://') && !str_starts_with($url, '//');
+}
+
 function flash(string $type, string $message): void
 {
     $_SESSION['flash'] = ['type' => $type, 'message' => $message];
@@ -289,6 +295,9 @@ function format_datetime(?string $date): string
 
 function status_badge(string $status): string
 {
+    if ($status === 'busy') {
+        $status = 'unavailable';
+    }
     $map = [
         'open' => 'badge-info',
         'active' => 'badge-success',
@@ -2869,6 +2878,94 @@ function save_lawyer_availability_blocks(PDO $pdo, int $lawyerId, string $weekSt
         }
         $ins->execute([$lawyerId, $date, $start, $end, $isAvailable]);
     }
+
+    sync_lawyer_availability_status($pdo, $lawyerId);
+}
+
+/** @return list<string> */
+function lawyer_availability_statuses(): array
+{
+    return ['available', 'unavailable'];
+}
+
+function normalize_lawyer_availability(string $status): string
+{
+    $status = strtolower(trim($status));
+    if ($status === 'busy') {
+        return 'unavailable';
+    }
+    return in_array($status, lawyer_availability_statuses(), true) ? $status : 'unavailable';
+}
+
+/**
+ * Live availability from published schedule blocks for a point in time.
+ * - available: currently inside an Available period
+ * - unavailable: inside a Not available period, outside scheduled windows, or only blocked today
+ * Falls back to users.availability when no blocks exist for that date.
+ */
+function resolve_lawyer_live_availability(PDO $pdo, int $lawyerId, ?int $atTs = null): string
+{
+    $atTs = $atTs ?: time();
+    $fallback = 'unavailable';
+    $stmt = $pdo->prepare('SELECT availability FROM users WHERE id=? AND role="lawyer"');
+    $stmt->execute([$lawyerId]);
+    $stored = normalize_lawyer_availability((string) ($stmt->fetchColumn() ?: ''));
+    if (in_array($stored, lawyer_availability_statuses(), true)) {
+        $fallback = $stored;
+    }
+
+    $date = date('Y-m-d', $atTs);
+    if (!lawyer_has_availability_blocks_for_date($pdo, $lawyerId, $date)) {
+        return $fallback;
+    }
+
+    $blocks = get_lawyer_availability_blocks_for_date($pdo, $lawyerId, $date);
+    $nowMin = ((int) date('G', $atTs)) * 60 + (int) date('i', $atTs);
+    $inAvailable = false;
+    $inUnavailable = false;
+
+    foreach ($blocks as $block) {
+        $bStart = availability_clock_to_minutes((string) $block['start_time']);
+        $bEnd = availability_clock_to_minutes((string) $block['end_time']);
+        $coversNow = $nowMin >= $bStart && $nowMin < $bEnd;
+        if (!empty($block['is_available'])) {
+            if ($coversNow) {
+                $inAvailable = true;
+            }
+        } elseif ($coversNow) {
+            $inUnavailable = true;
+        }
+    }
+
+    if ($inUnavailable) {
+        return 'unavailable';
+    }
+    if ($inAvailable) {
+        return 'available';
+    }
+    return 'unavailable';
+}
+
+/** @param list<int> $lawyerIds @return array<int, string> lawyer_id => status */
+function resolve_lawyers_live_availability_map(PDO $pdo, array $lawyerIds, ?int $atTs = null): array
+{
+    $map = [];
+    foreach ($lawyerIds as $id) {
+        $id = (int) $id;
+        if ($id > 0) {
+            $map[$id] = resolve_lawyer_live_availability($pdo, $id, $atTs);
+        }
+    }
+    return $map;
+}
+
+function sync_lawyer_availability_status(PDO $pdo, int $lawyerId): string
+{
+    $status = normalize_lawyer_availability(resolve_lawyer_live_availability($pdo, $lawyerId));
+    if ($lawyerId > 0) {
+        $pdo->prepare('UPDATE users SET availability=? WHERE id=? AND role="lawyer"')->execute([$status, $lawyerId]);
+    }
+    return $status;
 }
 
 function availability_clock_to_minutes(string $time): int
@@ -2921,9 +3018,9 @@ function get_bookable_slot_starts_from_blocks(PDO $pdo, int $lawyerId, string $d
     if ($dow === 7 || $dow < 1 || $dow > 6) {
         return [];
     }
-    $weekStart = availability_week_start($date);
-    $hours = get_lawyer_day_hours($pdo, $lawyerId, $weekStart, $dow);
-    $step = max(5, (int) ($hours['interval'] ?? 30));
+    // Block-based booking uses a fixed 30-minute grid so times follow published
+    // available/unavailable periods — not the legacy slot-matrix interval.
+    $step = 30;
     $durationMinutes = normalize_appointment_duration($durationMinutes);
     $starts = [];
 
@@ -2933,7 +3030,12 @@ function get_bookable_slot_starts_from_blocks(PDO $pdo, int $lawyerId, string $d
         }
         $bStart = availability_clock_to_minutes((string) $block['start_time']);
         $bEnd = availability_clock_to_minutes((string) $block['end_time']);
-        for ($t = $bStart; $t + $durationMinutes <= $bEnd; $t += $step) {
+        // Align first candidate to the step grid within the available block.
+        $t = (int) (ceil($bStart / $step) * $step);
+        if ($t < $bStart) {
+            $t = $bStart;
+        }
+        for (; $t + $durationMinutes <= $bEnd; $t += $step) {
             $slotEnd = $t + $durationMinutes;
             $blocked = false;
             foreach ($blocks as $other) {
@@ -3474,6 +3576,7 @@ function save_lawyer_availability_matrix(PDO $pdo, int $lawyerId, string $weekSt
         }
         $ins->execute([$lawyerId, $weekStart, $day, $slotTime]);
     }
+    sync_lawyer_availability_status($pdo, $lawyerId);
 }
 
 /** @return array{ok:bool, message:string, code?:string} */
@@ -3490,9 +3593,6 @@ function validate_lawyer_appointment_slot(PDO $pdo, ?int $lawyerId, string $sche
     $lawyerRow = $lawyer->fetch();
     if (!$lawyerRow) {
         return ['ok' => false, 'message' => __('error.availability.lawyer_not_found'), 'code' => 'lawyer_not_found'];
-    }
-    if (($lawyerRow['availability'] ?? '') === 'unavailable') {
-        return ['ok' => false, 'message' => __('error.availability.lawyer_unavailable'), 'code' => 'lawyer_unavailable'];
     }
 
     $startTs = strtotime($scheduledAt);
@@ -3517,6 +3617,10 @@ function validate_lawyer_appointment_slot(PDO $pdo, ?int $lawyerId, string $sche
             return ['ok' => false, 'message' => __('error.availability.not_available'), 'code' => 'not_available'];
         }
     } else {
+        if (normalize_lawyer_availability((string) ($lawyerRow['availability'] ?? '')) === 'unavailable') {
+            return ['ok' => false, 'message' => __('error.availability.lawyer_unavailable'), 'code' => 'lawyer_unavailable'];
+        }
+
         $weekStart = availability_week_start($date);
         $hours = get_lawyer_day_hours($pdo, $lawyerId, $weekStart, $dow);
         $step = max(5, (int) $hours['interval']) * 60;
@@ -3635,6 +3739,19 @@ function get_lawyer_bookable_slots(PDO $pdo, int $lawyerId, string $date, int $d
 
     foreach ($starts as $timeKey) {
         $scheduledAt = $date . ' ' . $timeKey . ':00';
+        $startTs = strtotime($scheduledAt);
+        if ($startTs && $date === date('Y-m-d') && $startTs <= time()) {
+            // Creating: never offer past times. Editing: keep the saved start if it is past.
+            if (!$excludeApptId) {
+                continue;
+            }
+            $cur = $pdo->prepare('SELECT DATE_FORMAT(scheduled_at, "%Y-%m-%d %H:%i") FROM appointments WHERE id=? AND lawyer_id=?');
+            $cur->execute([$excludeApptId, $lawyerId]);
+            $curTime = (string) ($cur->fetchColumn() ?: '');
+            if ($curTime !== date('Y-m-d H:i', $startTs)) {
+                continue;
+            }
+        }
         $check = validate_lawyer_appointment_slot($pdo, $lawyerId, $scheduledAt, $durationMinutes, $excludeApptId);
         if (!$check['ok']) {
             continue;

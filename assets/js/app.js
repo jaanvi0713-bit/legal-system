@@ -2863,6 +2863,10 @@ function initAvailabilityBlocks() {
     }
   }
 
+  function dayRows() {
+    return Array.from(body.querySelectorAll('[data-avail-block-row]')).filter((row) => rowDate(row) === activeDate);
+  }
+
   function countForDate(date) {
     return Array.from(body.querySelectorAll('[data-avail-block-row]')).filter((row) => rowDate(row) === date).length;
   }
@@ -2885,8 +2889,8 @@ function initAvailabilityBlocks() {
 
   function ensureEmptyRow() {
     let empty = body.querySelector('[data-avail-empty-row]');
-    const visibleRows = Array.from(body.querySelectorAll('[data-avail-block-row]')).filter((row) => rowDate(row) === activeDate);
-    if (visibleRows.length) {
+    const rowsForDay = dayRows();
+    if (rowsForDay.length) {
       if (empty) empty.remove();
       return;
     }
@@ -3257,7 +3261,7 @@ function initAppointmentSlotPicker() {
       credentials: 'same-origin',
       headers: { Accept: 'application/json' },
     })
-      .then((res) => (res.ok ? res.json() : null))
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error('bad response'))))
       .then((data) => {
         if (token !== fetchToken) return;
         const slots = (data && data.slots) || [];
@@ -3266,7 +3270,7 @@ function initAppointmentSlotPicker() {
           timeSelect.innerHTML = `<option value="">${i18n.apptNoSlots || 'No available times'}</option>`;
           timeSelect.disabled = true;
           pendingTime = '';
-          setWarning(i18n.apptNoSlots || 'No available times on this date.', true);
+          setWarning(i18n.apptNoSlots || 'No available times on this date. Try another day or duration.', true);
           syncScheduledAt();
           return;
         }
@@ -3290,7 +3294,9 @@ function initAppointmentSlotPicker() {
       .catch(() => {
         if (token !== fetchToken) return;
         timeSelect.innerHTML = `<option value="">${i18n.apptChooseTime || 'Choose a time'}</option>`;
-        timeSelect.disabled = false;
+        timeSelect.disabled = true;
+        setWarning(i18n.apptNoSlots || 'Could not load available times. Please try again.', true);
+        syncScheduledAt();
       });
   }
 

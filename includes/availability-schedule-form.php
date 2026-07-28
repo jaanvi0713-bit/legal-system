@@ -1,10 +1,10 @@
-<?php
+﻿<?php
 /**
  * Weekly availability as date + time range blocks with calendar sidebar.
  *
  * Expects: $availWeekStart, $availPrevWeek, $availNextWeek, $availWeekLabel,
  *          optional $availIsCurrentWeek, optional $availLawyerId,
- *          optional $availReadOnly, optional $availWeekHref, optional $availLawyer
+ *          optional $availReadOnly, optional $availWeekHref
  */
 $availWeekStart = availability_normalize_week_start($availWeekStart ?? null);
 $availPrevWeek = $availPrevWeek ?? date('Y-m-d', strtotime($availWeekStart . ' -7 days'));
@@ -19,8 +19,6 @@ $lawyerId = (int) ($availLawyerId ?? ($u['id'] ?? 0));
 $availWeekdays = availability_weekdays();
 $availWeekDates = availability_week_dates($availWeekStart);
 $availBlocks = get_lawyer_availability_blocks_for_week($pdoAvail, $lawyerId, $availWeekStart);
-$availLawyer = $availLawyer ?? null;
-
 $availDateOptions = [];
 $dayBlockCounts = [];
 foreach ($availWeekdays as $dayNum => $dayLabel) {
@@ -65,19 +63,6 @@ $totalBlocks = count($availBlocks);
         <input type="hidden" name="form_action" value="blocks">
         <input type="hidden" name="week_start" value="<?= e($availWeekStart) ?>">
     <?php endif; ?>
-
-        <?php if ($availLawyer): ?>
-        <div class="avail-board-top avail-board-top-compact">
-            <div class="avail-status-strip avail-status-strip-readonly">
-                <div class="avail-status-strip-fields">
-                    <div class="avail-status-field">
-                        <span><?= __e('lawyer.availability.current') ?></span>
-                        <div class="avail-status-readonly-value"><?= status_badge($availLawyer['availability'] ?? 'available') ?></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <?php endif; ?>
 
         <div class="avail-layout">
             <aside class="avail-rail appt-cal-sidebar" aria-label="<?= __e('availability.schedule.title') ?>">
@@ -217,12 +202,14 @@ $totalBlocks = count($availBlocks);
                     </tr>
                 </template>
 
-                <footer class="avail-schedule-footer<?= $availReadOnly ? ' avail-schedule-footer-readonly' : '' ?>">
+                <div class="avail-workspace-bottom">
                     <p class="avail-schedule-hint"><?= __e($availReadOnly ? 'availability.blocks.readonly_hint' : 'availability.blocks.hint') ?></p>
                     <?php if (!$availReadOnly): ?>
-                    <button class="btn btn-primary" type="submit"><?= __e('lawyer.availability.save') ?></button>
+                    <div class="avail-schedule-actions">
+                        <button class="btn btn-primary" type="submit"><?= __e('lawyer.availability.save') ?></button>
+                    </div>
                     <?php endif; ?>
-                </footer>
+                </div>
             </div>
         </div>
 

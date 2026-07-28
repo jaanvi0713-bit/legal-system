@@ -46,8 +46,6 @@ $availWeekDates = availability_week_dates($availWeekStart);
 $availIsCurrentWeek = $availWeekStart === availability_week_start();
 
 $u = current_user();
-$availDayHours = get_lawyer_week_day_hours($pdo, $uid, $availWeekStart);
-$availMatrix = get_lawyer_availability_matrix($pdo, $uid, $availWeekStart);
 $availLawyerId = $uid;
 $pageTitle = __('page.availability');
 $pageSubtitle = __('availability.schedule.subtitle');

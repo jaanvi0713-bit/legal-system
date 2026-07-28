@@ -16,6 +16,7 @@ $hearingFormConfig = array_merge([
     'editLabel' => __('common.save_changes'),
     'createHelp' => __('court.form.help.create'),
     'editHelp' => __('court.form.help.edit'),
+    'returnUrl' => null,
 ], $hearingFormConfig ?? []);
 
 $showStatus = (bool) $hearingFormConfig['showStatus'];
@@ -43,6 +44,9 @@ $hearingLawyerId = (int) ($lockLawyerId ?? ($row['lawyer_id'] ?? 0));
             <?= csrf_field() ?>
             <input type="hidden" name="form_action" value="save">
             <input type="hidden" name="id" value="<?= (int) $row['id'] ?>">
+            <?php if (!empty($hearingFormConfig['returnUrl'])): ?>
+                <input type="hidden" name="return_url" value="<?= e($hearingFormConfig['returnUrl']) ?>">
+            <?php endif; ?>
 
             <section class="entity-section">
                 <div class="entity-section-head">

@@ -19,6 +19,7 @@ $apptFormConfig = array_merge([
     'eyebrow' => null,
     'title' => null,
     'formAction' => 'save',
+    'returnUrl' => null,
     'pairTitleType' => false,
     'pairCaseWithParty' => false,
 ], $apptFormConfig ?? []);
@@ -64,6 +65,9 @@ $apptDateMin = $isEdit ? '' : date('Y-m-d');
             <?= csrf_field() ?>
             <input type="hidden" name="form_action" value="<?= e($apptFormConfig['formAction']) ?>">
             <input type="hidden" name="id" value="<?= (int) $row['id'] ?>">
+            <?php if (!empty($apptFormConfig['returnUrl'])): ?>
+                <input type="hidden" name="return_url" value="<?= e($apptFormConfig['returnUrl']) ?>">
+            <?php endif; ?>
             <?php if ($lockClientId !== null): ?>
                 <input type="hidden" name="client_id" value="<?= (int) $lockClientId ?>">
             <?php endif; ?>
@@ -221,7 +225,7 @@ $apptDateMin = $isEdit ? '' : date('Y-m-d');
 <script type="application/json" id="apptSlotPickerConfig"
     data-lawyer-id="<?= (int) $apptLawyerIdForSlots ?>"
     data-client-id="<?= (int) ($apptClientIdForSlots ?? 0) ?>"
-    data-api-url="<?= e(app_config('url')) ?>/api/lawyer-availability.php"
+    data-api-url="../api/lawyer-availability.php"
     data-edit-id="<?= (int) $apptEditId ?>"
     data-initial-time="<?= e($apptScheduleTime) ?>"
     data-has-lawyer-select="<?= $apptHasLawyerSelect ? '1' : '0' ?>"
