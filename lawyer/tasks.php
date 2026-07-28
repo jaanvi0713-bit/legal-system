@@ -86,31 +86,18 @@ $tasksPagerQs = static function (array $pager, int $targetPage) use ($pendingPag
 };
 
 $renderTasksPager = static function (array $pager, string $ariaKey, string $oneKey, string $manyKey) use ($tasksPagerQs): void {
-    if ($pager['total'] === 0 && $pager['pages'] <= 1) {
-        return;
-    }
-    ?>
-    <div class="case-list-foot tasks-section-foot">
-        <p class="case-list-footer muted"><?= e(__($pager['total'] === 1 ? $oneKey : $manyKey, ['from' => (int) $pager['from'], 'to' => (int) $pager['to'], 'total' => (int) $pager['total']])) ?></p>
-        <?php if ($pager['pages'] > 1): ?>
-        <nav class="case-list-pager" aria-label="<?= __e($ariaKey) ?>">
-            <?php if ($pager['page'] > 1): ?>
-            <a class="case-page-btn" href="<?= e($tasksPagerQs($pager, $pager['page'] - 1)) ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
-            <?php else: ?>
-            <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
-            <?php endif; ?>
-            <?php for ($p = 1; $p <= $pager['pages']; $p++): ?>
-            <a class="case-page-btn<?= $p === $pager['page'] ? ' is-active' : '' ?>" href="<?= e($tasksPagerQs($pager, $p)) ?>"<?= $p === $pager['page'] ? ' aria-current="page"' : '' ?>><?= $p ?></a>
-            <?php endfor; ?>
-            <?php if ($pager['page'] < $pager['pages']): ?>
-            <a class="case-page-btn" href="<?= e($tasksPagerQs($pager, $pager['page'] + 1)) ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
-            <?php else: ?>
-            <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
-            <?php endif; ?>
-        </nav>
-        <?php endif; ?>
-    </div>
-    <?php
+    render_case_list_pager(
+        (int) $pager['page'],
+        (int) $pager['pages'],
+        (int) $pager['from'],
+        (int) $pager['to'],
+        (int) $pager['total'],
+        $oneKey,
+        $manyKey,
+        $ariaKey,
+        static fn(int $p): string => $tasksPagerQs($pager, $p),
+        'tasks-section-foot'
+    );
 };
 
 $pageTitle = __('page.tasks');

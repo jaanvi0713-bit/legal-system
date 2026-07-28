@@ -2528,6 +2528,8 @@ function build_entity_calendar_context(array $calendarItems, array $config = [])
         'apptCountOne' => $countOne,
         'apptCountMany' => $countMany,
         'pageOf' => __('calendar.page_of', ['page' => ':page', 'pages' => ':pages']),
+        'agendaShowingOne' => __('calendar.agenda_pager.showing_one'),
+        'agendaShowingMany' => __('calendar.agenda_pager.showing_many'),
         'prevLabel' => __('common.previous'),
         'nextLabel' => __('common.next'),
         'createUrl' => $createUrl,
@@ -3448,6 +3450,91 @@ function build_overview_svg(array $labels, array $values, string $ariaLabel): st
         . '<circle class="glass-svg-dot" cx="' . round($last[0], 1) . '" cy="' . round($last[1], 1) . '" r="5"/>'
         . '<g class="glass-svg-labels">' . $labelsHtml . '</g>'
         . '</svg>';
+}
+
+/**
+ * Standard list/table pagination footer: "Showing X–Y of Z …" + numbered pager.
+ *
+ * @param callable(int): string $pageUrl URL builder for a given page number
+ */
+function render_case_list_pager(
+    int $page,
+    int $totalPages,
+    int $from,
+    int $to,
+    int $total,
+    string $showingOneKey,
+    string $showingManyKey,
+    string $ariaKey,
+    callable $pageUrl,
+    string $footClass = '',
+    bool $alwaysShowPager = true
+): void {
+    if ($total <= 0) {
+        return;
+    }
+
+    $page = max(1, min(max(1, $totalPages), $page));
+    $footClass = trim($footClass);
+    if ($footClass === '' || $footClass === 'case-list-foot') {
+        $footClass = 'case-list-foot';
+    } elseif ($footClass === 'case-hub-foot' || $footClass === 'case-activity-footer') {
+        // keep detail foot styling
+    } else {
+        $footClass = 'case-list-foot ' . $footClass;
+    }
+    $showPager = $alwaysShowPager || $totalPages > 1;
+    ?>
+    <div class="<?= e($footClass) ?>">
+        <p class="case-list-footer muted"><?= e(__($total === 1 ? $showingOneKey : $showingManyKey, [
+            'from' => $from,
+            'to' => $to,
+            'total' => $total,
+        ])) ?></p>
+        <?php if ($showPager): ?>
+        <nav class="case-list-pager" aria-label="<?= __e($ariaKey) ?>">
+            <?php if ($page > 1): ?>
+            <a class="case-page-btn" href="<?= e($pageUrl($page - 1)) ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
+            <?php else: ?>
+            <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
+            <?php endif; ?>
+            <?php for ($p = 1; $p <= $totalPages; $p++): ?>
+            <a class="case-page-btn<?= $p === $page ? ' is-active' : '' ?>" href="<?= e($pageUrl($p)) ?>"<?= $p === $page ? ' aria-current="page"' : '' ?>><?= $p ?></a>
+            <?php endfor; ?>
+            <?php if ($page < $totalPages): ?>
+            <a class="case-page-btn" href="<?= e($pageUrl($page + 1)) ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
+            <?php else: ?>
+            <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
+            <?php endif; ?>
+        </nav>
+        <?php endif; ?>
+    </div>
+    <?php
+}
+
+/** @param array{page:int,totalPages:int,from:int,to:int,total:int,rows:array} $paged */
+function render_case_list_pager_slice(
+    array $paged,
+    string $showingOneKey,
+    string $showingManyKey,
+    string $ariaKey,
+    callable $pageUrl,
+    string $footClass = '',
+    bool $alwaysShowPager = true
+): void {
+    render_case_list_pager(
+        (int) $paged['page'],
+        (int) $paged['totalPages'],
+        (int) $paged['from'],
+        (int) $paged['to'],
+        (int) $paged['total'],
+        $showingOneKey,
+        $showingManyKey,
+        $ariaKey,
+        $pageUrl,
+        $footClass,
+        $alwaysShowPager
+    );
 }
 
 require_once __DIR__ . '/case-team.php';

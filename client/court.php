@@ -138,6 +138,10 @@ $listColumns = [
 $listShowingTpl = __('court.showing', ['shown' => $totalCount, 'total' => $totalCount]);
 $listTotalOneTpl = __('court.total_one', ['count' => ':count']);
 $listTotalManyTpl = __('court.total_many', ['count' => ':count']);
+$listPageSize = 10;
+$listPagerShowingOneKey = 'court.pager.showing_one';
+$listPagerShowingManyKey = 'court.pager.showing_many';
+$listPagerAriaKey = 'court.pagination.aria';
 $listHeroActionHtml = '';
 require __DIR__ . '/../includes/entity-list-panel.php';
 require __DIR__ . '/../includes/footer.php';

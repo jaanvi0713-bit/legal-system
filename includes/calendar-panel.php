@@ -32,6 +32,9 @@ $calendarLegendItems = $calendarLegendItems ?? [];
          data-appt-count-one="<?= e($calCountOne) ?>"
          data-appt-count-many="<?= e($calCountMany) ?>"
          data-page-of="<?= __e('calendar.page_of', ['page' => ':page', 'pages' => ':pages']) ?>"
+         data-agenda-showing-one="<?= __e('calendar.agenda_pager.showing_one') ?>"
+         data-agenda-showing-many="<?= __e('calendar.agenda_pager.showing_many') ?>"
+         data-agenda-pagination-aria="<?= __e('calendar.agenda_pagination.aria') ?>"
          data-prev-label="<?= __e('common.previous') ?>"
          data-next-label="<?= __e('common.next') ?>">
         <aside class="appt-cal-sidebar" aria-label="<?= __e('common.calendar') ?>">
@@ -92,7 +95,10 @@ $calendarLegendItems = $calendarLegendItems ?? [];
             <h3 class="appt-cal-agenda-title"><?= __e('calendar.agenda') ?></h3>
             <div class="appt-cal-agenda-head" id="apptCalAgendaHead"><?= render_appointment_calendar_agenda_head($calYear, $calMonth, $calDay, $selectedDayItems, $calAgendaLabels) ?></div>
             <div class="appt-cal-agenda-list" id="apptCalAgenda"><?= render_appointment_calendar_agenda_list($selectedDayItems, 1, 2) ?></div>
-            <div class="appt-cal-agenda-pager-wrap" id="apptCalAgendaPager"><?= render_appointment_calendar_agenda_pager(count($selectedDayItems), 1, 2) ?></div>
+            <div class="case-list-foot appt-cal-agenda-pager-wrap" id="apptCalAgendaPager" hidden>
+                <p class="case-list-footer muted" id="apptCalAgendaPagerLabel"></p>
+                <nav class="case-list-pager" id="apptCalAgendaPagerNav" aria-label="<?= __e('calendar.agenda_pagination.aria') ?>"></nav>
+            </div>
         </aside>
     </div>
 </div>

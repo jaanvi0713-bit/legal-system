@@ -396,26 +396,17 @@ require __DIR__ . '/../includes/header.php';
             </tbody>
         </table>
     </div>
-    <div class="case-list-foot">
-        <p class="case-list-footer muted"><?= e(__($totalUsers === 1 ? 'users.pager.showing_one' : 'users.pager.showing_many', ['from' => (int) $shownFrom, 'to' => (int) $shownTo, 'total' => (int) $totalUsers])) ?></p>
-        <?php if ($totalPages > 1): ?>
-        <nav class="case-list-pager" aria-label="<?= __e('users.pagination.aria') ?>">
-            <?php if ($page > 1): ?>
-            <a class="case-page-btn" href="<?= e($usersListUrl($listRoleKey, $page - 1)) ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
-            <?php else: ?>
-            <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
-            <?php endif; ?>
-            <?php for ($p = 1; $p <= $totalPages; $p++): ?>
-            <a class="case-page-btn<?= $p === $page ? ' is-active' : '' ?>" href="<?= e($usersListUrl($listRoleKey, $p)) ?>"<?= $p === $page ? ' aria-current="page"' : '' ?>><?= $p ?></a>
-            <?php endfor; ?>
-            <?php if ($page < $totalPages): ?>
-            <a class="case-page-btn" href="<?= e($usersListUrl($listRoleKey, $page + 1)) ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
-            <?php else: ?>
-            <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
-            <?php endif; ?>
-        </nav>
-        <?php endif; ?>
-    </div>
+    <?php render_case_list_pager(
+        $page,
+        $totalPages,
+        (int) $shownFrom,
+        (int) $shownTo,
+        (int) $totalUsers,
+        'users.pager.showing_one',
+        'users.pager.showing_many',
+        'users.pagination.aria',
+        static fn(int $p): string => $usersListUrl($listRoleKey, $p)
+    ); ?>
 </div>
 
 <div class="panel users-role-access-panel">

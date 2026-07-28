@@ -247,6 +247,10 @@ $listColumns = [
 $listShowingTpl = __('appointments.showing', ['shown' => $totalCount, 'total' => $totalCount]);
 $listTotalOneTpl = __('appointments.total_one', ['count' => ':count']);
 $listTotalManyTpl = __('appointments.total_many', ['count' => ':count']);
+$listPageSize = 10;
+$listPagerShowingOneKey = 'appointments.pager.showing_one';
+$listPagerShowingManyKey = 'appointments.pager.showing_many';
+$listPagerAriaKey = 'appointments.pagination.aria';
 $listHeroActionHtml = '';
 require __DIR__ . '/../includes/entity-list-panel.php';
 require __DIR__ . '/../includes/footer.php';

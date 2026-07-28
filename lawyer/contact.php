@@ -213,21 +213,21 @@ require __DIR__ . '/../includes/header.php';
             </article>
             <?php endforeach; ?>
         </div>
-        <div class="case-list-foot contact-library-foot">
-            <p class="case-list-footer muted"><?= e(__($totalThreads === 1 ? 'contact.pager.showing_one' : 'contact.pager.showing_many', ['from' => $shownFrom, 'to' => $shownTo, 'total' => $totalThreads])) ?></p>
-            <?php if ($totalPages > 1): ?>
-            <nav class="case-list-pager" aria-label="<?= __e('contact.pagination.aria') ?>">
-                <?php
-                $pagerQs = $clientFilter ? '&client=' . $clientFilter : '';
-                ?>
-                <?php if ($listPage > 1): ?><a class="case-page-btn" href="?page=<?= $listPage - 1 ?><?= e($pagerQs) ?>">‹</a><?php else: ?><span class="case-page-btn is-disabled">‹</span><?php endif; ?>
-                <?php for ($p = 1; $p <= $totalPages; $p++): ?>
-                <a class="case-page-btn<?= $p === $listPage ? ' is-active' : '' ?>" href="?page=<?= $p ?><?= e($pagerQs) ?>"><?= $p ?></a>
-                <?php endfor; ?>
-                <?php if ($listPage < $totalPages): ?><a class="case-page-btn" href="?page=<?= $listPage + 1 ?><?= e($pagerQs) ?>">›</a><?php else: ?><span class="case-page-btn is-disabled">›</span><?php endif; ?>
-            </nav>
-            <?php endif; ?>
-        </div>
+        <?php
+        $contactPagerQs = $clientFilter ? '&client=' . $clientFilter : '';
+        render_case_list_pager(
+            $listPage,
+            $totalPages,
+            (int) $shownFrom,
+            (int) $shownTo,
+            (int) $totalThreads,
+            'contact.pager.showing_one',
+            'contact.pager.showing_many',
+            'contact.pagination.aria',
+            static fn(int $p): string => '?page=' . $p . $contactPagerQs,
+            'contact-library-foot'
+        );
+        ?>
         <?php endif; ?>
     </section>
     <?php endif; ?>

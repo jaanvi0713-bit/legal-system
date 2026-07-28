@@ -67,9 +67,10 @@ $gdVar = $gdBalance['var'] ?? null;
             </section>
 
             <section class="glass-card glass-side-list" data-glass-pager-root data-per-page="3"
-                     data-page-of="<?= e(__('calendar.page_of', ['page' => ':page', 'pages' => ':pages'])) ?>"
-                     data-prev-label="<?= __e('common.previous') ?>"
-                     data-next-label="<?= __e('common.next') ?>">
+                     data-pager-showing-one="<?= __e('dashboard.pager.showing_one') ?>"
+                     data-pager-showing-many="<?= __e('dashboard.pager.showing_many') ?>"
+                     data-prev-label="<?= __e('cases.pagination.prev') ?>"
+                     data-next-label="<?= __e('cases.pagination.next') ?>">
                 <div class="glass-panel-head">
                     <h2><?= e($gdSide['title']) ?></h2>
                     <?php if (!empty($gdSide['viewUrl'])): ?>
@@ -82,16 +83,9 @@ $gdVar = $gdBalance['var'] ?? null;
                 <?php if (!empty($gdSide['notifyHtml'])): ?>
                     <?= $gdSide['notifyHtml'] ?>
                 <?php endif; ?>
-                <div class="glass-dash-pager-wrap"<?= ((int) $gdSide['pagerRows']) < 1 ? ' hidden' : '' ?>>
-                    <div class="glass-dash-pager">
-                        <button type="button" class="glass-dash-page-btn" data-glass-page="prev" aria-label="<?= __e('common.previous') ?>" disabled>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
-                        </button>
-                        <span class="glass-dash-page-label"><?= e(__('calendar.page_of', ['page' => 1, 'pages' => (int) $gdSide['pagerPages']])) ?></span>
-                        <button type="button" class="glass-dash-page-btn" data-glass-page="next" aria-label="<?= __e('common.next') ?>"<?= ((int) $gdSide['pagerPages']) <= 1 ? ' disabled' : '' ?>>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
-                        </button>
-                    </div>
+                <div class="case-list-foot glass-dash-pager-wrap"<?= ((int) $gdSide['pagerRows']) < 1 ? ' hidden' : '' ?>>
+                    <p class="case-list-footer muted glass-dash-pager-label"></p>
+                    <nav class="case-list-pager glass-dash-pager-nav" aria-label="<?= __e('dashboard.pagination.aria') ?>"></nav>
                 </div>
             </section>
         </div>
@@ -126,9 +120,10 @@ $gdVar = $gdBalance['var'] ?? null;
             </section>
 
             <section class="glass-card glass-tx" data-glass-pager-root data-per-page="3"
-                     data-page-of="<?= e(__('calendar.page_of', ['page' => ':page', 'pages' => ':pages'])) ?>"
-                     data-prev-label="<?= __e('common.previous') ?>"
-                     data-next-label="<?= __e('common.next') ?>">
+                     data-pager-showing-one="<?= __e('dashboard.pager.showing_one') ?>"
+                     data-pager-showing-many="<?= __e('dashboard.pager.showing_many') ?>"
+                     data-prev-label="<?= __e('cases.pagination.prev') ?>"
+                     data-next-label="<?= __e('cases.pagination.next') ?>">
                 <div class="glass-panel-head">
                     <h2><?= e($gdTx['title']) ?></h2>
                     <?php if (!empty($gdTx['chip'])): ?>
@@ -149,16 +144,9 @@ $gdVar = $gdBalance['var'] ?? null;
                         </tbody>
                     </table>
                 </div>
-                <div class="glass-dash-pager-wrap"<?= empty($gdTx['hasRows']) ? ' hidden' : '' ?>>
-                    <div class="glass-dash-pager">
-                        <button type="button" class="glass-dash-page-btn" data-glass-page="prev" aria-label="<?= __e('common.previous') ?>" disabled>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
-                        </button>
-                        <span class="glass-dash-page-label"><?= e(__('calendar.page_of', ['page' => 1, 'pages' => (int) $gdTx['pagerPages']])) ?></span>
-                        <button type="button" class="glass-dash-page-btn" data-glass-page="next" aria-label="<?= __e('common.next') ?>"<?= ((int) $gdTx['pagerPages']) <= 1 ? ' disabled' : '' ?>>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
-                        </button>
-                    </div>
+                <div class="case-list-foot glass-dash-pager-wrap"<?= empty($gdTx['hasRows']) ? ' hidden' : '' ?>>
+                    <p class="case-list-footer muted glass-dash-pager-label"></p>
+                    <nav class="case-list-pager glass-dash-pager-nav" aria-label="<?= __e('dashboard.pagination.aria') ?>"></nav>
                 </div>
             </section>
         </div>

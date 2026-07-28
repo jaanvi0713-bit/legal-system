@@ -211,26 +211,18 @@ $uploadDescription = $selectedRequest && !empty($selectedRequest['instructions']
             <?php endforeach; ?>
             <?php if (!$pageDocs): ?><div class="empty-state"><?= __e('cases.no_documents') ?></div><?php endif; ?>
         </div>
-        <div class="case-list-foot client-doc-list-foot">
-            <p class="case-list-footer muted"><?= e(__($totalDocs === 1 ? 'client.documents.files.pager.showing_one' : 'client.documents.files.pager.showing_many', ['from' => (int) $docsShownFrom, 'to' => (int) $docsShownTo, 'total' => (int) $totalDocs])) ?></p>
-            <?php if ($docsTotalPages > 1): ?>
-            <nav class="case-list-pager" aria-label="<?= __e('client.documents.files.pagination.aria') ?>">
-                <?php if ($docsPage > 1): ?>
-                <a class="case-page-btn" href="<?= e($docsPagerUrl($docsPage - 1)) ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
-                <?php else: ?>
-                <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
-                <?php endif; ?>
-                <?php for ($p = 1; $p <= $docsTotalPages; $p++): ?>
-                <a class="case-page-btn<?= $p === $docsPage ? ' is-active' : '' ?>" href="<?= e($docsPagerUrl($p)) ?>"<?= $p === $docsPage ? ' aria-current="page"' : '' ?>><?= $p ?></a>
-                <?php endfor; ?>
-                <?php if ($docsPage < $docsTotalPages): ?>
-                <a class="case-page-btn" href="<?= e($docsPagerUrl($docsPage + 1)) ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
-                <?php else: ?>
-                <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
-                <?php endif; ?>
-            </nav>
-            <?php endif; ?>
-        </div>
+        <?php render_case_list_pager(
+            $docsPage,
+            $docsTotalPages,
+            (int) $docsShownFrom,
+            (int) $docsShownTo,
+            (int) $totalDocs,
+            'client.documents.files.pager.showing_one',
+            'client.documents.files.pager.showing_many',
+            'client.documents.files.pagination.aria',
+            $docsPagerUrl,
+            'client-doc-list-foot'
+        ); ?>
     </div>
     <div class="panel case-list-panel">
         <div class="case-list-head">
@@ -248,26 +240,18 @@ $uploadDescription = $selectedRequest && !empty($selectedRequest['instructions']
             <?php endforeach; ?>
             <?php if (!$pageInvoices): ?><div class="empty-state"><?= __e('finance.no_invoices') ?></div><?php endif; ?>
         </div>
-        <div class="case-list-foot client-doc-list-foot">
-            <p class="case-list-footer muted"><?= e(__($totalInvoices === 1 ? 'client.documents.invoices.pager.showing_one' : 'client.documents.invoices.pager.showing_many', ['from' => (int) $invShownFrom, 'to' => (int) $invShownTo, 'total' => (int) $totalInvoices])) ?></p>
-            <?php if ($invTotalPages > 1): ?>
-            <nav class="case-list-pager" aria-label="<?= __e('client.documents.invoices.pagination.aria') ?>">
-                <?php if ($invPage > 1): ?>
-                <a class="case-page-btn" href="<?= e($invoicesPagerUrl($invPage - 1)) ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
-                <?php else: ?>
-                <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
-                <?php endif; ?>
-                <?php for ($p = 1; $p <= $invTotalPages; $p++): ?>
-                <a class="case-page-btn<?= $p === $invPage ? ' is-active' : '' ?>" href="<?= e($invoicesPagerUrl($p)) ?>"<?= $p === $invPage ? ' aria-current="page"' : '' ?>><?= $p ?></a>
-                <?php endfor; ?>
-                <?php if ($invPage < $invTotalPages): ?>
-                <a class="case-page-btn" href="<?= e($invoicesPagerUrl($invPage + 1)) ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
-                <?php else: ?>
-                <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
-                <?php endif; ?>
-            </nav>
-            <?php endif; ?>
-        </div>
+        <?php render_case_list_pager(
+            $invPage,
+            $invTotalPages,
+            (int) $invShownFrom,
+            (int) $invShownTo,
+            (int) $totalInvoices,
+            'client.documents.invoices.pager.showing_one',
+            'client.documents.invoices.pager.showing_many',
+            'client.documents.invoices.pagination.aria',
+            $invoicesPagerUrl,
+            'client-doc-list-foot'
+        ); ?>
     </div>
 </div>
 <script>

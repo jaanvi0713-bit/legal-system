@@ -170,26 +170,18 @@ $summaryKey = $notifyBoardUnread === 1
         <?php endif; ?>
     </div>
     <?php if ($notifyBoardPagerEnabled): ?>
-    <div class="case-list-foot notify-board-pager-foot">
-        <p class="case-list-footer muted"><?= e(__($notifyBoardTotal === 1 ? 'notifications.pager.showing_one' : 'notifications.pager.showing_many', ['from' => $notifyBoardPagerShownFrom, 'to' => $notifyBoardPagerShownTo, 'total' => $notifyBoardTotal])) ?></p>
-        <?php if ($notifyBoardPagerTotalPages > 1): ?>
-        <nav class="case-list-pager" aria-label="<?= __e('notifications.pagination.aria') ?>">
-            <?php if ($notifyBoardPagerPage > 1): ?>
-            <a class="case-page-btn" href="?page=<?= $notifyBoardPagerPage - 1 ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
-            <?php else: ?>
-            <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
-            <?php endif; ?>
-            <?php for ($p = 1; $p <= $notifyBoardPagerTotalPages; $p++): ?>
-            <a class="case-page-btn<?= $p === $notifyBoardPagerPage ? ' is-active' : '' ?>" href="?page=<?= $p ?>"<?= $p === $notifyBoardPagerPage ? ' aria-current="page"' : '' ?>><?= $p ?></a>
-            <?php endfor; ?>
-            <?php if ($notifyBoardPagerPage < $notifyBoardPagerTotalPages): ?>
-            <a class="case-page-btn" href="?page=<?= $notifyBoardPagerPage + 1 ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
-            <?php else: ?>
-            <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
-            <?php endif; ?>
-        </nav>
-        <?php endif; ?>
-    </div>
+    <?php render_case_list_pager(
+        (int) $notifyBoardPagerPage,
+        (int) $notifyBoardPagerTotalPages,
+        (int) $notifyBoardPagerShownFrom,
+        (int) $notifyBoardPagerShownTo,
+        (int) $notifyBoardTotal,
+        'notifications.pager.showing_one',
+        'notifications.pager.showing_many',
+        'notifications.pagination.aria',
+        static fn(int $p): string => '?page=' . $p,
+        'notify-board-pager-foot'
+    ); ?>
     <?php endif; ?>
     <p class="notify-board-foot muted" id="<?= e($notifyBoardId) ?>Foot" hidden></p>
 </section>

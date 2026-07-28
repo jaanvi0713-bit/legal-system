@@ -714,25 +714,16 @@ $shownTo = min($offset + count($pageLawyers), $totalLawyers);
             </tbody>
         </table>
     </div>
-    <div class="case-list-foot">
-        <p class="case-list-footer muted"><?= e(__($totalLawyers === 1 ? 'lawyers.pager.showing_one' : 'lawyers.pager.showing_many', ['from' => (int)$shownFrom, 'to' => (int)$shownTo, 'total' => (int)$totalLawyers])) ?></p>
-        <?php if ($totalPages > 1): ?>
-        <nav class="case-list-pager" aria-label="<?= __e('lawyers.pagination.aria') ?>">
-            <?php if ($page > 1): ?>
-            <a class="case-page-btn" href="?page=<?= $page - 1 ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
-            <?php else: ?>
-            <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
-            <?php endif; ?>
-            <?php for ($p = 1; $p <= $totalPages; $p++): ?>
-            <a class="case-page-btn<?= $p === $page ? ' is-active' : '' ?>" href="?page=<?= $p ?>"<?= $p === $page ? ' aria-current="page"' : '' ?>><?= $p ?></a>
-            <?php endfor; ?>
-            <?php if ($page < $totalPages): ?>
-            <a class="case-page-btn" href="?page=<?= $page + 1 ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
-            <?php else: ?>
-            <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
-            <?php endif; ?>
-        </nav>
-        <?php endif; ?>
-    </div>
+    <?php render_case_list_pager(
+        $page,
+        $totalPages,
+        (int) $shownFrom,
+        (int) $shownTo,
+        (int) $totalLawyers,
+        'lawyers.pager.showing_one',
+        'lawyers.pager.showing_many',
+        'lawyers.pagination.aria',
+        static fn(int $p): string => '?page=' . $p
+    ); ?>
 </div>
 <?php require __DIR__ . '/../includes/footer.php'; ?>

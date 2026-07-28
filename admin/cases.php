@@ -1599,26 +1599,18 @@ if ($action === 'view' && $id) {
                     </tbody>
                 </table>
             </div>
-            <div class="case-hub-foot">
-                <p class="case-list-footer muted"><?= e(__($docTotal === 1 ? 'cases.pager.showing_one' : 'cases.pager.showing_many', ['from' => (int) $docFrom, 'to' => (int) $docTo, 'total' => (int) $docTotal])) ?></p>
-                <?php if ($docPages > 1): ?>
-                <nav class="case-list-pager" aria-label="<?= __e('cases.pagination.aria') ?>">
-                    <?php if ($docPage > 1): ?>
-                    <a class="case-page-btn" href="<?= e($docPageUrl($docPage - 1)) ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
-                    <?php else: ?>
-                    <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
-                    <?php endif; ?>
-                    <?php for ($dp = 1; $dp <= $docPages; $dp++): ?>
-                    <a class="case-page-btn<?= $dp === $docPage ? ' is-active' : '' ?>" href="<?= e($docPageUrl($dp)) ?>"<?= $dp === $docPage ? ' aria-current="page"' : '' ?>><?= $dp ?></a>
-                    <?php endfor; ?>
-                    <?php if ($docPage < $docPages): ?>
-                    <a class="case-page-btn" href="<?= e($docPageUrl($docPage + 1)) ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
-                    <?php else: ?>
-                    <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
-                    <?php endif; ?>
-                </nav>
-                <?php endif; ?>
-            </div>
+            <?php render_case_list_pager(
+                (int) $docPage,
+                (int) $docPages,
+                (int) $docFrom,
+                (int) $docTo,
+                (int) $docTotal,
+                'cases.pager.showing_one',
+                'cases.pager.showing_many',
+                'cases.pagination.aria',
+                $docPageUrl,
+                'case-hub-foot'
+            ); ?>
         </section>
 
         <?php elseif ($tab === 'quotations'): 
@@ -1725,26 +1717,18 @@ if ($action === 'view' && $id) {
                     </tbody>
                 </table>
             </div>
-            <div class="case-hub-foot">
-                <p class="case-list-footer muted"><?= e(__($quoteTotal === 1 ? 'cases.pager.showing_one' : 'cases.pager.showing_many', ['from' => (int) $quoteFrom, 'to' => (int) $quoteTo, 'total' => (int) $quoteTotal])) ?></p>
-                <?php if ($quotePages > 1): ?>
-                <nav class="case-list-pager" aria-label="<?= __e('cases.pagination.aria') ?>">
-                    <?php if ($quotePage > 1): ?>
-                    <a class="case-page-btn" href="<?= e($quotePageUrl($quotePage - 1)) ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
-                    <?php else: ?>
-                    <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
-                    <?php endif; ?>
-                    <?php for ($qp = 1; $qp <= $quotePages; $qp++): ?>
-                    <a class="case-page-btn<?= $qp === $quotePage ? ' is-active' : '' ?>" href="<?= e($quotePageUrl($qp)) ?>"<?= $qp === $quotePage ? ' aria-current="page"' : '' ?>><?= $qp ?></a>
-                    <?php endfor; ?>
-                    <?php if ($quotePage < $quotePages): ?>
-                    <a class="case-page-btn" href="<?= e($quotePageUrl($quotePage + 1)) ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
-                    <?php else: ?>
-                    <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
-                    <?php endif; ?>
-                </nav>
-                <?php endif; ?>
-            </div>
+            <?php render_case_list_pager(
+                (int) $quotePage,
+                (int) $quotePages,
+                (int) $quoteFrom,
+                (int) $quoteTo,
+                (int) $quoteTotal,
+                'cases.pager.showing_one',
+                'cases.pager.showing_many',
+                'cases.pagination.aria',
+                $quotePageUrl,
+                'case-hub-foot'
+            ); ?>
         </section>
 
         <?php elseif ($tab === 'invoices'):
@@ -1855,26 +1839,18 @@ if ($action === 'view' && $id) {
                     </tbody>
                 </table>
             </div>
-            <div class="case-hub-foot">
-                <p class="case-list-footer muted"><?= e(__($invTotal === 1 ? 'cases.pager.showing_one' : 'cases.pager.showing_many', ['from' => (int) $invFrom, 'to' => (int) $invTo, 'total' => (int) $invTotal])) ?></p>
-                <?php if ($invPages > 1): ?>
-                <nav class="case-list-pager" aria-label="<?= __e('cases.pagination.aria') ?>">
-                    <?php if ($invPage > 1): ?>
-                    <a class="case-page-btn" href="<?= e($invPageUrl($invPage - 1)) ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
-                    <?php else: ?>
-                    <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
-                    <?php endif; ?>
-                    <?php for ($ip = 1; $ip <= $invPages; $ip++): ?>
-                    <a class="case-page-btn<?= $ip === $invPage ? ' is-active' : '' ?>" href="<?= e($invPageUrl($ip)) ?>"<?= $ip === $invPage ? ' aria-current="page"' : '' ?>><?= $ip ?></a>
-                    <?php endfor; ?>
-                    <?php if ($invPage < $invPages): ?>
-                    <a class="case-page-btn" href="<?= e($invPageUrl($invPage + 1)) ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
-                    <?php else: ?>
-                    <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
-                    <?php endif; ?>
-                </nav>
-                <?php endif; ?>
-            </div>
+            <?php render_case_list_pager(
+                (int) $invPage,
+                (int) $invPages,
+                (int) $invFrom,
+                (int) $invTo,
+                (int) $invTotal,
+                'cases.pager.showing_one',
+                'cases.pager.showing_many',
+                'cases.pagination.aria',
+                $invPageUrl,
+                'case-hub-foot'
+            ); ?>
         </section>
 
         <?php elseif ($tab === 'receipts'):
@@ -2000,26 +1976,18 @@ if ($action === 'view' && $id) {
                     </tbody>
                 </table>
             </div>
-            <div class="case-hub-foot">
-                <p class="case-list-footer muted"><?= e(__($rcpTotal === 1 ? 'cases.pager.showing_one' : 'cases.pager.showing_many', ['from' => (int) $rcpFrom, 'to' => (int) $rcpTo, 'total' => (int) $rcpTotal])) ?></p>
-                <?php if ($rcpPages > 1): ?>
-                <nav class="case-list-pager" aria-label="<?= __e('cases.pagination.aria') ?>">
-                    <?php if ($rcpPage > 1): ?>
-                    <a class="case-page-btn" href="<?= e($rcpPageUrl($rcpPage - 1)) ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
-                    <?php else: ?>
-                    <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
-                    <?php endif; ?>
-                    <?php for ($rp = 1; $rp <= $rcpPages; $rp++): ?>
-                    <a class="case-page-btn<?= $rp === $rcpPage ? ' is-active' : '' ?>" href="<?= e($rcpPageUrl($rp)) ?>"<?= $rp === $rcpPage ? ' aria-current="page"' : '' ?>><?= $rp ?></a>
-                    <?php endfor; ?>
-                    <?php if ($rcpPage < $rcpPages): ?>
-                    <a class="case-page-btn" href="<?= e($rcpPageUrl($rcpPage + 1)) ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
-                    <?php else: ?>
-                    <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
-                    <?php endif; ?>
-                </nav>
-                <?php endif; ?>
-            </div>
+            <?php render_case_list_pager(
+                (int) $rcpPage,
+                (int) $rcpPages,
+                (int) $rcpFrom,
+                (int) $rcpTo,
+                (int) $rcpTotal,
+                'cases.pager.showing_one',
+                'cases.pager.showing_many',
+                'cases.pagination.aria',
+                $rcpPageUrl,
+                'case-hub-foot'
+            ); ?>
         </section>
 
         <?php elseif ($tab === 'checklist'):
@@ -2282,26 +2250,18 @@ if ($action === 'view' && $id) {
                     </tbody>
                 </table>
             </div>
-            <div class="case-hub-foot">
-                <p class="case-list-footer muted"><?= e(__($taskTotal === 1 ? 'cases.pager.showing_one' : 'cases.pager.showing_many', ['from' => (int) $taskFrom, 'to' => (int) $taskTo, 'total' => (int) $taskTotal])) ?></p>
-                <?php if ($taskPages > 1): ?>
-                <nav class="case-list-pager" aria-label="<?= __e('cases.pagination.aria') ?>">
-                    <?php if ($taskPage > 1): ?>
-                    <a class="case-page-btn" href="<?= e($taskPageUrl($taskPage - 1)) ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
-                    <?php else: ?>
-                    <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
-                    <?php endif; ?>
-                    <?php for ($tp = 1; $tp <= $taskPages; $tp++): ?>
-                    <a class="case-page-btn<?= $tp === $taskPage ? ' is-active' : '' ?>" href="<?= e($taskPageUrl($tp)) ?>"<?= $tp === $taskPage ? ' aria-current="page"' : '' ?>><?= $tp ?></a>
-                    <?php endfor; ?>
-                    <?php if ($taskPage < $taskPages): ?>
-                    <a class="case-page-btn" href="<?= e($taskPageUrl($taskPage + 1)) ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
-                    <?php else: ?>
-                    <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
-                    <?php endif; ?>
-                </nav>
-                <?php endif; ?>
-            </div>
+            <?php render_case_list_pager(
+                (int) $taskPage,
+                (int) $taskPages,
+                (int) $taskFrom,
+                (int) $taskTo,
+                (int) $taskTotal,
+                'cases.pager.showing_one',
+                'cases.pager.showing_many',
+                'cases.pagination.aria',
+                $taskPageUrl,
+                'case-hub-foot'
+            ); ?>
         </section>
 
         <?php elseif ($tab === 'deadlines'):
@@ -2360,26 +2320,18 @@ if ($action === 'view' && $id) {
                     </tbody>
                 </table>
             </div>
-            <div class="case-hub-foot">
-                <p class="case-list-footer muted"><?= e(__($dlTotal === 1 ? 'cases.pager.showing_one' : 'cases.pager.showing_many', ['from' => (int) $dlFrom, 'to' => (int) $dlTo, 'total' => (int) $dlTotal])) ?></p>
-                <?php if ($dlPages > 1): ?>
-                <nav class="case-list-pager" aria-label="<?= __e('cases.pagination.aria') ?>">
-                    <?php if ($dlPage > 1): ?>
-                    <a class="case-page-btn" href="<?= e($dlPageUrl($dlPage - 1)) ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
-                    <?php else: ?>
-                    <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
-                    <?php endif; ?>
-                    <?php for ($dp = 1; $dp <= $dlPages; $dp++): ?>
-                    <a class="case-page-btn<?= $dp === $dlPage ? ' is-active' : '' ?>" href="<?= e($dlPageUrl($dp)) ?>"<?= $dp === $dlPage ? ' aria-current="page"' : '' ?>><?= $dp ?></a>
-                    <?php endfor; ?>
-                    <?php if ($dlPage < $dlPages): ?>
-                    <a class="case-page-btn" href="<?= e($dlPageUrl($dlPage + 1)) ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
-                    <?php else: ?>
-                    <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
-                    <?php endif; ?>
-                </nav>
-                <?php endif; ?>
-            </div>
+            <?php render_case_list_pager(
+                (int) $dlPage,
+                (int) $dlPages,
+                (int) $dlFrom,
+                (int) $dlTo,
+                (int) $dlTotal,
+                'cases.pager.showing_one',
+                'cases.pager.showing_many',
+                'cases.pagination.aria',
+                $dlPageUrl,
+                'case-hub-foot'
+            ); ?>
         </section>
 
         <?php elseif ($tab === 'notes'):
@@ -2439,26 +2391,18 @@ if ($action === 'view' && $id) {
                 <?php endforeach; ?>
                 <?php if (!$pageNotes): ?><div class="empty-state"><?= __e('cases.no_notes') ?></div><?php endif; ?>
             </div>
-            <div class="case-hub-foot">
-                <p class="case-list-footer muted"><?= e(__($noteTotal === 1 ? 'cases.pager.showing_one' : 'cases.pager.showing_many', ['from' => (int) $noteFrom, 'to' => (int) $noteTo, 'total' => (int) $noteTotal])) ?></p>
-                <?php if ($notePages > 1): ?>
-                <nav class="case-list-pager" aria-label="<?= __e('cases.pagination.aria') ?>">
-                    <?php if ($notePage > 1): ?>
-                    <a class="case-page-btn" href="<?= e($notePageUrl($notePage - 1)) ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
-                    <?php else: ?>
-                    <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
-                    <?php endif; ?>
-                    <?php for ($np = 1; $np <= $notePages; $np++): ?>
-                    <a class="case-page-btn<?= $np === $notePage ? ' is-active' : '' ?>" href="<?= e($notePageUrl($np)) ?>"<?= $np === $notePage ? ' aria-current="page"' : '' ?>><?= $np ?></a>
-                    <?php endfor; ?>
-                    <?php if ($notePage < $notePages): ?>
-                    <a class="case-page-btn" href="<?= e($notePageUrl($notePage + 1)) ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
-                    <?php else: ?>
-                    <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
-                    <?php endif; ?>
-                </nav>
-                <?php endif; ?>
-            </div>
+            <?php render_case_list_pager(
+                (int) $notePage,
+                (int) $notePages,
+                (int) $noteFrom,
+                (int) $noteTo,
+                (int) $noteTotal,
+                'cases.pager.showing_one',
+                'cases.pager.showing_many',
+                'cases.pagination.aria',
+                $notePageUrl,
+                'case-hub-foot'
+            ); ?>
         </section>
 
         <?php else:
@@ -2545,26 +2489,18 @@ if ($action === 'view' && $id) {
                     <div class="empty-state"><?= __e('cases.activity.empty') ?></div>
                 <?php endif; ?>
             </div>
-            <div class="case-activity-footer" id="caseActivityFooter">
-                <?= e(__($activityTotal === 1 ? 'cases.pager.showing_one' : 'cases.pager.showing_many', ['from' => (int) $activityFrom, 'to' => (int) $activityTo, 'total' => (int) $activityTotal])) ?>
-                <?php if ($activityPages > 1): ?>
-                <nav class="case-list-pager" aria-label="<?= __e('cases.pagination.aria') ?>">
-                    <?php if ($activityPage > 1): ?>
-                    <a class="case-page-btn" href="<?= e($activityPageUrl($activityPage - 1)) ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
-                    <?php else: ?>
-                    <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
-                    <?php endif; ?>
-                    <?php for ($ap = 1; $ap <= $activityPages; $ap++): ?>
-                    <a class="case-page-btn<?= $ap === $activityPage ? ' is-active' : '' ?>" href="<?= e($activityPageUrl($ap)) ?>"<?= $ap === $activityPage ? ' aria-current="page"' : '' ?>><?= $ap ?></a>
-                    <?php endfor; ?>
-                    <?php if ($activityPage < $activityPages): ?>
-                    <a class="case-page-btn" href="<?= e($activityPageUrl($activityPage + 1)) ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
-                    <?php else: ?>
-                    <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
-                    <?php endif; ?>
-                </nav>
-                <?php endif; ?>
-            </div>
+            <?php render_case_list_pager(
+                (int) $activityPage,
+                (int) $activityPages,
+                (int) $activityFrom,
+                (int) $activityTo,
+                (int) $activityTotal,
+                'cases.pager.showing_one',
+                'cases.pager.showing_many',
+                'cases.pagination.aria',
+                $activityPageUrl,
+                'case-activity-footer'
+            ); ?>
         </section>
         <?php endif; ?>
     </div>
@@ -2689,25 +2625,16 @@ $pagerQs = $filter !== '' ? '&filter=' . urlencode($filter) : '';
             </tbody>
         </table>
     </div>
-    <div class="case-list-foot">
-        <p class="case-list-footer muted"><?= e(__($totalCases === 1 ? 'cases.pager.showing_one' : 'cases.pager.showing_many', ['from' => (int)$shownFrom, 'to' => (int)$shownTo, 'total' => (int)$totalCases])) ?></p>
-        <?php if ($totalPages > 1): ?>
-        <nav class="case-list-pager" aria-label="<?= __e('cases.pagination.aria') ?>">
-            <?php if ($page > 1): ?>
-            <a class="case-page-btn" href="?page=<?= $page - 1 ?><?= e($pagerQs) ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
-            <?php else: ?>
-            <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
-            <?php endif; ?>
-            <?php for ($p = 1; $p <= $totalPages; $p++): ?>
-            <a class="case-page-btn<?= $p === $page ? ' is-active' : '' ?>" href="?page=<?= $p ?><?= e($pagerQs) ?>"<?= $p === $page ? ' aria-current="page"' : '' ?>><?= $p ?></a>
-            <?php endfor; ?>
-            <?php if ($page < $totalPages): ?>
-            <a class="case-page-btn" href="?page=<?= $page + 1 ?><?= e($pagerQs) ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
-            <?php else: ?>
-            <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
-            <?php endif; ?>
-        </nav>
-        <?php endif; ?>
-    </div>
+    <?php render_case_list_pager(
+        $page,
+        $totalPages,
+        (int) $shownFrom,
+        (int) $shownTo,
+        (int) $totalCases,
+        'cases.pager.showing_one',
+        'cases.pager.showing_many',
+        'cases.pagination.aria',
+        static fn(int $p): string => '?page=' . $p . $pagerQs
+    ); ?>
 </div>
 <?php require __DIR__ . '/../includes/footer.php'; ?>

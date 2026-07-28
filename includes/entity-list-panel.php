@@ -6,6 +6,8 @@
  * - $listPanelId, $listSearchId, $listStatusId, $listTableId, $listFooterId, $listTotalMetaId
  * - $listTitle, $listSubtitle, $listSearchPlaceholder, $listAllStatuses
  * - $listShowingTpl, $listTotalOneTpl, $listTotalManyTpl
+ * - $listPageSize, $listPagerId, $listPagerLabelId
+ * - $listPagerShowingOneKey, $listPagerShowingManyKey, $listPagerAriaKey
  * - $listStatuses (array of status keys), $listStatusLabelFn (callable|null) or use __('court.tone.'.$s) / calendar.tone
  * - $listStatusI18nPrefix ('calendar.tone.' or 'court.tone.')
  * - $listColumns: array of th labels
@@ -32,6 +34,12 @@ $listAllStatuses = $listAllStatuses ?? '';
 $listShowingTpl = $listShowingTpl ?? '';
 $listTotalOneTpl = $listTotalOneTpl ?? '';
 $listTotalManyTpl = $listTotalManyTpl ?? '';
+$listPageSize = max(1, (int) ($listPageSize ?? 10));
+$listPagerId = $listPagerId ?? ($listPanelId . 'Pager');
+$listPagerLabelId = $listPagerLabelId ?? ($listPanelId . 'PagerLabel');
+$listPagerShowingOneKey = $listPagerShowingOneKey ?? 'common.pagination.showing_one';
+$listPagerShowingManyKey = $listPagerShowingManyKey ?? 'common.pagination.showing_many';
+$listPagerAriaKey = $listPagerAriaKey ?? 'common.pagination.aria';
 ?>
 <div class="panel <?= e($listPanelClass) ?>"
      id="<?= e($listPanelId) ?>"
@@ -39,11 +47,15 @@ $listTotalManyTpl = $listTotalManyTpl ?? '';
      data-search-id="<?= e($listSearchId) ?>"
      data-status-id="<?= e($listStatusId) ?>"
      data-table-id="<?= e($listTableId) ?>"
-     data-footer-id="<?= e($listFooterId) ?>"
      data-total-meta-id="<?= e($listTotalMetaId) ?>"
      data-showing-tpl="<?= e($listShowingTpl) ?>"
      data-total-one="<?= e($listTotalOneTpl) ?>"
-     data-total-many="<?= e($listTotalManyTpl) ?>">
+     data-total-many="<?= e($listTotalManyTpl) ?>"
+     data-page-size="<?= (int) $listPageSize ?>"
+     data-pager-id="<?= e($listPagerId) ?>"
+     data-pager-label-id="<?= e($listPagerLabelId) ?>"
+     data-pager-showing-one="<?= __e($listPagerShowingOneKey) ?>"
+     data-pager-showing-many="<?= __e($listPagerShowingManyKey) ?>">
     <div class="appt-list-hero">
         <div>
             <h2><?= e($listTitle) ?></h2>
@@ -81,5 +93,8 @@ $listTotalManyTpl = $listTotalManyTpl ?? '';
             </tbody>
         </table>
     </div>
-    <p class="appt-list-footer" id="<?= e($listFooterId) ?>"><?= e($listShowingTpl) ?></p>
+    <div class="case-list-foot appt-list-foot">
+        <p class="case-list-footer muted" id="<?= e($listPagerLabelId) ?>"></p>
+        <nav class="case-list-pager" id="<?= e($listPagerId) ?>" aria-label="<?= __e($listPagerAriaKey) ?>" hidden></nav>
+    </div>
 </div>

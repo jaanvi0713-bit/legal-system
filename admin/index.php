@@ -225,9 +225,10 @@ require __DIR__ . '/../includes/header.php';
             </section>
 
             <section class="glass-card glass-side-list" data-glass-pager-root data-per-page="3"
-                     data-page-of="<?= e(__('calendar.page_of', ['page' => ':page', 'pages' => ':pages'])) ?>"
-                     data-prev-label="<?= __e('common.previous') ?>"
-                     data-next-label="<?= __e('common.next') ?>">
+                     data-pager-showing-one="<?= __e('dashboard.pager.showing_one') ?>"
+                     data-pager-showing-many="<?= __e('dashboard.pager.showing_many') ?>"
+                     data-prev-label="<?= __e('cases.pagination.prev') ?>"
+                     data-next-label="<?= __e('cases.pagination.next') ?>">
                 <div class="glass-panel-head">
                     <h2><?= $hasSchedule ? __e('dashboard.panel.upcoming_schedule') : __e('dashboard.panel.workload_by_type') ?></h2>
                     <a class="glass-link" href="<?= $hasSchedule ? ($hearings ? 'court.php' : 'appointments.php') : 'cases.php' ?>"><?= __e('common.view') ?></a>
@@ -297,16 +298,9 @@ require __DIR__ . '/../includes/header.php';
                         <?php endif; ?>
                     </a>
                 <?php endif; ?>
-                <div class="glass-dash-pager-wrap"<?= $schedulePagerRows < 1 ? ' hidden' : '' ?>>
-                    <div class="glass-dash-pager">
-                        <button type="button" class="glass-dash-page-btn" data-glass-page="prev" aria-label="<?= __e('common.previous') ?>" disabled>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
-                        </button>
-                        <span class="glass-dash-page-label"><?= e(__('calendar.page_of', ['page' => 1, 'pages' => $schedulePagerPages])) ?></span>
-                        <button type="button" class="glass-dash-page-btn" data-glass-page="next" aria-label="<?= __e('common.next') ?>"<?= $schedulePagerPages <= 1 ? ' disabled' : '' ?>>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
-                        </button>
-                    </div>
+                <div class="case-list-foot glass-dash-pager-wrap"<?= $schedulePagerRows < 1 ? ' hidden' : '' ?>>
+                    <p class="case-list-footer muted glass-dash-pager-label"></p>
+                    <nav class="case-list-pager glass-dash-pager-nav" aria-label="<?= __e('dashboard.pagination.aria') ?>"></nav>
                 </div>
             </section>
         </div>
@@ -347,9 +341,10 @@ require __DIR__ . '/../includes/header.php';
             </section>
 
             <section class="glass-card glass-tx" data-glass-pager-root data-per-page="3"
-                     data-page-of="<?= e(__('calendar.page_of', ['page' => ':page', 'pages' => ':pages'])) ?>"
-                     data-prev-label="<?= __e('common.previous') ?>"
-                     data-next-label="<?= __e('common.next') ?>">
+                     data-pager-showing-one="<?= __e('dashboard.pager.showing_one') ?>"
+                     data-pager-showing-many="<?= __e('dashboard.pager.showing_many') ?>"
+                     data-prev-label="<?= __e('cases.pagination.prev') ?>"
+                     data-next-label="<?= __e('cases.pagination.next') ?>">
                 <div class="glass-panel-head">
                     <h2><?= __e('dashboard.panel.revenue_collections') ?></h2>
                     <span class="glass-soft-chip"><?= e(__('dashboard.month_chip', ['amount' => money($stats['month_revenue'])])) ?></span>
@@ -394,16 +389,9 @@ require __DIR__ . '/../includes/header.php';
                         </tbody>
                     </table>
                 </div>
-                <div class="glass-dash-pager-wrap"<?= !$payments ? ' hidden' : '' ?>>
-                    <div class="glass-dash-pager">
-                        <button type="button" class="glass-dash-page-btn" data-glass-page="prev" aria-label="<?= __e('common.previous') ?>" disabled>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
-                        </button>
-                        <span class="glass-dash-page-label"><?= e(__('calendar.page_of', ['page' => 1, 'pages' => $paymentsPagerPages])) ?></span>
-                        <button type="button" class="glass-dash-page-btn" data-glass-page="next" aria-label="<?= __e('common.next') ?>"<?= $paymentsPagerPages <= 1 ? ' disabled' : '' ?>>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
-                        </button>
-                    </div>
+                <div class="case-list-foot glass-dash-pager-wrap"<?= !$payments ? ' hidden' : '' ?>>
+                    <p class="case-list-footer muted glass-dash-pager-label"></p>
+                    <nav class="case-list-pager glass-dash-pager-nav" aria-label="<?= __e('dashboard.pagination.aria') ?>"></nav>
                 </div>
             </section>
         </div>

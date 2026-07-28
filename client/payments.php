@@ -116,26 +116,18 @@ require __DIR__ . '/../includes/header.php';
                 </tbody>
             </table>
         </div>
-        <div class="case-list-foot payments-invoices-foot">
-            <?php if ($invTotalPages > 1): ?>
-            <nav class="case-list-pager" aria-label="<?= __e('payments.invoices.pagination.aria') ?>">
-                <?php if ($invPage > 1): ?>
-                <a class="case-page-btn" href="<?= e($invoicesPagerUrl($invPage - 1)) ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
-                <?php else: ?>
-                <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
-                <?php endif; ?>
-                <?php for ($p = 1; $p <= $invTotalPages; $p++): ?>
-                <a class="case-page-btn<?= $p === $invPage ? ' is-active' : '' ?>" href="<?= e($invoicesPagerUrl($p)) ?>"<?= $p === $invPage ? ' aria-current="page"' : '' ?>><?= $p ?></a>
-                <?php endfor; ?>
-                <?php if ($invPage < $invTotalPages): ?>
-                <a class="case-page-btn" href="<?= e($invoicesPagerUrl($invPage + 1)) ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
-                <?php else: ?>
-                <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
-                <?php endif; ?>
-            </nav>
-            <?php endif; ?>
-            <p class="case-list-footer muted"><?= e(__($totalInvoices === 1 ? 'payments.invoices.pager.showing_one' : 'payments.invoices.pager.showing_many', ['from' => (int) $invShownFrom, 'to' => (int) $invShownTo, 'total' => (int) $totalInvoices])) ?></p>
-        </div>
+        <?php render_case_list_pager(
+            $invPage,
+            $invTotalPages,
+            (int) $invShownFrom,
+            (int) $invShownTo,
+            (int) $totalInvoices,
+            'payments.invoices.pager.showing_one',
+            'payments.invoices.pager.showing_many',
+            'payments.invoices.pagination.aria',
+            $invoicesPagerUrl,
+            'payments-invoices-foot'
+        ); ?>
     </div>
     <div class="panel">
         <h2><?= __e('payments.record') ?></h2>
@@ -201,26 +193,17 @@ require __DIR__ . '/../includes/header.php';
             </tbody>
         </table>
     </div>
-    <div class="case-list-foot">
-        <p class="case-list-footer muted"><?= e(__($totalPayments === 1 ? 'payments.pager.showing_one' : 'payments.pager.showing_many', ['from' => (int) $shownFrom, 'to' => (int) $shownTo, 'total' => (int) $totalPayments])) ?></p>
-        <?php if ($totalPages > 1): ?>
-        <nav class="case-list-pager" aria-label="<?= __e('payments.pagination.aria') ?>">
-            <?php if ($page > 1): ?>
-            <a class="case-page-btn" href="<?= e($paymentsPagerUrl($page - 1)) ?>" aria-label="<?= __e('cases.pagination.prev') ?>">‹</a>
-            <?php else: ?>
-            <span class="case-page-btn is-disabled" aria-disabled="true">‹</span>
-            <?php endif; ?>
-            <?php for ($p = 1; $p <= $totalPages; $p++): ?>
-            <a class="case-page-btn<?= $p === $page ? ' is-active' : '' ?>" href="<?= e($paymentsPagerUrl($p)) ?>"<?= $p === $page ? ' aria-current="page"' : '' ?>><?= $p ?></a>
-            <?php endfor; ?>
-            <?php if ($page < $totalPages): ?>
-            <a class="case-page-btn" href="<?= e($paymentsPagerUrl($page + 1)) ?>" aria-label="<?= __e('cases.pagination.next') ?>">›</a>
-            <?php else: ?>
-            <span class="case-page-btn is-disabled" aria-disabled="true">›</span>
-            <?php endif; ?>
-        </nav>
-        <?php endif; ?>
-    </div>
+    <?php render_case_list_pager(
+        $page,
+        $totalPages,
+        (int) $shownFrom,
+        (int) $shownTo,
+        (int) $totalPayments,
+        'payments.pager.showing_one',
+        'payments.pager.showing_many',
+        'payments.pagination.aria',
+        $paymentsPagerUrl
+    ); ?>
 </div>
 <script>
 (function () {

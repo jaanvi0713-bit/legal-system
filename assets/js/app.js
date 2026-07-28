@@ -347,7 +347,7 @@ document.addEventListener('DOMContentLoaded', () => {
           .replace(':to', String(to))
           .replace(':total', String(matchedCount));
       }
-      if (totalPages <= 1) {
+      if (!matchedCount) {
         pager.hidden = true;
         pager.innerHTML = '';
         return;
@@ -1494,44 +1494,67 @@ function initGlassDashPagination() {
     const perPage = Math.max(1, parseInt(root.dataset.perPage, 10) || 3);
     const rows = Array.from(root.querySelectorAll('[data-glass-page-row]'));
     const pagerWrap = root.querySelector('.glass-dash-pager-wrap');
+    const labelEl = root.querySelector('.glass-dash-pager-label');
+    const pagerEl = root.querySelector('.glass-dash-pager-nav');
     if (!rows.length) {
       if (pagerWrap) pagerWrap.hidden = true;
       return;
     }
 
-    const prevBtn = root.querySelector('[data-glass-page="prev"]');
-    const nextBtn = root.querySelector('[data-glass-page="next"]');
-    const labelEl = root.querySelector('.glass-dash-page-label');
-    const pageOfTpl = root.dataset.pageOf || 'Page :page of :pages';
+    const showingOne = root.dataset.pagerShowingOne || 'Showing :from–:to of :total item';
+    const showingMany = root.dataset.pagerShowingMany || 'Showing :from–:to of :total items';
+    const prevLabel = root.dataset.prevLabel || 'Previous page';
+    const nextLabel = root.dataset.nextLabel || 'Next page';
     let page = 1;
-    const pages = Math.max(1, Math.ceil(rows.length / perPage));
+    const total = rows.length;
+    const pages = Math.max(1, Math.ceil(total / perPage));
 
     const render = () => {
+      if (page > pages) page = pages;
+      if (page < 1) page = 1;
       rows.forEach((row, index) => {
         const rowPage = Math.floor(index / perPage) + 1;
         row.hidden = rowPage !== page;
       });
+      const from = ((page - 1) * perPage) + 1;
+      const to = Math.min(page * perPage, total);
       if (labelEl) {
-        labelEl.textContent = pageOfTpl
-          .replace(':page', String(page))
-          .replace(':pages', String(pages));
+        const tpl = total === 1 ? showingOne : showingMany;
+        labelEl.textContent = String(tpl)
+          .replace(':from', String(from))
+          .replace(':to', String(to))
+          .replace(':total', String(total));
       }
-      if (prevBtn) prevBtn.disabled = page <= 1;
-      if (nextBtn) nextBtn.disabled = page >= pages;
+      if (pagerEl) {
+        let html = '';
+        if (page > 1) {
+          html += '<button type="button" class="case-page-btn" data-glass-page="' + (page - 1) + '" aria-label="' + prevLabel + '">‹</button>';
+        } else {
+          html += '<span class="case-page-btn is-disabled" aria-disabled="true">‹</span>';
+        }
+        for (let p = 1; p <= pages; p += 1) {
+          if (p === page) {
+            html += '<span class="case-page-btn is-active" aria-current="page">' + p + '</span>';
+          } else {
+            html += '<button type="button" class="case-page-btn" data-glass-page="' + p + '">' + p + '</button>';
+          }
+        }
+        if (page < pages) {
+          html += '<button type="button" class="case-page-btn" data-glass-page="' + (page + 1) + '" aria-label="' + nextLabel + '">›</button>';
+        } else {
+          html += '<span class="case-page-btn is-disabled" aria-disabled="true">›</span>';
+        }
+        pagerEl.innerHTML = html;
+      }
       if (pagerWrap) pagerWrap.hidden = false;
     };
 
-    if (prevBtn) {
-      prevBtn.addEventListener('click', () => {
-        if (page <= 1) return;
-        page -= 1;
-        render();
-      });
-    }
-    if (nextBtn) {
-      nextBtn.addEventListener('click', () => {
-        if (page >= pages) return;
-        page += 1;
+    if (pagerEl) {
+      pagerEl.addEventListener('click', (event) => {
+        const btn = event.target.closest('[data-glass-page]');
+        if (!btn) return;
+        event.preventDefault();
+        page = parseInt(btn.getAttribute('data-glass-page') || '1', 10) || 1;
         render();
       });
     }
@@ -2028,6 +2051,8 @@ function initAppointmentsCalendar() {
     apptCountOne: root.dataset.apptCountOne || ':count total appointment',
     apptCountMany: root.dataset.apptCountMany || ':count total appointments',
     pageOf: root.dataset.pageOf || 'Page :page of :pages',
+    agendaShowingOne: root.dataset.agendaShowingOne || 'Showing :from–:to of :total item',
+    agendaShowingMany: root.dataset.agendaShowingMany || 'Showing :from–:to of :total items',
     prevLabel: root.dataset.prevLabel || 'Previous',
     nextLabel: root.dataset.nextLabel || 'Next',
     locale: root.dataset.locale || document.documentElement.lang || 'en',
@@ -2246,27 +2271,46 @@ function initAppointmentsCalendar() {
 
   const renderAgendaPager = (total, page, pages) => {
     if (!agendaPagerEl) return;
+    const labelEl = document.getElementById('apptCalAgendaPagerLabel');
+    const navEl = document.getElementById('apptCalAgendaPagerNav');
     if (total < 1) {
-      agendaPagerEl.innerHTML = '';
       agendaPagerEl.hidden = true;
+      if (labelEl) labelEl.textContent = '';
+      if (navEl) navEl.innerHTML = '';
       return;
     }
     agendaPagerEl.hidden = false;
-    const label = esc(
-      String(data.pageOf || 'Page :page of :pages')
-        .replace(':page', String(page))
-        .replace(':pages', String(pages))
-    );
-    agendaPagerEl.innerHTML = `
-      <div class="appt-cal-agenda-pager" data-page="${page}" data-pages="${pages}">
-        <button type="button" class="appt-cal-agenda-page-btn" data-agenda-page="prev"${page <= 1 ? ' disabled' : ''} aria-label="${esc(data.prevLabel || 'Previous')}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
-        </button>
-        <span class="appt-cal-agenda-page-label">${label}</span>
-        <button type="button" class="appt-cal-agenda-page-btn" data-agenda-page="next"${page >= pages ? ' disabled' : ''} aria-label="${esc(data.nextLabel || 'Next')}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
-        </button>
-      </div>`;
+    const from = ((page - 1) * AGENDA_PER_PAGE) + 1;
+    const to = Math.min(page * AGENDA_PER_PAGE, total);
+    if (labelEl) {
+      const tpl = total === 1
+        ? (data.agendaShowingOne || 'Showing :from–:to of :total item')
+        : (data.agendaShowingMany || 'Showing :from–:to of :total items');
+      labelEl.textContent = String(tpl)
+        .replace(':from', String(from))
+        .replace(':to', String(to))
+        .replace(':total', String(total));
+    }
+    if (!navEl) return;
+    let html = '';
+    if (page > 1) {
+      html += '<button type="button" class="case-page-btn" data-page="' + (page - 1) + '" aria-label="' + esc(data.prevLabel || 'Previous') + '">‹</button>';
+    } else {
+      html += '<span class="case-page-btn is-disabled" aria-disabled="true">‹</span>';
+    }
+    for (let p = 1; p <= pages; p += 1) {
+      if (p === page) {
+        html += '<span class="case-page-btn is-active" aria-current="page">' + p + '</span>';
+      } else {
+        html += '<button type="button" class="case-page-btn" data-page="' + p + '">' + p + '</button>';
+      }
+    }
+    if (page < pages) {
+      html += '<button type="button" class="case-page-btn" data-page="' + (page + 1) + '" aria-label="' + esc(data.nextLabel || 'Next') + '">›</button>';
+    } else {
+      html += '<span class="case-page-btn is-disabled" aria-disabled="true">›</span>';
+    }
+    navEl.innerHTML = html;
   };
 
   const dayMenuEl = document.getElementById('apptCalDayMenu');
@@ -2466,11 +2510,10 @@ function initAppointmentsCalendar() {
 
   if (agendaPagerEl) {
     agendaPagerEl.addEventListener('click', (e) => {
-      const btn = e.target.closest('[data-agenda-page]');
-      if (!btn || btn.disabled) return;
-      const dir = btn.getAttribute('data-agenda-page');
-      if (dir === 'prev') agendaPage -= 1;
-      if (dir === 'next') agendaPage += 1;
+      const btn = e.target.closest('[data-page]');
+      if (!btn) return;
+      e.preventDefault();
+      agendaPage = parseInt(btn.getAttribute('data-page') || '1', 10) || 1;
       renderAgenda();
       if (agendaEl) agendaEl.scrollTop = 0;
     });

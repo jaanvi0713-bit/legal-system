@@ -162,7 +162,7 @@ function render_insights_page(string $portal): void
         echo '</div>';
     };
     ?>
-    <div class="ih-hub" data-ih-root>
+    <div class="ih-hub reports-page" data-ih-root>
         <header class="ih-banner">
             <div class="ih-banner-brand">
                 <span class="ih-banner-icon" aria-hidden="true"><?= insights_svg('chart') ?></span>
