@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Weekly availability as date + time range blocks with calendar sidebar.
  *

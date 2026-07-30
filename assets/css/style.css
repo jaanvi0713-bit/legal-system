@@ -638,6 +638,8 @@ html[data-theme="dark"] .lang-btn.is-active {
 .progress-bar.warning > span { background: var(--grad-info); }
 
 .panel, .chart-card { padding: 1.2rem 1.25rem; }
+.panel.avail-panel,
+.panel.appt-calendar-panel { padding: 0 !important; }
 .panel-header {
     display: flex; justify-content: space-between; align-items: center;
     gap: 1rem; margin-bottom: 1rem;
@@ -10256,20 +10258,39 @@ html[data-theme="dark"] .notify-item.is-unread {
 }
 
 /* Lawyer weekly availability */
-.avail-panel {
-    padding: 0;
+.panel.avail-panel {
+    padding: 0 !important;
     overflow: hidden;
     border: 1px solid var(--line);
     border-radius: 14px;
     box-shadow: 0 18px 48px rgba(var(--primary-rgb), 0.08);
     display: flex;
     flex-direction: column;
+    position: relative;
+}
+/* Paint rail color under any leftover inset so the dark column is flush to the card edge */
+.panel.avail-panel::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 220px;
+    background:
+        radial-gradient(120% 80% at 0% 0%, rgba(255, 255, 255, 0.14), transparent 55%),
+        linear-gradient(165deg, #0b1f3a 0%, var(--primary-deep) 42%, #00122e 100%);
+    border-radius: 14px 0 0 14px;
+    pointer-events: none;
+    z-index: 0;
 }
 .avail-board {
     display: flex;
     flex: 1;
     flex-direction: column;
     min-height: 0;
+    position: relative;
+    z-index: 1;
+    margin: 0;
+    padding: 0;
+    width: 100%;
 }
 .avail-hours-row {
     display: flex;
@@ -10399,16 +10420,21 @@ html[data-theme="dark"] .avail-interval-unit input:checked + span {
     display: grid;
     grid-template-columns: 220px minmax(0, 1fr);
     align-items: stretch;
-    flex: 1;
+    flex: 1 1 auto;
     min-height: 0;
+    margin: 0;
+    padding: 0;
+    width: 100%;
 }
 .avail-rail.appt-cal-sidebar {
     border-right: 0;
     align-self: stretch;
     min-height: 100%;
-    height: 100%;
+    height: auto;
+    margin: 0;
     padding: 0.85rem 0.85rem 1rem;
     gap: 0.75rem;
+    border-radius: 0;
 }
 .avail-rail-week {
     flex-shrink: 0;
@@ -10865,10 +10891,21 @@ html[data-theme="dark"] .avail-slot-toggle {
     flex: 1;
     flex-direction: column;
     min-height: 0;
+    border: 0;
+}
+.avail-panel .avail-board.avail-board-blocks {
+    margin: 0;
+    padding: 0;
 }
 .avail-panel .avail-rail.appt-cal-sidebar {
-    border-top-left-radius: inherit;
-    border-bottom-left-radius: inherit;
+    border-radius: 0;
+    margin: 0;
+    padding-top: 0.85rem;
+}
+.avail-view-page .panel.avail-panel,
+.avail-view-page .avail-panel {
+    padding: 0 !important;
+    margin: 0;
 }
 .avail-board-top {
     display: flex;
@@ -11140,8 +11177,12 @@ html[data-theme="dark"] .avail-slot-toggle {
     .avail-layout {
         grid-template-columns: 1fr;
     }
+    .panel.avail-panel::before {
+        display: none;
+    }
     .avail-rail.appt-cal-sidebar {
         min-height: 0;
+        border-radius: 14px 14px 0 0;
     }
     .avail-day-nav {
         max-height: none;
